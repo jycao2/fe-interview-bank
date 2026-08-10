@@ -6062,6 +6062,1816 @@ Vue 在"模板可静态分析"上有先天优势；React 靠 React Compiler 逐�
 ## 一句话
 
 React 偏函数式与不可变（UI=f(state)、JSX、显式 setState、生态自治）；Vue 偏响应式与模板（Proxy 自动追踪、可变状态、编译优化、内置齐全）；两者在组合式 API 与编译优化上趋同，选择看团队偏好与场景。`
+  },
+  {
+    id: 'react-059',
+    category: 'react',
+    title: 'React 18+ 并发特性：useTransition、useDeferredValue、startTransition 的原理与区别？',
+    difficulty: '困难',
+    tags: ['React 18', '并发渲染', 'useTransition', 'useDeferredValue', 'startTransition'],
+    answer: `## React 18 并发渲染（Concurrent Rendering）核心
+
+React 18 将渲染变为**可中断、可恢复、可优先级调度**。并发特性的本质是：让紧急更新（输入、点击）不被非紧急更新（搜索联想、大列表过滤）阻塞。
+
+---
+
+## 1. startTransition — 标记"非紧急更新"
+
+\`\`\`jsx
+import { startTransition, useState } from 'react';
+
+function Search() {
+  const [query, setQuery] = useState('');          // 紧急：用户输入
+  const [results, setResults] = useState([]);      // 非紧急：联想结果
+
+  function handleChange(e) {
+    setQuery(e.target.value);                       // 紧急更新，立即响应
+
+    startTransition(() => {
+      setResults(filterList(e.target.value));       // 非紧急，可被打断
+    });
+  }
+
+  return (
+    <div>
+      <input value={query} onChange={handleChange} />
+      {isPending ? <Spinner /> : <List data={results} />}
+    </div>
+  );
+}
+\`\`\`
+
+**原理**：\`startTransition\` 内部把 setState 标记为 **Transition 优先级**（低于 UserBlocking / Normal）。React 在调度时可被更高优先级任务抢占，不会让整个 UI 卡住。
+
+---
+
+## 2. useTransition — 带 pending 状态的 startTransition
+
+\`\`\`jsx
+import { useTransition } from 'react';
+
+function TabView() {
+  const [tab, setTab] = useState('home');
+  const [isPending, startTransition] = useTransition();
+
+  function switchTab(next) {
+    startTransition(() => {
+      setTab(next);     // 切换 tab 可能触发大组件重渲染
+    });
+  }
+
+  return (
+    <div>
+      <Tabs active={tab} onChange={switchTab} />
+      {isPending && <FallbackSkeleton />}   {/* 过渡期间展示骨架 */}
+      <TabContent tab={tab} />
+    </div>
+  );
+}
+\`\`\`
+
+**useTransition = startTransition + isPending**，适合需要在过渡期间展示 loading 骨架的场景。
+
+---
+
+## 3. useDeferredValue — 延迟"某个值"的更新
+
+\`\`\`jsx
+import { useDeferredValue, useMemo, useState } from 'react';
+
+function BigList({ items }) {
+  const [filter, setFilter] = useState('');
+  const deferredFilter = useDeferredValue(filter);   // 延迟的 filter 值
+
+  const filtered = useMemo(
+    () => items.filter(i => i.includes(deferredFilter)),
+    [items, deferredFilter]    // 基于 deferredFilter 计算
+  );
+
+  return (
+    <div>
+      <input value={filter} onChange={e => setFilter(e.target.value)} />
+      <List items={filtered} />
+    </div>
+  );
+}
+\`\`\`
+
+**原理**：\`useDeferredValue(value)\` 返回一个"滞后版本"的 value。当原始 value 突变时，React 先用旧值渲染一次（不阻塞），再在空闲时用新值重新渲染。
+
+---
+
+## 三者对比
+
+| 特性 | 作用对象 | 返回 pending | 典型场景 |
+|------|---------|-------------|---------|
+| **startTransition** | 包裹 setState 动作 | ❌ | 明确知道哪个 setState 慢 |
+| **useTransition** | 包裹 setState 动作 | ✅ isPending | 切换 tab、路由跳转、展示骨架 |
+| **useDeferredValue** | 包裹 value 值本身 | ❌ | 第三方 Hook/库内部值，无法包 setState |
+
+**记忆口诀**：能控制 setState 就用 transition，只能拿到值就用 deferredValue。
+
+---
+
+## 与 useEffect + setTimeout 的本质区别
+
+很多人误以为"不就是防抖吗？"——**不是一个层级**：
+
+| 维度 | setTimeout 防抖 | React Transition |
+|------|----------------|-----------------|
+| 调度时机 | 固定 N 毫秒后执行 | React 内部优先级调度，空闲即执行 |
+| 可中断性 | 触发后无法被高优任务打断 | Transition 渲染可被紧急更新随时抢占 |
+| 用户体验 | 人为引入延迟，总耗时增加 | 不额外延迟，只是让紧急更新先跑 |
+| SSR / Hydration | 不支持 | Transition 标记可传输到客户端继续 |
+
+---
+
+## 常见误区
+
+1. **不要什么都包 startTransition**：紧急更新（输入、按钮反馈）必须立刻响应，包了反而变卡。
+2. **Transition 不是免费的**：被打断的渲染会被丢弃并重做，频繁打断总 CPU 开销更高，只给"用户能感知到卡"的地方用。
+3. **isPending 为 true 时仍可交互**：这是设计目标，不是 bug——输入、滚动依然立即响应。
+4. **useDeferredValue 需要配合 useMemo**：不然基于原值的子组件还是会重渲染，延迟等于白做。
+
+---
+
+## 一句话总结
+
+**startTransition 标记动作非紧急、useTransition 多一个 pending 展示、useDeferredValue 延迟值本身；三者底层都依赖 Concurrent Mode 的优先级调度，目标是让"紧急交互不被重渲染阻塞"。**`
+  },
+  {
+    id: 'react-060',
+    category: 'react',
+    title: 'React Server Components (RSC) 是什么？与 SSR、Client Components 的区别？',
+    difficulty: '困难',
+    tags: ['React', 'Server Components', 'RSC', 'SSR', 'Next.js'],
+    answer: `## RSC 出现的背景
+
+传统 SPA / SSR 的痛点：
+
+- **SPA**：首屏白屏、JS bundle 大（含组件库 + 数据获取逻辑 + 路由）。
+- **SSR**（Next.js Pages Router 等）：把组件 renderToString → HTML 送到客户端 → **全部组件再 hydration 一遍**，服务端跑过的逻辑客户端再跑一次，浪费带宽与 CPU。
+- **典型反模式**：一个图表组件只用 \`dayjs\` 格式化日期，用户却要下载 7KB dayjs + 其所有 locale。
+
+**RSC 的核心承诺：组件只在一个地方渲染——要么永远在 Server，要么永远在 Client。**
+
+---
+
+## 三种组件类型对比
+
+| 维度 | Server Component（默认 .server / 无指令） | Client Component（顶部 'use client'） | 传统 SSR 组件 |
+|------|------------------------------------------|--------------------------------------|--------------|
+| 渲染位置 | **仅服务器**（每次请求 / 构建时） | 客户端 hydration 后运行 | 服务端 renderToString + 客户端全量 hydration |
+| 能否用 Hooks / useState / useEffect | ❌ 不能 | ✅ 能 | ✅ 能（hydration 后） |
+| 能否访问 DB / FS / Node API | ✅ 直接访问 | ❌ 只能调接口 | ⚠️ getServerSideProps 里访问，组件体不行 |
+| 代码下发到客户端 | ❌ **组件代码与依赖不下发** | ✅ 完整下发到 bundle | ✅ 完整下发 |
+| 交互 / onClick | ❌ 不能有 | ✅ 能 | ✅ 能 |
+| 生命周期 | 请求触发 → 渲染成 **React 元素描述（RSC Payload）** | 标准 React 组件生命周期 | 服务端 HTML + 客户端 hydration |
+
+---
+
+## RSC 底层：RSC Payload 长什么样
+
+RSC 不是返回 HTML 字符串，而是返回一份**序列化的 React 元素树（类似 JSON）**：
+
+\`\`\`
+// 概念上的 RSC Payload（简化）
+0: ["$", "div", {className: "page"}, [
+  1: ["$", "@/app/PostList", {posts: [2,3,4]}],   // Server Component
+  2: ["$", "ClientButton", {children: "Load more"}, "$L1"]  // Client 引用
+]]
+// Client 组件通过 $Lazy 引用单独打包
+\`\`\`
+
+客户端收到后：
+1. Server Component 部分直接**按描述插入 DOM**，无需 React 渲染。
+2. 遇到 Client Component 标记才**懒加载对应 JS 并 hydration**。
+3. 数据（props）直接内嵌在 Payload 里，无需额外 fetch。
+
+---
+
+## 典型分层代码（Next.js App Router）
+
+\`\`\`jsx
+// app/posts/page.js          ← 默认 Server Component
+import db from '@/lib/db';                     // ✅ 直接连数据库
+import PostList from './PostList';              // Server 组件
+import LikeButton from './LikeButton';          // Client 组件（有交互）
+
+export default async function PostsPage() {     // ✅ 支持 async 组件！
+  const posts = await db.post.findMany();       // 服务端直接取数
+
+  return (
+    <main>
+      <h1>全部文章</h1>
+      <PostList posts={posts} />                {/* Server 渲染 */}
+      <LikeButton initialPosts={posts} />       {/* 数据当 props 传过去 */}
+    </main>
+  );
+}
+\`\`\`
+
+\`\`\`jsx
+// app/posts/LikeButton.js     ← Client Component
+'use client';                                   // 顶部指令
+import { useState } from 'react';
+
+export default function LikeButton({ initialPosts }) {
+  const [liked, setLiked] = useState(() => new Set());   // ✅ Hooks 可用
+  return <button onClick={() => toggleLike(...)}>点赞</button>;
+}
+\`\`\`
+
+---
+
+## 与 SSR（Streaming SSR）的关系
+
+**RSC 和 SSR 是正交的，不是替代关系**：
+
+- **纯 RSC**：服务端返回 RSC Payload → 客户端解析渲染。首屏需要等 JS 下来才能解析，SEO 不友好。
+- **RSC + SSR**：服务端**同时**产出 HTML（给爬虫 / 首屏）+ RSC Payload（给 React 复用）。客户端用 Payload 与 HTML 对齐，跳过已渲染部分的 hydration。
+- **流式（Streaming）**：服务端分块发送，React 用 Suspense 按块展示，不用等整个页面数据。
+
+Next.js App Router 的默认模式就是 **RSC + Streaming SSR + 部分 Client hydration**。
+
+---
+
+## 用 RSC 后，Bundle 会"变轻"的真实原因
+
+1. **Server-only 依赖不下发**：markdown、ORM、SDK、日期计算库、算法库……只要只在 Server 组件里用，用户浏览器一分钱都不用花。
+2. **数据获取在服务端**：不再下发 \`useSWR/useQuery\` 这类客户端取数库 + 其缓存逻辑（部分场景）。
+3. **服务端组件结果直接是静态描述**：没有 VDOM diff 逻辑下发。
+
+典型对比：
+> 一个后台页面前端 SSR 模式：bundle 1.2MB（含 Antd + axios + 工具库）
+> 切到 RSC 后：bundle 300KB（只包含需要交互的按钮、表单、Antd 中真正被 Client 使用的组件）
+
+---
+
+## Server Component 的限制（面试常考 "哪些不能做"）
+
+| ❌ 不能做 | 原因 |
+|---------|------|
+| useState / useReducer / useEffect | 服务器是无状态的，每次请求独立 |
+| DOM / window / document | 服务端没有浏览器环境 |
+| 浏览器事件 onClick / onSubmit | 需要 Client 组件 |
+| 只在浏览器跑的第三方库 | 包一层 Client Component 再用 |
+| 导出给 Server 用时仍含交互 | 分层不清晰，会报错 |
+
+✅ **可以做的**：async/await 取数、读 DB/FS、调用内部微服务、返回任意 JSX、传递 serializable props 给 Client。
+
+---
+
+## 常见误区
+
+1. **"RSC 就是新版 SSR"** —— ❌ SSR 是"服务端输出 HTML"，RSC 是"服务端输出 React 描述"，两者可以叠加。
+2. **"RSC 让所有页面都更快"** —— ❌ 交互很多的页面（IM、编辑器）基本全是 Client 组件，收益有限；内容型 / 数据驱动页面收益巨大。
+3. **"在组件顶部写 'use server' 就是 Server Component"** —— ❌ \`'use server'\` 是 **Server Actions**（表单提交的函数跑在服务端），和标记组件完全两码事。
+4. **"Server Components 没意义，不如用模板引擎"** —— ❌ 与 React Client 无缝组合、Suspense 流式、共享组件心智模型是核心价值。
+
+---
+
+## 一句话总结
+
+**RSC = 组件按渲染位置拆分的架构升级**：Server 组件负责"取数 + 渲染静态内容 + 重依赖下沉"，Client 组件负责"交互 + Hooks + 浏览器 API"；配合 SSR 流式输出，结果是"首屏更快、Bundle 更小、取数更接近数据源"。`
+  },
+  {
+    id: 'react-061',
+    category: 'react',
+    title: 'React Compiler（React Forget）是什么？它能取代 useMemo / useCallback 吗？',
+    difficulty: '中等',
+    tags: ['React Compiler', 'React Forget', 'useMemo', 'useCallback', '性能优化'],
+    answer: `## React Compiler 是什么
+
+React Compiler（内部代号 React Forget）是 React 官方团队开发的**编译期自动记忆化（auto-memoization）工具**。它会在构建时静态分析你的组件代码，**自动判断哪些值需要缓存、哪些 props 比较需要跳过**，目标是：**开发者不再需要手写 useMemo / useCallback / memo**。
+
+它在 React 19 中进入稳定使用阶段，Next.js、Vite 已有对应插件。
+
+---
+
+## 动机：为什么要做这个
+
+React 的默认渲染规则是"父组件重渲染，所有子组件也递归重渲染"。这让开发者被迫写大量样板：
+
+\`\`\`jsx
+// 手动记忆化的"典型"组件 —— 真实项目里遍地都是
+function ProductPage({ id, filters }) {
+  const product = useMemo(() => fetchProduct(id), [id]);
+
+  const filtered = useMemo(
+    () => applyFilters(product, filters),
+    [product, filters]
+  );
+
+  const onBuy = useCallback(
+    (sku) => addToCart(id, sku),
+    [id]
+  );
+
+  return (
+    <ProductView
+      item={filtered}
+      onBuy={onBuy}
+      variants={useMemo(() => buildVariants(filtered), [filtered])}
+    />
+  );
+}
+
+export default memo(ProductPage);
+\`\`\`
+
+**痛点**：
+1. **依赖数组容易错写**：少一个依赖引发闭包 bug，多一个依赖缓存失效。
+2. **心智负担重**：每写一个函数/计算值都要想"要不要包？包了会不会更慢？"。
+3. **用错反而更慢**：多余的 memo / useMemo 会增加引用比较与缓存成本，在小程序量组件上负优化。
+
+**React Compiler 的口号：默认就是最优，开发者只写业务代码。**
+
+---
+
+## React Compiler 做了什么（原理简化）
+
+编译器静态分析 JS/TS 源码，对每个组件 / Hook：
+
+### 第一步：依赖图构建（Dependency Graph）
+
+追踪每个变量 / 表达式依赖了哪些 props、state、context：
+
+\`\`\`
+product   → depends on [id]
+filtered  → depends on [product, filters]
+onBuy     → depends on [id]
+variants  → depends on [filtered]
+\`\`\`
+
+### 第二步：值稳定性判定（Value Stability）
+
+分析哪些值"只要输入不变、输出就能保证引用稳定"：
+- **稳定（Stable）**：原始类型（string / number / boolean / null / undefined）、组件外部定义的常量、setState 函数。
+- **可变（Mutable）**：组件内新建的对象、数组、箭头函数、JSX 元素。
+- **派生（Derived）**：由一组稳定值计算出的新值，可被 memoize。
+
+### 第三步：自动插入记忆化
+
+对**派生且可变**的值，编译器自动用等价于 useMemo / useCallback 的缓存操作包起来，并精确生成依赖数组（不会漏、不会多）。同时在必要时自动给子组件包等价 memo。
+
+编译后产出（概念上）：
+
+\`\`\`jsx
+// 编译器处理后的等价代码（开发者看不到）
+function ProductPage($$props) {
+  const { id, filters } = $$props;
+  const product = $$c(0, () => fetchProduct(id), [id]);     // useMemo 自动插入
+  const filtered = $$c(1, () => applyFilters(product, filters), [product, filters]);
+  const onBuy = $$c(2, (sku) => addToCart(id, sku), [id]);  // useCallback 自动插入
+  const variants = $$c(3, () => buildVariants(filtered), [filtered]);
+  return $$m(ProductView, { item: filtered, onBuy, variants }); // 子组件自动 memo
+}
+\`\`\`
+
+> \`$$c\` / \`$$m\` 是编译器运行时提供的内部 API，不是用户写的。
+
+---
+
+## 实测：开启后代码"变干净"多少
+
+开启 Compiler 后，开发者写的是：
+
+\`\`\`jsx
+// 这就是你要写的全部 —— 没有 useMemo / useCallback / memo
+function ProductPage({ id, filters }) {
+  const product = fetchProduct(id);
+  const filtered = applyFilters(product, filters);
+  const onBuy = (sku) => addToCart(id, sku);
+  return <ProductView item={filtered} onBuy={onBuy} variants={buildVariants(filtered)} />;
+}
+
+// 不需要 export default memo
+\`\`\`
+
+编译后行为和之前手写的 **一样快、甚至更快**（编译器判断更精准，不会有多余 memo）。
+
+---
+
+## 它能完全取代 useMemo / useCallback 吗？
+
+**能覆盖 90%+ 场景，但不能完全取代**，剩下的场景仍需手写：
+
+| 场景 | 编译器能自动处理？ | 仍需手动的原因 |
+|------|------------------|--------------|
+| 普通派生计算值（map/filter/格式化） | ✅ | — |
+| 传给子组件的函数 / 回调 | ✅ | — |
+| 子组件 props 的引用稳定性 | ✅（自动等价 memo） | — |
+| **useEffect 的依赖想稳定** | ✅ 大部分 | — |
+| **昂贵的计算（O(n²)、大数组排序、加密）** | ❌ 不保证 | 编译器只保证"不重复创建引用"，不保证"不重复计算语义"；昂贵计算仍建议显式 useMemo 以表达"这个真的很贵" |
+| **自定义 Hook 中返回对象/函数给外部** | ⚠️ 部分 | Hook 的边界编译器难以完全洞察，显式 memo 更可靠 |
+| **与 React.memo 约定联动的外部组件** | ❌ 不碰跨包约定 | 第三方库组件仍由你决定是否包一层 |
+| **useMemo 作为"语义表达"而非性能** | ❌ | 比如你想让某些变量仅在特定依赖变化时触发 useEffect，属于语义约束，手写更清晰 |
+
+> 官方推荐：**开启 Compiler 后，删除大部分 useMemo/useCallback，只给真正昂贵（你 benchmark 过）的计算保留显式记忆化**。
+
+---
+
+## React Compiler 的前提与限制
+
+### 前提：代码必须"足够纯"
+
+编译器依赖 React 对组件纯度的约定。如果你的代码有以下写法，Compiler 会**跳过**这个组件（不报错，但不优化）：
+
+- 组件 render 过程中**直接 mutate** props / state（\`arr.push\`、\`obj.x = 1\`、\`props.item.xxx =\`）
+- render 中做有副作用的操作（直接 \`fetch\`、改 \`document.title\`、\`console.log\` 以外的 IO）
+- 把 props / state 泄露给外部可变引用（存到 module 级变量、挂到 window）
+
+**解决方案**：用 ESLint 插件 \`eslint-plugin-react-compiler\`，它会告诉你哪些写法导致组件无法被优化。
+
+### 限制
+
+1. **只优化当前包内组件**：node_modules 里的第三方组件不会被重新编译。
+2. **不做 type 级分析**：依赖 TS 类型的复杂推导它不做，纯靠 JS/TS 语法分析。
+3. **Context 变化仍会全树重渲染**：Context 本身的语义没改，Compiler 只优化局部引用稳定性。
+4. **bundle 体积略有增加**：运行时 \`$$c / $$m\` 与每个组件的依赖描述会增加一点包体积（通常 < 5%，对比删除的手写 memo 代码可能整体还更小）。
+
+---
+
+## 与 Solid / Vue 的编译优化对比
+
+| 维度 | React Compiler | Vue SFC 编译优化 | Solid 细粒度响应式 |
+|------|---------------|----------------|-----------------|
+| 核心思路 | 自动 memo + 保留 VDOM | 静态提升 + PatchFlags + 缓存事件 | 无 VDOM，编译为细粒度 signal 订阅 |
+| 数据模型 | 不可变（immutable）心智 | Proxy 可变心智 | Signal 可变心智 |
+| 仍需要 VDOM diff | ✅ 是 | ✅ 是（但有跳过标记） | ❌ 无 VDOM |
+| 改动现有代码 | 几乎 0，纯构建期 | 小，模板限定 | 大，Signal 心智不同 |
+| 并发渲染 / Transition 支持 | ✅ 原生兼容 | 框架级支持 | ⚠️ 较难适配 |
+
+**React Compiler 的设计哲学**：不改变 React 的编程模型（函数组件 + Hooks + 不可变），只是**把该做的优化由编译器默认做了**——渐进增强，不是范式革命。
+
+---
+
+## 常见误区
+
+1. **"开了 Compiler 性能就一定飙升"** —— ❌ 项目本身写得好、memo 用得准的话提升有限；大量"忘写 memo / 依赖错的"老项目提升明显。
+2. **"Compiler 会让 useEffect 依赖问题消失"** —— ❌ 依赖问题是闭包与生命周期问题，和 memo 是两码事。
+3. **"开了 Compiler 就再也不用懂 memo 原理了"** —— ❌ 面试还考、出了问题要能定位、仍有 10% 场景要手写，原理必须懂。
+
+---
+
+## 一句话总结
+
+**React Compiler = 把 useMemo / useCallback / memo 从"开发者手写"改成"编译器自动推断插入"**；它不改变 React 的编程模型，但极大降低样板代码与心智负担，是 React 19 最重要的体验级升级。`
+  },
+  {
+    id: 'react-062',
+    category: 'react',
+    title: 'Suspense 深度解析：边界、数据获取、SuspenseList、流式 SSR 的工作原理？',
+    difficulty: '困难',
+    tags: ['React', 'Suspense', '并发特性', '流式SSR', '数据获取'],
+    answer: `## Suspense 的定位：不是 Loading，而是"协调渲染顺序"
+
+很多人以为 Suspense 只是"加载中显示 fallback"，这层理解太浅。**Suspense 是 React 用来表达"某个子树还没准备好，先不展示，先展示占位"的通用协调机制**——它解决的不是"展示 loading"，而是"**当渲染过程中遇到异步依赖，整体 UI 怎么优雅降级、怎么与并发/流式 SSR 协同**"。
+
+---
+
+## 一、基础用法
+
+\`\`\`jsx
+import { Suspense, lazy } from 'react';
+
+const HeavyEditor = lazy(() => import('./HeavyEditor'));   // 代码分割
+
+function App() {
+  return (
+    <Suspense fallback={<Spinner label="编辑器加载中…" />}>
+      <HeavyEditor />
+    </Suspense>
+  );
+}
+\`\`\`
+
+当 \`HeavyEditor\` 对应的 chunk 还没下载完时，React 会渲染 \`fallback\`；下载完成后再替换成真实内容。
+
+---
+
+## 二、Suspense 边界（Suspense Boundary）原理
+
+\`\`\`
+     ┌───────────────────────────────┐
+     │  Suspense Boundary  #1        │
+     │  ┌─────────────────────────┐  │
+     │  │  A (同步，立刻渲染)      │  │
+     │  │  ┌───────────────────┐  │  │
+     │  │  │  Suspense #2      │  │  │
+     │  │  │  B (挂起)         │  │  │
+     │  │  │  fallback: B-Skel │  │  │
+     │  │  └───────────────────┘  │  │
+     │  │  C (同步)                │  │
+     │  └─────────────────────────┘  │
+     │  fallback: Page-Skeleton      │
+     └───────────────────────────────┘
+\`\`\`
+
+**核心规则：**
+1. **谁抛 Promise，谁找最近的 Suspense 边界兜底**。如果一个组件"挂起"（throw 了一个 Promise），React 向上遍历找最近的 \`<Suspense>\` 祖先，**把它之下的整棵子树**替换为 fallback。
+2. **兄弟不互相阻塞**：上图中 A、C 正常渲染，只有 B 的 fallback 展示。
+3. **边界是可嵌套的**：B 挂起不会让 #1 的 Page-Skeleton 展示，这就是"局部降级"。
+4. **同一次渲染中多个组件挂起**：React 合并，显示最高层（最近祖先）那个边界的 fallback。
+
+---
+
+## 三、Suspense 数据获取：为什么要 throw Promise
+
+Suspense 取数（Relay / Next.js App Router / React Query v5 suspense 模式）用的是一种看起来很黑的技巧——**在 render 中 throw Promise**：
+
+\`\`\`jsx
+// 概念上的取数实现（简化）
+const cache = new Map();
+
+function readUser(id) {
+  if (cache.has(id)) return cache.get(id);
+  if (cache.has(\`promise-\${id}\`)) throw cache.get(\`promise-\${id}\`);  // ✅ throw Promise
+
+  const p = fetch(\`/api/user/\${id}\`).then(r => r.json()).then(data => {
+    cache.set(id, data);
+  });
+  cache.set(\`promise-\${id}\`, p);
+  throw p;   // 第一次访问：抛出去，让 Suspense 接管
+}
+
+// 组件里就可以像同步一样写
+function UserProfile({ id }) {
+  const user = readUser(id);       // 可能 throw Promise
+  return <div>{user.name}</div>;   // 成功了才会跑到这里
+}
+
+// 外部包一层 Suspense 即可
+<Suspense fallback={<UserSkeleton />}>
+  <UserProfile id={1} />
+</Suspense>
+\`\`\`
+
+**为什么要这么设计？**
+
+| 取数模式 | 代码心智 | 问题 |
+|---------|---------|------|
+| useEffect + 手动 loading | if (loading) return <Spin/> | 每个组件自己写 loading、竞态条件多（id 变了旧请求回来覆盖新的） |
+| SWR / React Query 标准模式 | { data, isLoading } = useQuery(...) | 依然是"手动判断 loading"，不能和 Suspense/SSR 流深度整合 |
+| **Suspense 取数（throw Promise）** | const data = readXxx() 同步写法 | ✅ 统一边界、自动避免竞态、和 SSR 流式打通 |
+
+React 拿到 throw 出来的 Promise 后：
+1. 记住"这棵子树在等待"
+2. 显示 fallback
+3. Promise resolve 后**重新渲染这棵子树**
+4. 这次 readUser 拿到缓存值，正常渲染
+
+---
+
+## 四、SuspenseList：控制多个 Suspense 的展示顺序
+
+当并列多个 Suspense 时，内容完成的先后顺序会让页面"一块块乱蹦"。\`SuspenseList\` 协调它们：
+
+\`\`\`jsx
+import { Suspense, SuspenseList } from 'react';
+
+function Dashboard() {
+  return (
+    {/* revealOrder: 'forwards' → 按代码顺序一个个出来，不中间漏洞 */}
+    {/* tail: 'collapsed' → 只展示下一个的 fallback，不展示一堆 spinners */}
+    <SuspenseList revealOrder="forwards" tail="collapsed">
+      <Suspense fallback={<PanelSkeleton />}>
+        <RevenuePanel />       {/* 1 号先出 */}
+      </Suspense>
+      <Suspense fallback={<PanelSkeleton />}>
+        <UserPanel />          {/* 等 1 号出完再出 2 号 */}
+      </Suspense>
+      <Suspense fallback={<PanelSkeleton />}>
+        <OrdersPanel />        {/* 最后出 3 号 */}
+      </Suspense>
+    </SuspenseList>
+  );
+}
+\`\`\`
+
+**revealOrder 选项：**
+- \`together\`：等全部就绪再一齐显示（像 Promise.all）
+- \`forwards\`：按 DOM 顺序依次显示（推荐列表）
+- \`backwards\`：倒序显示（少见）
+
+**tail 选项：**
+- \`hidden\`：除了已完成的，其余 fallback 都不显示
+- \`collapsed\`：只显示"下一个即将出现"的 fallback，不显示一堆 spinner
+
+---
+
+## 五、Suspense + 流式 SSR（核心价值）
+
+传统 SSR 的困境：
+
+\`\`\`
+请求到达
+  → 等最慢的那个接口（比如 3s）
+    → 整页 HTML 生成完（3s 过去，用户一直白屏）
+      → 一口气发回
+        → HTML 展示
+          → 下载 JS
+            → hydration（又等）
+\`\`\`
+
+**流式 SSR + Suspense 之后：**
+
+\`\`\`
+请求到达
+  → 立刻返回 HTML 骨架 + 首屏可展示内容（100ms 用户看到东西）
+    → RevenuePanel 接口返回 → <template> 注入，替换对应骨架
+      → UserPanel 返回 → 再替换
+        → OrdersPanel 返回 → 再替换
+          → JS 下载完 → 按"谁已经有 HTML 先 hydrate 谁"
+\`\`\`
+
+对应 React 服务端 API：\`renderToPipeableStream\`（Node）/ \`renderToReadableStream\`（Web Streams / Edge Runtime）。
+
+**每个 Suspense 边界都会**：
+1. 服务端先生成 fallback 的 HTML，先发给浏览器
+2. 等真实数据 ready，再以一段内嵌 script 的形式推流过来：
+   \`\`\`html
+   <template id="B:1">真实 HTML...</template>
+   <script>
+     // React 内部函数：把 template 内容替换到对应 Suspense 占位
+     $RS("[id='B:1']", ...);
+   </script>
+   \`\`\`
+3. 浏览器无需等整页，收到一块就展示一块。
+
+---
+
+## 六、Suspense + useTransition 配合：避免"切换页面全变骨架"
+
+\`\`\`jsx
+import { Suspense, useTransition, useState } from 'react';
+
+function App() {
+  const [page, setPage] = useState('home');
+  const [isPending, startTransition] = useTransition();
+
+  function go(to) {
+    startTransition(() => setPage(to));    // 页面切换标记为 Transition
+  }
+
+  return (
+    <div>
+      <Nav active={page} onChange={go} />
+
+      {/* isPending 时不展示 fallback，而是让旧页面继续 + 顶部小进度条 */}
+      <div style={{ opacity: isPending ? 0.7 : 1 }}>
+        <Suspense fallback={<BigFallback />}>
+          {page === 'home' && <Home />}
+          {page === 'post' && <Post />}
+        </Suspense>
+      </div>
+      {isPending && <TopProgress />}
+    </div>
+  );
+}
+\`\`\`
+
+**效果**：路由切换时，旧内容保持可交互（变灰暗示正在加载），只显示一个细进度条，而不是整页被大骨架屏替换——这就是 Suspense 与 Transition 组合的"**优雅降级**"。
+
+---
+
+## 七、常见误区
+
+1. **"Suspense 只能配合 lazy"** —— ❌ 凡是 throw Promise 的模式都能用：取数、资源预加载、Server Component 推流、国际化异步加载……
+2. **"throw Promise 是 hack，不可靠"** —— ❌ 这是 React 约定的正式机制，由框架语义保证。但**业务代码不要自己手写 throw Promise**，用 Relay / Next.js / React Query 等成熟库。
+3. **"有了 Suspense 就不会有竞态了"** —— ⚠️ Suspense 解决"边界"问题，**不是**自动解决竞态。同 id 多次切换你仍需缓存 key 或库层面处理。
+4. **"嵌套太多 Suspense 好"** —— ❌ 粒度太细导致一堆小骨架闪来闪去；通常按"页面级 + 面板级"两层就够。
+
+---
+
+## 一句话总结
+
+**Suspense 是 React 异步渲染的"基础控制结构"**：向上兜底 fallback、向下统一挂起语义、横向用 SuspenseList 调顺序、纵向和流式 SSR + Transition 打通，共同构成"让 UI 自然、渐进、有秩序地呈现"的基础设施。`
+  },
+  {
+    id: 'react-063',
+    category: 'react',
+    title: 'useRef 与 useImperativeHandle 进阶：暴露有限 API、跨组件测量、命令式模式？',
+    difficulty: '中等',
+    tags: ['React', 'useRef', 'useImperativeHandle', '命令式API', 'DOM操作'],
+    answer: `## 先回忆：useRef 的两个用途
+
+很多人只记得"存 DOM"。其实 useRef 是**跨渲染周期保存可变值的通用容器**——等价于给函数组件加了一个"私有成员变量"：
+
+| 用途 | 示例 | 特点 |
+|------|------|------|
+| **DOM 引用** | \`const inputRef = useRef(null)\` | 渲染完成后 \`inputRef.current\` 指向真实 DOM |
+| **可变实例** | \`const timerRef = useRef(0)\` | 值变化不会触发重渲染，组件的"私有成员" |
+
+两者本质一致：**.current 是一个可变盒子，装什么都行**。
+
+---
+
+## 一、基础：useRef 拿 DOM
+
+\`\`\`jsx
+import { useRef, useEffect } from 'react';
+
+function LoginForm() {
+  const inputRef = useRef(null);   // 1. 声明
+
+  useEffect(() => {
+    inputRef.current?.focus();     // 3. 渲染后引用真实 DOM
+  }, []);
+
+  return (
+    <form>
+      {/* 2. 挂到 ref 属性 */}
+      <input ref={inputRef} name="username" />
+    </form>
+  );
+}
+\`\`\`
+
+### 常见坑：for 循环 / 列表中动态 ref
+
+\`\`\`jsx
+// ❌ 错误：在 map 里写 useRef（违反 Hooks 规则——只能顶层调用）
+{list.map(item => {
+  const ref = useRef();
+  return <div ref={ref} key={item.id} />
+})}
+
+// ✅ 正确：用 ref callback
+const itemRefs = useRef(new Map());
+
+{list.map(item => (
+  <div
+    key={item.id}
+    ref={el => {
+      if (el) itemRefs.current.set(item.id, el);
+      else itemRefs.current.delete(item.id);
+    }}
+  >
+    {item.name}
+  </div>
+))}
+\`\`\`
+
+---
+
+## 二、用 useRef 存"不参与渲染的可变状态"
+
+典型场景：定时器、订阅句柄、上一次 props、节流/防抖容器、Web 实例。
+
+\`\`\`jsx
+function Countdown({ seconds }) {
+  const [left, setLeft] = useState(seconds);
+  const timerRef = useRef(null);                 // 存 interval id
+
+  useEffect(() => {
+    timerRef.current = setInterval(() => {
+      setLeft(l => l - 1);
+    }, 1000);
+    return () => clearInterval(timerRef.current);  // cleanup 用
+  }, []);
+
+  // 不触发重渲染的"事件回调里的可变值"
+  const clickCountRef = useRef(0);
+  function onBtnClick() {
+    clickCountRef.current++;
+    if (clickCountRef.current === 3) {
+      analytics.track('triple_click');   // 只触发一次埋点
+    }
+  }
+
+  return <button onClick={onBtnClick}>剩余 {left}s</button>;
+}
+\`\`\`
+
+**为什么不用 useState 存 timerId？**
+- setState 会触发一次"无意义"的重渲染，且 timerId 变化后如果在 useEffect 依赖数组里会反复横跳。
+- useRef.current 的变化**不会让组件重渲染**，这正是存"后台句柄"想要的特性。
+
+---
+
+## 三、向前传 ref：forwardRef
+
+子组件想把"内部的 DOM / 实例"暴露给父组件，默认做不到——ref 不是 props。需要包 \`forwardRef\`：
+
+\`\`\`jsx
+import { forwardRef, useRef, useImperativeHandle } from 'react';
+
+// ❌ 这样不行：父组件传的 ref 不会自动落到 input 上
+// const FancyInput = (props, ref) => <input ref={ref} />
+
+// ✅ forwardRef 把 ref 变成第二个参数
+const FancyInput = forwardRef(function FancyInput(props, ref) {
+  return (
+    <div className="fancy-input">
+      <Icon />
+      <input ref={ref} {...props} />          {/* 把 ref 转交给内部 input */}
+    </div>
+  );
+});
+
+// 父组件用法和原生 DOM 一样
+function Form() {
+  const inputRef = useRef(null);
+  return (
+    <>
+      <FancyInput ref={inputRef} placeholder="输入用户名" />
+      <button onClick={() => inputRef.current?.focus()}>
+        定位到输入框
+      </button>
+    </>
+  );
+}
+\`\`\`
+
+### 什么时候需要 forwardRef
+
+- **UI 基础库组件**（Input、Button、Select、Modal）：暴露底层 DOM 让父组件 focus / blur / measure。
+- **第三方库集成**（地图、图表、编辑器）：父组件要拿到底层实例调用 API。
+- **测量组件尺寸**：父组件里统一做虚拟滚动容器测量。
+
+---
+
+## 四、进阶：useImperativeHandle —— "只暴露我想暴露的"
+
+直接 forwardRef 给 DOM 有个问题：**父组件拿到原生 DOM 后可以为所欲为（改 value、改 style、remove……）**，破坏组件封装。
+
+\`useImperativeHandle\` 让你**返回一个自定义对象**作为 ref.current，父组件只能调用你允许的方法：
+
+\`\`\`jsx
+const FancyInput = forwardRef(function FancyInput(props, ref) {
+  const innerInputRef = useRef(null);     // 真实 DOM 我自己拿着
+
+  // 对外只暴露 3 个受控 API，不给整个 DOM
+  useImperativeHandle(ref, () => ({
+    focus: () => innerInputRef.current?.focus(),
+    clear: () => { innerInputRef.current.value = ''; },
+    getLength: () => innerInputRef.current?.value.length ?? 0,
+    // ❌ 父组件拿不到 .remove() / .style / setSelectionRange 等
+  }));
+
+  return (
+    <div className="fancy-input">
+      <Icon />
+      <input ref={innerInputRef} {...props} />
+    </div>
+  );
+});
+
+// 父组件
+function Form() {
+  const ref = useRef(null);
+  function handle() {
+    ref.current.focus();      // ✅ 允许
+    ref.current.clear();      // ✅ 允许
+    console.log(ref.current.getLength());   // ✅ 允许
+    ref.current.remove();     // ❌ 报错：remove is not a function
+  }
+  return <><FancyInput ref={ref} /><button onClick={handle}>操作</button></>;
+}
+\`\`\`
+
+### 设计原则：暴露"意图方法"，不暴露"内部对象"
+
+| 好的 API（命令式） | 坏的 API（破坏封装） |
+|------------------|---------------------|
+| focus() / blur() | getDomNode() 返回整个 DOM |
+| scrollToItem(idx) | getListElement() |
+| open() / close() | getDialogElement() |
+| submit() / reset() | getFormElement() |
+| play() / pause() | getVideoElement() |
+
+---
+
+## 五、高级：跨组件测量 + ResizeObserver
+
+\`\`\`jsx
+const MeasurableCard = forwardRef(function MeasurableCard({ children }, ref) {
+  const boxRef = useRef(null);
+
+  useImperativeHandle(ref, () => ({
+    getSize() {
+      const el = boxRef.current;
+      return el ? { w: el.offsetWidth, h: el.offsetHeight } : null;
+    },
+    onResize(cb) {
+      const ro = new ResizeObserver(() => cb(this.getSize()));
+      ro.observe(boxRef.current);
+      return () => ro.disconnect();
+    }
+  }));
+
+  return <div ref={boxRef} className="card">{children}</div>;
+});
+
+// 父组件：需要知道卡片尺寸来做虚拟滚动
+function Dashboard() {
+  const cardRefs = useRef([]);
+  const [sizes, setSizes] = useState({});
+
+  useEffect(() => {
+    const cleanups = cardRefs.current.map((r, i) =>
+      r.onResize(size => setSizes(prev => ({ ...prev, [i]: size })))
+    );
+    return () => cleanups.forEach(fn => fn());
+  }, []);
+
+  return ids.map((id, i) => (
+    <MeasurableCard key={id} ref={el => cardRefs.current[i] = el}>
+      <Content id={id} />
+    </MeasurableCard>
+  ));
+}
+\`\`\`
+
+---
+
+## 六、命令式模式 vs 声明式模式 —— 何时用 ref
+
+**默认 React 鼓励声明式**："状态描述 UI"。绝大多数情况你不需要 ref：
+
+| 场景 | 声明式（✅优先） | 命令式（⚡特殊才用） |
+|------|----------------|-------------------|
+| 输入框聚焦 | autofocus 属性 / 路由聚焦管理 | 点击"跳到错误字段"这种一次性动作 |
+| Modal 显隐 | \`isOpen\` prop + useState | 第三方库强制要求调用 .open() |
+| 播放音视频 | 把 \`playing\` prop 传给 <Video> 组件 | 底层 Web API 只能命令式（video.play()） |
+| 滚动位置 | \`scrollTo\` props、路由锚点 | 滚动到第 N 条消息 / 定位虚拟列表 |
+| 表单提交 | 受控组件 + handleSubmit | 调用浏览器原生 HTMLFormElement.submit()（上传文件等） |
+
+**一句话经验**：先想能不能用 props + state 描述；只有"与浏览器 / 第三方库底层命令式 API 交互、跨组件测量性能敏感场景"才上 ref + imperative。
+
+---
+
+## 七、常见误区
+
+1. **"ref.current 可以当状态依赖写进 useEffect"** —— ❌ ref.current 变化**不会触发**重渲染，也不会让 useEffect 重新执行。要触发用 useState 或 ref callback。
+2. **"forwardRef + useImperativeHandle 什么组件都套"** —— ❌ 90% 的业务组件不需要暴露命令式 API，props 传状态就够了；滥用退回到 jQuery 时代。
+3. **"useImperativeHandle 的依赖数组不写全"** —— ✅ 依赖数组和 useEffect 一样规则，漏依赖拿闭包旧值。
+4. **"把 ref.current 直接传给子组件的 prop"** —— ❌ 传递时如果是初始 null，子组件不会在它变成 DOM 后再更新；要用 ref callback 或 context。
+5. **"ref 可以在函数组件 return 之前读取 .current"** —— ❌ commit 阶段之前 ref 是旧的，在 render 体里读可能拿到上一次渲染的值，必须在 useEffect 或事件回调里读。
+
+---
+
+## 一句话总结
+
+**useRef = 跨渲染可变盒子（存 DOM、存定时器、存任意非渲染态）；forwardRef = 把 ref 透传给子组件；useImperativeHandle = 子组件自定义对外暴露哪些命令式 API，不破封装又能满足底层操作需求。三者搭配是 React 处理"声明式之外的命令式世界"的标准姿势。**`
+  },
+  {
+    id: 'react-064',
+    category: 'react',
+    title: '自定义 Hook 的设计模式：工厂、适配器、状态机、插件化怎么落地？',
+    difficulty: '困难',
+    tags: ['React', 'Custom Hook', '设计模式', 'Composition'],
+    answer: `## Custom Hook 是什么（快速复习）
+
+自定义 Hook 就是"以 use 开头的普通函数，内部可以调用其他 Hook"——本质是**把组件里的"状态 + 副作用"逻辑抽成可复用的纯函数模块**。
+
+**好的自定义 Hook 标准：**
+- 单一职责：一个 Hook 做一件事
+- 可组合：多个小 Hook 能拼出大 Hook
+- 易测试：输入（参数/上下文）→ 输出（状态/方法）可单测
+- 显式依赖：依赖通过参数传，不靠隐式全局
+
+---
+
+## 模式一：最常用 —— 数据 / 资源 Hook（Data Accessor）
+
+**目标**：把"发起请求 → 缓存 → 去重 → 轮询 → 错误重试"封装起来，组件只管拿 data / error / isLoading。
+
+\`\`\`jsx
+// useFetchUser.js
+import useSWR from 'swr';
+
+export function useUser(id, { enabled = true } = {}) {
+  const key = enabled ? \`/api/users/\${id}\` : null;   // null 表示不请求
+
+  const { data, error, isLoading, mutate } = useSWR(key, fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 10_000,
+  });
+
+  return {
+    user: data,
+    isLoading,
+    error,
+    refresh: () => mutate(),                  // 业务友好命名，不暴露底层 SWR API
+    setUserLocally: (updater) => mutate(updater, false)   // 乐观更新
+  };
+}
+
+// 组件里用
+function ProfilePage({ userId }) {
+  const { user, isLoading, error, refresh } = useUser(userId);
+  if (isLoading) return <Spin />;
+  return (
+    <div>
+      <Avatar src={user.avatar} />
+      <button onClick={refresh}>刷新</button>
+    </div>
+  );
+}
+\`\`\`
+
+**要点**：
+- 命名 \`use{Entity}\`，返回"业务命名"的对象，不把底层库（useSWR / React Query）API 直接泄露。
+- 提供 \`enabled / paused\` 开关，支持条件取数。
+- 对 mutations 单独再抽 \`useUpdateUser / useDeleteUser\`，一个 Hook 不混读写。
+
+---
+
+## 模式二：Hook 工厂（Hook Factory / Curried Hook）
+
+场景：同一类 Hook 需要根据配置生成不同版本。比如"带防抖的输入值 Hook"需要不同 delay / leading 配置。
+
+\`\`\`jsx
+// makeDebouncedInput.js —— 工厂：先传配置，返回真正的 Hook
+export function makeDebouncedInput({ delay = 300, leading = false } = {}) {
+  // 返回的这个才是真正的 Hook
+  return function useDebouncedInput(initialValue = '') {
+    const [value, setValue] = useState(initialValue);
+    const [debounced, setDebounced] = useState(initialValue);
+    const timerRef = useRef(null);
+
+    const set = useCallback((next) => {
+      setValue(next);
+      if (leading && timerRef.current == null) setDebounced(next);   // 前置调用
+      clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setDebounced(next), delay);
+    }, [delay, leading]);
+
+    useEffect(() => () => clearTimeout(timerRef.current), []);
+
+    return [value, debounced, set];
+  };
+}
+
+// —— 用工厂造两个专用 Hook
+const useSearchInput  = makeDebouncedInput({ delay: 250 });      // 搜索：短延迟
+const useFilterInput  = makeDebouncedInput({ delay: 600, leading: true });  // 过滤：长延迟+前置
+
+// 组件里直接用专属 Hook
+function ProductList() {
+  const [keyword, debouncedKeyword, setKeyword] = useSearchInput('');
+  const { data } = useSWR(\`/search?q=\${debouncedKeyword}\`, fetcher);
+  return <input value={keyword} onChange={e => setKeyword(e.target.value)} />;
+}
+\`\`\`
+
+**好处**：
+- 避免重复写 N 个类似 Hook。
+- 把"配置差异"和"运行时逻辑"分离。
+- 可以做成 lib 层，给业务团队提供默认策略集合。
+
+---
+
+## 模式三：适配器 Hook（Adapter Hook）
+
+场景：把一个"非 React 世界的库 / 原生 API / SDK"适配成 React 的 Hook 风格。典型：WebSocket、地图 SDK、Stripe 支付、三方编辑器……
+
+\`\`\`jsx
+// useWebSocket.js —— 把原生 WebSocket 适配成 React 风格
+import { useEffect, useRef, useState, useCallback } from 'react';
+
+export function useWebSocket(url, options = {}) {
+  const { onMessage, onOpen, onClose, protocols } = options;
+
+  const [status, setStatus] = useState('connecting');   // connecting/open/closed
+  const [lastMessage, setLastMessage] = useState(null);
+  const wsRef = useRef(null);
+
+  // 稳定回调引用（外部 onMessage 可能是新建函数）
+  const handlersRef = useRef({ onMessage, onOpen, onClose });
+  handlersRef.current = { onMessage, onOpen, onClose };
+
+  const send = useCallback((msg) => {
+    wsRef.current?.send(typeof msg === 'string' ? msg : JSON.stringify(msg));
+  }, []);
+
+  useEffect(() => {
+    setStatus('connecting');
+    const ws = new WebSocket(url, protocols);
+    wsRef.current = ws;
+
+    ws.onopen = () => { setStatus('open'); handlersRef.current.onOpen?.(); };
+    ws.onmessage = (e) => {
+      const data = safeParse(e.data);
+      setLastMessage(data);
+      handlersRef.current.onMessage?.(data);
+    };
+    ws.onclose = () => { setStatus('closed'); handlersRef.current.onClose?.(); };
+
+    return () => { ws.close(); };
+  }, [url, protocols]);
+
+  return { status, lastMessage, send, reconnect /* ... */ };
+}
+\`\`\`
+
+**适配器模式关键要点**：
+1. **ref 存外部实例**（ws / map / editor），不要存在 state（会引发无意义重渲染）。
+2. **handlersRef 模式**：把外部传进来的回调（每次 render 都新建）存进 ref，避免 effect 反复重建 socket。
+3. **统一 React 语义返回**：status / error / send / reconnect，而不是暴露 ws 实例。
+4. **cleanup 永远不要漏**：useEffect 返回函数断开连接、销毁实例、取消订阅。
+
+---
+
+## 模式四：状态机 Hook（State Machine Hook）
+
+场景：多状态流转的复杂交互（上传、支付、分步表单、游戏流程），用 if/else 写会变成"屎山"。
+
+\`\`\`jsx
+// useUploader.js —— 有限状态机
+import { useReducer, useCallback } from 'react';
+
+// 状态：idle → selecting → uploading → (success | error)
+// 事件：SELECT / PROGRESS / SUCCEED / FAIL / RESET
+const initial = { status: 'idle', file: null, progress: 0, url: null, err: null };
+
+function reducer(state, { type, payload }) {
+  switch (state.status) {
+    case 'idle':
+      if (type === 'SELECT') return { ...initial, status: 'selecting', file: payload };
+      break;
+    case 'selecting':
+      if (type === 'PROGRESS') return { ...state, status: 'uploading', progress: payload };
+      if (type === 'FAIL')     return { ...state, status: 'error', err: payload };
+      break;
+    case 'uploading':
+      if (type === 'PROGRESS') return { ...state, progress: payload };
+      if (type === 'SUCCEED')  return { ...state, status: 'success', url: payload, progress: 100 };
+      if (type === 'FAIL')     return { ...state, status: 'error', err: payload };
+      break;
+    case 'success':
+    case 'error':
+      if (type === 'RESET')    return initial;
+      break;
+  }
+  return state;    // 非法状态转移 → 忽略（避免 Bug）
+}
+
+export function useUploader() {
+  const [s, dispatch] = useReducer(reducer, initial);
+
+  const select = useCallback((file) => dispatch({ type: 'SELECT', payload: file }), []);
+  const upload = useCallback(async (file) => {
+    dispatch({ type: 'PROGRESS', payload: 0 });
+    const form = new FormData();
+    form.append('f', file);
+    try {
+      const onUploadProgress = (e) => dispatch({ type: 'PROGRESS', payload: (e.loaded/e.total)*100 });
+      const { url } = await api.upload(form, { onUploadProgress });
+      dispatch({ type: 'SUCCEED', payload: url });
+    } catch (err) {
+      dispatch({ type: 'FAIL', payload: err });
+    }
+  }, []);
+  const reset = useCallback(() => dispatch({ type: 'RESET' }), []);
+
+  return { state: s, select, upload, reset };
+}
+\`\`\`
+
+**状态机模式的价值**：
+- **非法组合天然不存在**：你永远不会拿到 {status:'success', progress:10, err:'xxx'} 这种矛盾状态。
+- **状态转移显式**：reducer 里一眼看出"什么状态能接受什么事件"，出问题好定位。
+- **复杂流推荐直接上 XState**：非常复杂的状态机（带并行状态、历史状态）用 useReducer 写起来啰嗦，\`@xstate/react\` 的 \`useMachine\` 是同思路的工业级方案。
+
+---
+
+## 模式五：插件化 / 中间件 Hook（Pluggable Hook）
+
+场景：Hook 本身是"骨架"，行为通过中间件扩展。典型：表单 Hook 支持校验、格式化、持久化等可插拔能力。
+
+\`\`\`jsx
+// makeForm.js —— 中间件风格的表单 Hook
+export function makeForm(initialValues, middlewares = []) {
+  return function useForm() {
+    const [values, setValues] = useState(initialValues);
+    const [errors, setErrors] = useState({});
+
+    // 骨架：每次 setField 都按顺序跑中间件 pipe
+    const setField = useCallback((name, val) => {
+      let ctx = { name, value: val, values, errors, ok: true };
+      for (const mw of middlewares) ctx = mw(ctx) ?? ctx;
+      if (!ctx.ok) return;
+      setValues(prev => ({ ...prev, [name]: ctx.value }));
+      setErrors(prev => ({ ...prev, [name]: ctx.error }));
+    }, [values, errors, middlewares]);
+
+    return { values, errors, setField, /* submit, reset… */ };
+  };
+}
+
+// —— 中间件们（可复用的横向能力）
+const mwTrim        = (ctx) => ({ ...ctx, value: typeof ctx.value === 'string' ? ctx.value.trim() : ctx.value });
+const mwRequired    = (ctx) => (ctx.value === '' ? { ...ctx, ok:false, error:'必填' } : ctx);
+const mwEmail       = (ctx) => (!emailRx.test(ctx.value) ? { ...ctx, ok:false, error:'邮箱格式' } : ctx);
+const mwLog         = (ctx) => { console.log('[form]', ctx.name, '→', ctx.value); return ctx; };
+
+// —— 业务里组装：邮箱字段 = trim + 邮箱校验 + 日志
+const useEmailForm = makeForm(
+  { email: '', name: '' },
+  { email: [mwTrim, mwRequired, mwEmail, mwLog], name: [mwTrim, mwLog] }
+);
+\`\`\`
+
+这种模式适合：**基础能力稳定、变化在"业务规则层"** 的场景（表单、表格、富文本工具栏）。你也可以看到 react-hook-form、formik 内部都大量使用中间件/插件思路。
+
+---
+
+## 模式六：纯组合 Hook（Composable Hook）—— Hook 搭 Hook
+
+最体现 Composition 威力的一层：把前面的基础 Hook 当积木，搭出业务级 Hook。
+
+\`\`\`jsx
+// useProjectDetail.js —— 一个真实业务级 Hook = 5 个小 Hook 组合
+export function useProjectDetail(projectId) {
+  const me           = useMe();                              // 当前登录者
+  const { project }  = useProject(projectId);                // 项目详情
+  const { members }  = useProjectMembers(projectId);         // 成员列表
+  const { settings } = useProjectSettings(projectId);        // 项目配置
+  const perms        = usePermissions(me.id, project?.team); // 权限计算
+
+  // 组合派生：纯函数，不引入新副作用
+  const canEdit = project && perms.can('project:edit', project);
+  const visibleMembers = useMemo(
+    () => members.filter(m => settings.showInactive ? true : m.active),
+    [members, settings.showInactive]
+  );
+
+  return { project, members: visibleMembers, settings, perms, canEdit, loading: !project };
+}
+\`\`\`
+
+**这就是 React 官方倡导的方向**：组件里尽量只有"渲染结构"，所有"状态 + 副作用 + 派生 + 权限"全塞进可组合的业务 Hook。
+
+---
+
+## 设计 Custom Hook 的 6 条经验法则
+
+1. **名字必须 useXxx**：ESLint 的 Hooks 规则靠这个检测，别省。
+2. **单一职责**：如果名字里出现 \`And\`（\`useUserAndPermissions\`）通常意味着该拆。
+3. **返回对象 / 数组看场景**：
+   - 返回 1~2 个值 + 1 个 setter → 学 useState 返回 \`[a, setA]\` 数组；
+   - 返回字段很多、未来可能加 → 用对象解构 + 重命名方便。
+4. **回调记得稳定化**：对外暴露的方法用 useCallback 包，避免使用方 useEffect 依赖反复触发。
+5. **不要在 Hook 里返回 JSX**：那叫组件，不叫 Hook。Hook 只输出"数据和行为"，UI 是组件的职责。
+6. **写测试**：用 \`@testing-library/react\` 的 \`renderHook\` / React 19 的 \`use\` 测试器，Hook 比组件好测得多，投入产出比极高。
+
+---
+
+## 常见误区
+
+1. **"把所有逻辑都抽 Hook"** —— ❌ 仅在组件内用一次、和 UI 强耦合的局部逻辑，直接写组件里更易读，硬抽反而增加跳转成本。
+2. **Hook 里写太多 useEffect 串联** —— ❌ "Effect Chain"（effect1 → setX → effect2 跑 → setY → effect3 跑）是反模式，优先用事件驱动或 reducer 压缩。
+3. **参数里传组件 / JSX** —— ❌ Hook 的参数应该是可序列化的（primitives、plain object、稳定函数引用），传 JSX 是组件组合的事，用 render props / children。
+
+---
+
+## 一句话总结
+
+**Custom Hook 是 React 组合模型的一等公民**：从最简单的数据访问器，到工厂、适配器、状态机、插件化，再到纯组合的业务级 Hook——核心思路都是"把状态与副作用从 UI 中解耦成可复用的函数单元"，最终让组件只专注"渲染"本身。`
+  },
+  {
+    id: 'react-065',
+    category: 'react',
+    title: 'React 状态管理对比：Zustand vs Jotai vs Redux Toolkit，选型怎么选？',
+    difficulty: '中等',
+    tags: ['React', '状态管理', 'Zustand', 'Jotai', 'Redux Toolkit', 'RTK'],
+    answer: `## 先明确：什么时候你需要"状态管理库"
+
+Hooks 自带的 useState / useReducer + Context 能覆盖很多场景。你**需要**状态库的信号：
+
+- ✅ 跨多页 / 多深层组件共享的状态（用户、权限、主题、购物车）
+- ✅ 状态变化后需要"精确局部更新"，Context 全树重渲染代价大
+- ✅ 需要时间旅行 DevTools / 撤销 / 重放 / 日志
+- ✅ 需要 SSR 水合 / 持久化 / 中间件等横向能力
+- ✅ 异步数据流复杂（乐观更新、缓存、重试、批量）
+
+如果只是"父传子传孙"三层以内、值不频繁变，Context + useReducer 足够，别为了用库而用库。
+
+---
+
+## 三个主角一句话定位
+
+| 库 | 一句话定位 | 核心模型 | 包体积（gzip） |
+|----|----------|---------|---------------|
+| **Redux Toolkit（RTK）** | 官方钦定、企业级、强约定、重流程 | 单一 Store + Action + Reducer + Slice + Immer | ~13KB + React-Redux ~4KB |
+| **Zustand** | 极简、无 Provider、外部 Store、上手最快 | 外部可变 store + selector 订阅 | ~1.2KB |
+| **Jotai** | 原子化、细粒度、与 React 心智最贴合 | Atom（原子）+ 派生 Atom + Provider 可选 | ~2.4KB |
+
+> 注：还有 Valtio（代理可变）、Signia（细粒度 signal）、Legend-State 等方案，面试问得最多的还是"3 巨头"。
+
+---
+
+## 一、Redux Toolkit（RTK）：企业级标准做法
+
+Redux 以前被吐槽"样板多、写起来累"。RTK 就是官方把最佳实践打包给你：Immer 内置、Slice 自动生成 action、Thunk 默认中间件、DevTools 开箱即用。
+
+\`\`\`ts
+// features/cart/cartSlice.ts
+import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
+import { RootState } from '../../store';
+
+// 异步 Action：加购
+export const addItemAsync = createAsyncThunk(
+  'cart/addItemAsync',
+  async (sku: string) => {
+    await api.addToCart(sku);
+    return sku;
+  }
+);
+
+const slice = createSlice({
+  name: 'cart',
+  initialState: { items: [] as CartItem[], status: 'idle' } as CartState,
+  reducers: {
+    removeItem(state, action: PayloadAction<string>) {
+      state.items = state.items.filter(i => i.sku !== action.payload);   // ✅ Immer，可"变"写
+    },
+  },
+  extraReducers: (b) => {
+    b.addCase(addItemAsync.pending, (s) => { s.status = 'loading'; })
+     .addCase(addItemAsync.fulfilled, (s, a) => {
+        s.items.push({ sku: a.payload, qty: 1 });
+        s.status = 'idle';
+      });
+  }
+});
+
+export const { removeItem } = slice.actions;
+export default slice.reducer;
+
+// 在组件里用
+import { useSelector, useDispatch } from 'react-redux';
+import { removeItem, addItemAsync } from './cartSlice';
+
+function CartView() {
+  const items = useSelector((s: RootState) => s.cart.items);      // selector
+  const dispatch = useDispatch();
+  return (
+    <ul>
+      {items.map(i => (
+        <li key={i.sku}>
+          {i.sku} × {i.qty}
+          <button onClick={() => dispatch(addItemAsync(i.sku))}>再来一个</button>
+          <button onClick={() => dispatch(removeItem(i.sku))}>删除</button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+\`\`\`
+
+**RTK 的强项**：
+1. **强约定**：目录结构（features/xxx/xxxSlice）、命名（name/reducers/extraReducers）统一，大团队新人一眼懂。
+2. **DevTools + 时间旅行**：Redux 生态的独门武器，定位复杂 bug 神器。
+3. **RTK Query**：官方内建的服务端状态缓存层（类 React Query），真正"全栈状态一个库"。
+4. **中间件生态**：日志、持久化、Saga、Observable，随便挑。
+
+**RTK 的痛点**：
+1. **学习曲线最高**：Action、Reducer、Middleware、Selector、Immer、Entity Adapter……概念多。
+2. **Provider 必须包在根**：多实例 / 微前端场景要做隔离。
+3. **默认全部订阅**：不写精确 selector 的话，任意 state 变化会让大量组件重渲染。
+4. **样板依然存在**：对比 Zustand/Jotai 还是啰嗦。
+
+---
+
+## 二、Zustand：最轻量的"外部 Store"
+
+Zustand 思路和 Redux 一样是"集中式 Store"，但实现极简：**没有 Provider、没有 Reducer、没有 Action 类型常量，直接一个函数声明 store，怎么写都行**。
+
+\`\`\`ts
+// stores/useCartStore.ts
+import { create } from 'zustand';
+
+interface CartState {
+  items: CartItem[];
+  status: 'idle' | 'loading';
+  addItem: (sku: string) => Promise<void>;
+  removeItem: (sku: string) => void;
+  clear: () => void;
+}
+
+export const useCartStore = create<CartState>((set, get) => ({
+  items: [],
+  status: 'idle',
+
+  removeItem: (sku) => set(state => ({
+    items: state.items.filter(i => i.sku !== sku)
+  })),
+
+  clear: () => set({ items: [] }),
+
+  addItem: async (sku) => {
+    set({ status: 'loading' });
+    await api.addToCart(sku);
+    set(state => ({
+      items: [...state.items, { sku, qty: 1 }],
+      status: 'idle'
+    }));
+  },
+}));
+
+// 组件里用（不需要 Provider！）
+function CartView() {
+  // ✅ selector + 浅比较避免不相关更新
+  const items   = useCartStore(s => s.items);
+  const add     = useCartStore(s => s.addItem);
+  const remove  = useCartStore(s => s.removeItem);
+
+  return (
+    <ul>
+      {items.map(i => (
+        <li key={i.sku}>
+          <button onClick={() => add(i.sku)}>+</button>
+          <button onClick={() => remove(i.sku)}>×</button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+\`\`\`
+
+**Zustand 的强项**：
+1. **学习成本接近 0**：会 React 就会用，没新概念。
+2. **无 Provider**：可以在组件外 / 非 React 环境（工具函数、路由守卫）直接读写：
+   \`\`\`ts
+   // 非组件文件里直接用！
+   const items = useCartStore.getState().items;
+   useCartStore.setState({ items: [] });
+   \`\`\`
+3. **生态插件齐全**：persist（localStorage）、devtools、immer、subscribeWithSelector、redux-devtools。
+4. **体积最小**：~1.2KB，微前端 / 活动页友好。
+
+**Zustand 的痛点**：
+1. **无强约定**：怎么写全看自觉，10 个人有 10 种写法，大团队后期风格难统一。
+2. **中间件薄**：没有 Redux 那种"标准化的 action flow"，全局跨域逻辑（埋点、审计、权限）要自己写 subscribe。
+3. **Debug 不如 RTK**：有 devtools 插件但能力弱于 Redux DevTools，复杂问题排查成本高。
+
+---
+
+## 三、Jotai：原子化状态（Atom Model）
+
+Jotai 受 Recoil 启发，核心是"**一切都是原子（Atom）**"：状态是 Atom、派生状态是 Atom、异步状态也是 Atom。粒度天然最细，**改哪个 Atom 谁重渲染**。
+
+\`\`\`ts
+// atoms/cartAtoms.ts
+import { atom, useAtom, useAtomValue, useSetAtom } from 'jotai';
+import { atomWithStorage, loadable } from 'jotai/utils';
+
+// 1. 基础 Atom：购物车
+const cartItemsAtom = atomWithStorage<CartItem[]>('cart:items', []);   // 自动持久化
+
+// 2. 派生 Atom（只读）：总价 —— 自动依赖追踪
+const cartTotalAtom = atom((get) => {
+  const items = get(cartItemsAtom);
+  return items.reduce((sum, i) => sum + i.price * i.qty, 0);
+});
+
+// 3. 写 Atom：封装操作
+const addItemAtom = atom(null, async (get, set, sku: string) => {
+  await api.addToCart(sku);
+  const curr = get(cartItemsAtom);
+  set(cartItemsAtom, [...curr, { sku, qty: 1, price: await getPrice(sku) }]);
+});
+
+// 4. 异步 Atom：远程拉取优惠券
+const couponAtom = atom(async (get) => {
+  const total = get(cartTotalAtom);
+  const coupons = await api.fetchCoupons(total);
+  return coupons;
+});
+const loadableCouponAtom = loadable(couponAtom);   // loading / error 包装
+
+// 组件里用：provider 可选（SSR / 测试环境用，CSR 可以省略）
+import { useAtom, useAtomValue, useSetAtom } from 'jotai';
+
+function CartView() {
+  const [items]       = useAtom(cartItemsAtom);       // 读写
+  const total         = useAtomValue(cartTotalAtom);  // 只读
+  const addItem       = useSetAtom(addItemAtom);      // 只写
+  const couponState   = useAtomValue(loadableCouponAtom);   // 异步
+
+  return (
+    <div>
+      <ul>{items.map(i => <li key={i.sku}>{i.sku} × {i.qty}</li>)}</ul>
+      <div>总价：¥{total}</div>
+      {couponState.state === 'loading' && <p>计算优惠中…</p>}
+      {couponState.state === 'hasData' && <CouponList data={couponState.data} />}
+      <button onClick={() => addItem('SKU-001')}>加购</button>
+    </div>
+  );
+}
+\`\`\`
+
+**Jotai 的强项**：
+1. **依赖追踪自动派生**：改 cartItemsAtom，cartTotalAtom、couponAtom 自动重新算，没有依赖数组。
+2. **重渲染最省**：精确到单个 Atom，根本不存在"怎么写 selector"这个问题。
+3. **异步是一等公民**：atom(async () => ...) + loadable，和 Suspense 天然兼容。
+4. **与 React 心智最一致**：像 Hooks 一样声明、组合。
+
+**Jotai 的痛点**：
+1. **原子爆炸**：复杂应用里 Atom 数量急剧膨胀，命名 / 组织需要额外约定。
+2. **调试差于 RTK**：Atom 图追踪不如 Redux 线性 Action 流直观。
+3. **SSR 需要 Provider**：和 Zustand 不同，Jotai 无 Provider 模式下是全局单例，跨请求状态会串。
+
+---
+
+## 四、横向对比表（选型速查）
+
+| 维度 | Redux Toolkit | Zustand | Jotai |
+|------|--------------|---------|-------|
+| **心智模型** | Action → Reducer → Store（单向流） | Store 对象 + setState（自由） | Atom + 派生 + 依赖追踪 |
+| **学习曲线** | 陡 | 极平 | 中等 |
+| **代码量** | 多 | 少 | 少 |
+| **Provider** | 必须 | ❌ 不需要 | ⚠️ SSR / 隔离需要 |
+| **精确更新** | 依赖 selector 写得好不好 | 依赖 selector 写得好不好 | 天然精确（Atom 级） |
+| **状态组织** | 集中 + Slice 拆分 | 集中 / 多分 store 都行 | 分散原子 |
+| **异步** | createAsyncThunk / RTK Query / Saga | 直接 async/await | atom async + Suspense |
+| **DevTools / 时间旅行** | ✅ 顶级 | ✅ 插件（一般） | ✅ 插件（一般） |
+| **持久化** | redux-persist | persist 中间件 ✅ | atomWithStorage ✅ |
+| **服务端缓存** | RTK Query 内置 | ❌ 配 React Query / SWR | ❌ 配 React Query / SWR |
+| **团队协作约定** | ✅ 强约定，大厂最爱 | ❌ 自由，需自己定规范 | ⚠️ 中，需定 Atom 组织策略 |
+| **适合团队规模** | 大（10+ 人跨部门） | 中 / 小 | 中 / 小 |
+| **典型场景** | 电商后台、企业 SaaS、重度复杂数据流 | 活动页、H5、中小业务、工具类项目 | 高度动态 UI、编辑器、看板、图表、实时协同 |
+
+---
+
+## 五、选型决策树（面试答这一段就够）
+
+> "我通常按下面的步骤判断：
+> 1. **小项目 / 快速迭代 / 团队经验不均** → 选 **Zustand**，上手最快、坑最少。
+> 2. **大团队 / 强合规 / 复杂流（审计 / 撤销 / 乐观更新多）/ 用服务端缓存想统一** → 选 **Redux Toolkit + RTK Query**，强约定 + 工业生态。
+> 3. **界面高度动态（低代码 / 协同编辑器 / 看板）/ 状态粒度细 + 派生关系多 / 要 Suspense 深度配合** → 选 **Jotai**，原子依赖追踪体验最好。
+> 4. 以上所有方案，**服务端状态（API 数据）都再单独配 React Query / SWR / RTK Query**，不塞进全局 Client Store。"
+
+---
+
+## 常见误区
+
+1. **"Redux 已经死了"** —— ❌ 企业级项目中 RTK 仍是无可争议的王者，招聘市场 JD 里最多的也是 Redux。
+2. **"Context 就是状态管理库"** —— ❌ Context 是"跨层级传值机制"，没有订阅选择器、没有 DevTools、没有中间件，和前三者不是一个品类。
+3. **"一个项目只能有一个状态库"** —— ❌ 完全可以混合用：核心业务态用 RTK、局部复杂表单态用 Zustand、精细编辑器态用 Jotai。
+4. **"状态都应该塞进全局 Store"** —— ❌ 原则：**能放组件本地就别放全局，能放父组件就别放库**，Store 是最后的选择。
+
+---
+
+## 一句话总结
+
+**RTK = 重型、规范、全功能；Zustand = 轻量、自由、无 Provider；Jotai = 原子、细粒度、依赖追踪**。三者不是谁替代谁的关系，而是适配不同规模和复杂度的工具梯度，服务端缓存一律和客户端状态分离是当代共识。`
+  },
+  {
+    id: 'react-066',
+    category: 'react',
+    title: 'React.memo / useMemo / useCallback 的常见误区：什么时候用、什么时候反而是负优化？',
+    difficulty: '中等',
+    tags: ['React', 'React.memo', 'useMemo', 'useCallback', '性能优化'],
+    answer: `## 先搞清三者分别是干啥的
+
+| API | 作用对象 | 目的 | 底层行为 |
+|-----|---------|------|---------|
+| **React.memo(Comp, areEqual?)** | 组件（函数） | 父组件重渲染但 props 没变时，跳过子组件重渲染 | 对 props 做浅比较，相等就复用上次 VDOM |
+| **useMemo(fn, deps)** | 值 / 对象 / 数组 / JSX | 两次渲染间"只要依赖不变，就返回同一个引用（或计算值）" | 把结果存进 Fiber 的 memoizedState，下次渲染看 deps 全相等就复用 |
+| **useCallback(fn, deps)** | 函数 | 两次渲染间"只要依赖不变，就返回同一个函数引用" | 语法糖：等价于 \`useMemo(() => fn, deps)\` |
+
+**三者共同本质**：都是在"用额外的比较 / 缓存开销，换取"跳过不必要的渲染 / 计算"。不是免费午餐，是**有成本的交易**。
+
+---
+
+## 误区一：给所有组件包 React.memo
+
+\`\`\`jsx
+// ❌ 每一个文件结尾都写 export default memo(Xxx) —— 典型的过度优化
+export default memo(function UserAvatar({ user, size }) {
+  return <img src={user.avatar} width={size} />;
+});
+\`\`\`
+
+**为什么是负优化？**
+
+React.memo 每次父组件渲染时都要：
+1. 遍历子组件 props 做一次 **浅比较（shallowEqual）**：key 数量 × 每个值的比较。
+2. 如果 props 每次都是新引用（比如 \`user={{name:'xx'}}\` 每次新建对象），浅比较永远 false，** memo 白跑 + 白亏一次比较**。
+3. 组件本身非常简单（只有 <img>），**重新渲染的开销 < memo 浅比较的开销**。
+
+**经验数字**：组件体渲染耗时 < 1ms，包 memo 大概率是赔本买卖。
+**什么时候真该包 memo**：
+- ✅ 子组件渲染昂贵（大列表、图表、富文本编辑器、画布）
+- ✅ 子组件被频繁渲染且通常 props 确实没变
+- ✅ Profiler 里能看到它反复渲染，且占了明显的 self time
+
+**正确示例**：
+
+\`\`\`jsx
+// ✅ 给真正"又重又常被触发"的组件 memo
+const HeavyOrderList = memo(function HeavyOrderList({ orders, columns, onRowClick }) {
+  // 1000+ 行订单，渲染一次 30ms+
+  return <VirtualTable data={orders} columns={columns} onRowClick={onRowClick} />;
+}, (prev, next) => {
+  // 自定义 areEqual：orders 是同一个引用就行，不管内部 item（结合 Immer 场景）
+  return prev.orders === next.orders
+      && prev.columns === next.columns
+      && prev.onRowClick === next.onRowClick;
+});
+\`\`\`
+
+---
+
+## 误区二：给所有 props 值包 useMemo，给所有函数包 useCallback
+
+\`\`\`jsx
+// ❌ 强迫症写法：每个值都包，组件里一大半是 useMemo/useCallback
+function UserPage({ id }) {
+  const name = useMemo(() => api.user.getName(id), [id]);
+  const age  = useMemo(() => api.user.getAge(id), [id]);
+
+  const styles = useMemo(() => ({ color: 'var(--primary)' }), []);
+  const cls    = useMemo(() => \`user-card \${getThemeClass()}\`, []);
+
+  const onClickA = useCallback(() => doA(id), [id]);
+  const onClickB = useCallback(() => doB(id), [id]);
+  const onClickC = useCallback(() => doC(id), [id]);
+
+  return (
+    <Card style={styles} className={cls}>
+      <Button onClick={onClickA}>A</Button>
+      <Button onClick={onClickB}>B</Button>
+      <Button onClick={onClickC}>C</Button>
+    </Card>
+  );
+}
+\`\`\`
+
+**问题在哪里？**
+
+1. **useMemo/useCallback 自身有成本**：每个 Hook 都要往 Fiber memoizedState 链表存一个节点、渲染时要做 \`deps.length\` 次 \`Object.is\` 比较。
+2. **依赖数组本身也有成本**：大脑追踪依赖 + 代码里写出来 + ESLint 插件校验。
+3. **上面例子里 Card 没包 memo 的话，给 style / 回调包 useMemo 完全没意义**——父组件渲染，Card 也跟着渲染，引用稳定不稳定不影响结果。
+4. **内联原始类型值（string/number）包 useMemo 是纯浪费**：原始类型本来就是值比较，不存在引用问题。
+
+**useCallback 真正值得用的 3 个场景**：
+
+| # | 场景 | 原因 |
+|---|------|------|
+| 1 | **传给被 React.memo 包过的子组件当 props** | memo 浅比较会看引用，不稳定会让 memo 失效 |
+| 2 | **作为 useEffect / useLayoutEffect / 其他 useMemo / 自定义 Hook 的依赖** | 避免函数每次新建导致 effect 反复触发 |
+| 3 | **传给订阅型 API（addEventListener、Observable、定时器）** | 避免重复绑定 / 清理，或 debounce/throttle 内部依赖函数引用 |
+
+**useMemo 真正值得用的 3 个场景**：
+
+| # | 场景 | 原因 |
+|---|------|------|
+| 1 | **计算本身昂贵**：大数组排序/过滤、加密、O(n²) 算法 | 重算成本 > useMemo 依赖比较成本 |
+| 2 | **作为 memo 子组件 props、或作为其他 Hook 依赖**：保证引用稳定 | 和 useCallback 同理 |
+| 3 | **JSX 结构复杂**：大量子元素嵌套且确实没变，避免 reconciler 重走 | 极少见，优先优化子组件 memo |
+
+---
+
+## 误区三：React.memo 包了就万事大吉，props 引用不稳定
+
+\`\`\`jsx
+// ❌ 父组件这样用，子组件 memo 白瞎
+function Dashboard() {
+  const filters = { type: 'paid', from: '2024-01' };   // 每次都新建对象！
+  const onSelect = (id) => router.push(\`/orders/\${id}\`); // 每次都新函数！
+  return <HeavyOrderList orders={orders} filters={filters} onSelect={onSelect} />;
+}
+
+// 子组件包了 memo，但每次 props 都是新引用 → 浅比较 false → 照样重渲染
+const HeavyOrderList = memo(function HeavyOrderList(...) { ... });
+\`\`\`
+
+**正确做法（联动）**：子组件 memo 了，父组件就要保证 props 引用稳定，否则是"两倍浪费"：
+
+\`\`\`jsx
+function Dashboard() {
+  // ✅ 对象稳定化
+  const filters = useMemo(() => ({ type: 'paid', from: '2024-01' }), []);
+  // ✅ 回调稳定化
+  const onSelect = useCallback((id) => router.push(\`/orders/\${id}\`), [router]);
+
+  return <HeavyOrderList orders={orders} filters={filters} onSelect={onSelect} />;
+}
+
+const HeavyOrderList = memo(({ orders, filters, onSelect }) => {
+  /* ... */
+});
+\`\`\`
+
+> 这就是为什么说 **memo / useMemo / useCallback 是"组合拳"**：子组件 memo 是前提，父组件把 props 稳定化是必要条件，缺一个就白搭。
+
+---
+
+## 误区四：useMemo 当"语义依赖"用 —— 以为它会强制 useEffect 不执行
+
+\`\`\`jsx
+// ❌ 错误理解：以为 useMemo 包了，只要 deps 没变，下面 useEffect 就不跑
+function A({ list }) {
+  const ids = useMemo(() => list.map(x => x.id), [list]);
+  useEffect(() => {
+    syncIds(ids);
+  }, [ids]);   // 以为 ids 引用稳定，effect 就少跑
+}
+\`\`\`
+
+**其实效果一样的精简版**：
+
+\`\`\`jsx
+function A({ list }) {
+  useEffect(() => {
+    syncIds(list.map(x => x.id));    // 直接在这里算，不追求 ids 引用稳定
+  }, [list]);                        // 只要 list 变才跑，和上面效果完全一致
+}
+\`\`\`
+
+**关键洞察**：useMemo 影响的是"**引用稳定**"，但 useEffect 依赖判断本身就是按引用（Object.is）做的。如果你的 effect 只在 list 变化时跑，**直接把 list 写进依赖，在 effect 内算**，既少代码又少一次 memo 开销。
+
+---
+
+## 误区五：areEqual 自定义比较函数写得太复杂
+
+\`\`\`jsx
+// ❌ 自定义 memo 比较里做深比较
+export default memo(DeepChild, (prev, next) => {
+  return deepEqual(prev.config, next.config)   // 深比较，O(节点数)
+      && prev.items.length === next.items.length
+      && prev.items.every((p, i) => p.id === next.items[i].id);
+});
+\`\`\`
+
+**问题**：深比较 / 遍历 items 的开销可能比直接渲染子组件还贵。
+**原则**：memo 比较函数必须是 O(1) 或 O(k) 且 k 很小。否则"每次比较 + 偶尔跳过渲染"的收益可能不如"直接渲染"。
+
+**正确替代**：
+1. 尽量让上游 props 用 Immer / 结构化共享维持引用稳定（自然能浅比较）。
+2. 用扁平的 id 列表代替整个 items 做比较：\`prev.itemIds === next.itemIds\`。
+
+---
+
+## 误区六：children 传 JSX 导致 memo 失效（最常见！）
+
+\`\`\`jsx
+// ❌ 子组件包了 memo，但是父组件每次给它传不同的 children（每次 render 新建 JSX）
+function Layout() {
+  return (
+    <Sidebar>                       {/* Sidebar 包了 memo */}
+      <MenuItems />                 {/* ❌ 每次 Layout 渲染，JSX <MenuItems /> 都是新对象 */}
+    </Sidebar>
+  );
+}
+
+const Sidebar = memo(function Sidebar({ children }) {
+  return <aside className="sidebar">{children}</aside>;
+});
+\`\`\`
+
+**原因**：JSX 本质是 \`React.createElement(...)\`，每次调用返回**新的对象引用**。memo 浅比较 \`children\` 永远不相等，所以 memo 100% 失效。
+
+**解法**：
+
+| 方案 | 适用场景 | 代码 |
+|------|---------|------|
+| **把 children 提出来当兄弟组件** | Layout 结构固定 | \`<Sidebar /><MenuItems />\`，Sidebar 不再包 children |
+| **用 useMemo 缓存 children** | children 依赖 props，但可以不重建 | \`const menu = useMemo(() => <MenuItems/>, []); return <Sidebar>{menu}</Sidebar>;\` |
+| **在 memo 的 areEqual 里跳过 children 比较** | 自己确定 children 不会实际变 | 自定义 areEqual 返回 \`prev.a===next.a && ...\`，不比较 children |
+| **接受它**：组件不重，就让 Sidebar 跟着渲染 | 渲染很快、性能没问题 | 不包 memo 就行 |
+
+---
+
+## 正解：优化的正确工作流（强烈推荐）
+
+1. **先写对，再写快**：不写任何 memo / useMemo / useCallback，完成业务逻辑。
+2. **用 Profiler 找瓶颈**：React DevTools → Profiler → 录制交互 → 看"谁渲染了、花了多久、为什么渲染（Why did you render 插件更好用）"。
+3. **只给热点加优化**：
+   - 热点是一个大组件反复无意义渲染 → 包 memo，同时父组件稳定 props 引用。
+   - 热点是一个计算值卡住主线程 → 包 useMemo。
+   - 热点是 effect 因为函数依赖不稳定反复执行 → 包 useCallback。
+4. **再跑 Profiler 确认**：对比 before/after，确保确实更快（很多时候反而更慢，要回滚）。
+
+> 官方 React Compiler（React 19）的目标就是让这套"找热点 → 手动包"的流程由编译器自动做掉，但在它普及前，"**先测再优化**"依然是黄金法则。
+
+---
+
+## 一张速查表
+
+| 你遇到的情况 | 该用什么？ |
+|------------|----------|
+| 子组件渲染很慢 + Profiler 证实它被无意义反复渲染 | ✅ React.memo + 父组件 props 稳定化 |
+| 传给 memo 子组件的函数每次新建，导致 memo 失效 | ✅ useCallback |
+| 传给 memo 子组件的对象 / 数组每次新建，导致 memo 失效 | ✅ useMemo |
+| 某个计算在 Profiler 里占了大量 self time | ✅ useMemo |
+| useEffect / 自定义 Hook 的依赖是一个函数，每次都新建导致反复执行 | ✅ useCallback |
+| useEffect 依赖是派生值，直接依赖原始值在 effect 里算就行 | ❌ 不要 useMemo，直接算 |
+| 普通小型组件、props 永远是新引用、children 是 JSX | ❌ 不要 memo |
+| 内联的字符串、数字、布尔、null、undefined | ❌ 不要 useMemo，值比较不需要引用稳定 |
+
+---
+
+## 一句话总结
+
+**memo / useMemo / useCallback 都是"交易"——用额外的比较和缓存成本，去换"跳过昂贵的渲染或计算"**；不是默认就该加的装饰器。正确姿势是：**先 Profiler 找热点，再加针对性优化，加完再测收益**，三件套联动（memo + useMemo + useCallback）才有意义，盲目包全组件反而让代码更慢、更难读。`
   }
 
 ]

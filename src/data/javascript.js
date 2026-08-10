@@ -4965,5 +4965,2009 @@ new MathUtil().PI     // undefined（实例访问不到）
 4. **私有字段兼容性**：现代浏览器支持，旧环境需转译（TypeScript/Babel）。
 5. **多继承**：JS 不支持多继承，用 mixin（\`Object.assign\`）模拟。
 6. **class 本质是函数**：\`typeof Person === 'function'\`，是构造函数 + 原型方法的语法糖。`
+  },
+  {
+    id: 'js-059',
+    category: 'javascript',
+    title: 'ES2021+ 新增了哪些实用 API？Object.hasOwn、Array.at、Error cause 怎么用？',
+    difficulty: '简单',
+    tags: ['ES2021', 'Object.hasOwn', 'Array.at', 'Error cause', '新特性'],
+    answer: `## Object.hasOwn（ES2022）
+
+替代 \`Object.prototype.hasOwnProperty.call(obj, key)\` 的简写，判断属性是否为对象**自身**（非继承）所有：
+
+\`\`\`js
+const obj = { a: 1 }
+Object.hasOwn(obj, 'a')         // true
+Object.hasOwn(obj, 'toString')  // false（继承自原型）
+
+// 比旧写法安全：obj 可能重写了 hasOwnProperty
+const bad = { hasOwnProperty: () => false }
+bad.hasOwnProperty('a')         // false（被篡改）
+Object.hasOwn(bad, 'a')         // true（不受影响）
+\`\`\`
+
+## Array.at（ES2022）
+
+支持**负索引**访问数组/字符串元素，替代 \`arr[arr.length - 1]\`：
+
+\`\`\`js
+const arr = [10, 20, 30, 40]
+arr.at(0)    // 10
+arr.at(-1)   // 40（最后一个）
+arr.at(-2)   // 30（倒数第二个）
+arr.at(99)   // undefined（越界同 []）
+
+// 也适用于字符串与 TypedArray
+'hello'.at(-1)   // 'o'
+new Uint8Array([1,2]).at(-1)  // 2
+\`\`\`
+
+对比 \`slice\`：\`arr.at(-1)\` 直接返回元素；\`arr.slice(-1)[0]\` 多创建一个数组。
+
+## Error cause（ES2022）
+
+在抛出错误时**关联原始错误**，形成错误链，便于排查根因：
+
+\`\`\`js
+async function fetchUser(id) {
+  try {
+    return await fetch(\`/api/user/\${id}\`)
+  } catch (err) {
+    throw new Error('获取用户失败', { cause: err })  // cause 传入原始错误
+  }
+}
+
+try {
+  await fetchUser(1)
+} catch (e) {
+  console.log(e.message)        // '获取用户失败'
+  console.log(e.cause)          // 原始 fetch 错误（含堆栈）
+  console.log(e.cause.message)  // 'Failed to fetch'
+}
+\`\`\`
+
+嵌套场景也能层层追溯：
+
+\`\`\`js
+try {
+  try {
+    throw new Error('底层错误')
+  } catch (err1) {
+    throw new Error('中间错误', { cause: err1 })
+  }
+} catch (err2) {
+  // err2.cause → err1
+}
+\`\`\`
+
+## 其他 ES2021+ 实用特性速览
+
+| 特性 | 说明 |
+| --- | --- |
+| \`String.prototype.replaceAll\` | 一次性替换所有匹配，不用正则 \`/g\` |
+| \`Promise.any\` | 任一 Promise 成功即返回，全部失败才抛 \`AggregateError\` |
+| \`WeakRef\` / \`FinalizationRegistry\` | 弱引用与回收回调（ES2021） |
+| 私有字段 \`#x\` / 私有方法 | 真正私有（ES2022） |
+| \`static {}\` 静态块 | 类初始化时执行一次（ES2022） |
+| 顶层 \`await\` | 模块顶层可直接 await（ES2022） |
+
+## 最佳实践
+
+- 判断自身属性**一律用 \`Object.hasOwn\`**，不要再写 \`.hasOwnProperty.call\`。
+- 访问倒数元素**优先 \`.at(-1)\`**，比 \`arr[arr.length-1]\` 更简洁直观。
+- 捕获后重抛时**使用 \`cause\` 保留根因**，避免错误信息丢失导致排查困难。`
+  },
+  {
+    id: 'js-060',
+    category: 'javascript',
+    title: 'JavaScript 数字精度丢失是什么原因？BigInt 能解决哪些问题？',
+    difficulty: '中等',
+    tags: ['数字精度', 'BigInt', 'IEEE 754', '浮点数'],
+    answer: `## 为什么会精度丢失
+
+JS 的 \`number\` 类型遵循 **IEEE 754 双精度 64 位浮点数**标准，内存结构：
+
+- 1 位符号位 S
+- 11 位指数位 E（偏移 1023）
+- 52 位尾数位 M（有效数字，实际 53 位精度，隐含首位 1）
+
+\`\`\`
+值 = (-1)^S × (1.M) × 2^(E-1023)
+\`\`\`
+
+### 两个著名坑
+
+\`\`\`js
+0.1 + 0.2 === 0.3     // false！实际是 0.30000000000000004
+9007199254740992 + 1  // 9007199254740992（加 1 没变化）
+\`\`\`
+
+**原因**：
+1. 0.1、0.2 的二进制表示是**无限循环小数**，52 位尾数截断后产生舍入误差，相加后与 0.3 的截断结果不同。
+2. 超过 \`2^53\` 的整数无法精确表示：\`Number.MAX_SAFE_INTEGER = 2^53 - 1 = 9007199254740991\`，超出后相邻整数会"合并"。
+
+## 常见检测与规避方案
+
+### 1. 精度比较（容差法）
+
+\`\`\`js
+function approxEqual(a, b, eps = Number.EPSILON) {
+  return Math.abs(a - b) < eps
+}
+approxEqual(0.1 + 0.2, 0.3)  // true
+\`\`\`
+\`Number.EPSILON\` = \`2^-52\`，是 1 与下一个可表示浮点数的间距。
+
+### 2. 整数放大法（金额计算）
+
+\`\`\`js
+const price1 = 1050   // 以"分"为单位存储（整数）
+const price2 = 2030
+const total = price1 + price2  // 3080 分 = 30.80 元
+\`\`\`
+
+### 3. 第三方库：decimal.js / big.js
+
+专门处理任意精度十进制，适合金融、财务场景。
+
+## BigInt（ES2020）
+
+**任意精度整数类型**，可表示超过 \`2^53 - 1\` 的大整数，不会精度丢失。
+
+### 创建方式
+
+\`\`\`js
+const a = 123n           // 字面量加 n 后缀
+const b = BigInt(456)    // 构造函数
+const c = BigInt('789')  // 从字符串解析（支持超长）
+const d = BigInt('0x1fffffffffffff')  // 十六进制
+\`\`\`
+
+### 运算
+
+\`\`\`js
+9007199254740991n + 2n    // 9007199254740993n（正确）
+10n ** 100n               // 10^100，支持超大整数
+5n / 2n                   // 2n（向零截断整数除法，不是 2.5）
+
+// 位运算正常
+0xffn & 0x0fn             // 15n
+\`\`\`
+
+### 与 Number 混用规则
+
+\`\`\`js
+// ❌ 不能混用算术运算（比较除外）
+1n + 2          // TypeError
+1n * 2.5        // TypeError
+
+// ✅ 比较可混用（非严格）
+1n < 2          // true
+0n === 0        // false（类型不同）
+0n == 0         // true
+
+// 显式转换
+Number(123n)    // 123（超出安全整数可能丢精度）
+BigInt(456)     // 456n
+String(123n)    // '123'（无 n 后缀，方便序列化）
+\`\`\`
+
+### 典型应用
+
+#### 1. 雪花 ID / 分布式唯一 ID
+雪花算法生成 64 位 ID，远超 JS 安全整数上限，后端通常返回字符串，前端可用 BigInt 参与比较/计算。
+
+#### 2. 高精度时间戳（纳秒）
+
+\`\`\`js
+const [sec, nsec] = process.hrtime()
+const ns = BigInt(sec) * 1_000_000_000n + BigInt(nsec)
+\`\`\`
+
+#### 3. 加密算法、RSA 密钥运算
+大整数模幂、加解密等操作依赖 BigInt（WebCrypto 部分 API 已内置）。
+
+## 注意事项
+
+1. **BigInt 只能表示整数**，没有小数概念；做浮点运算仍需借助 BigDecimal 方案（或库）。
+2. **不支持 \`Math\` 方法**：\`Math.max(1n, 2n)\` 会报错，自己实现比较。
+3. **JSON 序列化报错**：\`JSON.stringify(123n)\` 抛 TypeError；需自定义 \`toJSON\` 或先转字符串：
+   \`\`\`js
+   BigInt.prototype.toJSON = function () { return this.toString() + 'n' }
+   \`\`\`
+4. **尽量避免 Number↔BigInt 转换**：来回转换可能丢失精度，确定全程用 BigInt 就一路到底。
+5. **除法取整**：\`5n/2n=2n\` 是向零截断，要向上/向下取整需自行处理。`
+  },
+  {
+    id: 'js-061',
+    category: 'javascript',
+    title: 'JS 国际化 Intl API 有哪些实用功能？日期、数字、列表格式化怎么用？',
+    difficulty: '简单',
+    tags: ['Intl', '国际化', 'i18n', '日期格式化', '数字格式化'],
+    answer: `## Intl 概览
+
+\`Intl\` 是 JS 内置的**国际化命名空间**，由 ECMA-402 规范定义，提供本地化的日期、数字、文本、货币等格式化能力，避免引入 moment.js / Intl.js 等大体积库。
+
+所有构造函数格式一致：\`new Intl.Xxx(locales?, options?)\`，\`locales\` 是 BCP 47 语言标签（如 \`zh-CN\`、\`en-US\`、\`ja-JP\`）。
+
+## 1. Intl.DateTimeFormat（日期时间）
+
+\`\`\`js
+const d = new Date('2024-06-15T14:30:00')
+
+// 中文简写
+new Intl.DateTimeFormat('zh-CN', {
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit',
+  weekday: 'short'
+}).format(d)
+// '2024/06/15 周六 14:30'
+
+// 英文完整
+new Intl.DateTimeFormat('en-US', {
+  dateStyle: 'full',   // 'full' | 'long' | 'medium' | 'short'
+  timeStyle: 'long'
+}).format(d)
+// 'Saturday, June 15, 2024 at 2:30:00 PM GMT+8'
+\`\`\`
+
+常用 option：
+- \`dateStyle\`/\`timeStyle\`：快捷风格（ES2021，代替手写每个字段）。
+- \`era\`：\`'short'/'long'\` 显示公元。
+- \`timeZone\`：指定时区（如 \`'Asia/Tokyo'\`）。
+- \`hour12\`：强制 12/24 小时制。
+
+**相对时间**（Intl.RelativeTimeFormat）：
+
+\`\`\`js
+const rtf = new Intl.RelativeTimeFormat('zh-CN', { numeric: 'auto' })
+rtf.format(-3, 'day')     // '3天前'
+rtf.format(2, 'month')    // '2个月后'
+rtf.format(0, 'day')      // '今天'（numeric: 'auto' 时）
+\`\`\`
+
+## 2. Intl.NumberFormat（数字/货币/百分比）
+
+\`\`\`js
+// 千分位分隔
+new Intl.NumberFormat('zh-CN').format(1234567.89)
+// '1,234,567.89'
+
+// 货币
+new Intl.NumberFormat('zh-CN', {
+  style: 'currency', currency: 'CNY',
+  minimumFractionDigits: 2
+}).format(99.5)
+// '¥99.50'
+
+new Intl.NumberFormat('en-US', {
+  style: 'currency', currency: 'USD'
+}).format(99.5)
+// '$99.50'
+
+// 百分比
+new Intl.NumberFormat('zh-CN', {
+  style: 'percent',
+  maximumFractionDigits: 1
+}).format(0.8765)
+// '87.7%'（自动 × 100）
+\`\`\`
+
+高阶玩法：**单位**（km/h、MB、°C 等）：
+
+\`\`\`js
+new Intl.NumberFormat('zh-CN', {
+  style: 'unit', unit: 'megabyte', unitDisplay: 'long'
+}).format(1024)
+// '1,024兆字节'
+
+new Intl.NumberFormat('en-US', {
+  style: 'unit', unit: 'kilometer-per-hour',
+  maximumSignificantDigits: 3
+}).format(123.456)
+// '123 km/h'
+\`\`\`
+
+## 3. Intl.ListFormat（列表连接）
+
+把数组拼接成"甲、乙和丙"这种符合当地语言习惯的列表：
+
+\`\`\`js
+const items = ['React', 'Vue', 'Angular']
+
+new Intl.ListFormat('zh-CN', {
+  type: 'conjunction',  // 并列（和）
+  style: 'long'
+}).format(items)
+// 'React、Vue和Angular'
+
+new Intl.ListFormat('en-US', { type: 'conjunction' }).format(items)
+// 'React, Vue, and Angular'（牛津逗号自动处理）
+
+new Intl.ListFormat('zh-CN', { type: 'disjunction' }).format(items)
+// 'React、Vue或Angular'
+\`\`\`
+
+## 4. Intl.Collator（本地化字符串排序）
+
+不同语言排序规则不同，直接 \`.sort()\` 结果不自然：
+
+\`\`\`js
+const names = ['张三', '李四', '王五', '赵六']
+names.sort()  // Unicode 码点排序：可能不符合中文习惯
+
+// 按拼音排序
+new Intl.Collator('zh-CN', {
+  sensitivity: 'accent'   // base / accent / case / variant
+}).compare('张三', '李四')  // 返回负数/0/正数
+
+names.sort(new Intl.Collator('zh-CN').compare)
+// ['李四', '王五', '张三', '赵六']（按拼音首字母 L W Z Z）
+\`\`\`
+
+数字+字符串混合排序（自然排序）：
+
+\`\`\`js
+const arr = ['img10', 'img2', 'img1']
+arr.sort()  // ['img1', 'img10', 'img2'] ❌ 字典序
+arr.sort(new Intl.Collator(undefined, { numeric: true }).compare)
+// ['img1', 'img2', 'img10'] ✅ 自然序
+\`\`\`
+
+## 5. Intl.PluralRules（复数规则）
+
+不同语言复数变化不同，不能简单写 \`n === 1 ? 'item' : 'items'\`：
+
+\`\`\`js
+const pr = new Intl.PluralRules('en-US')
+pr.select(0)   // 'other' → items
+pr.select(1)   // 'one'   → item
+pr.select(2)   // 'other' → items
+
+// 阿拉伯语有 6 种复数形态（zero/one/two/few/many/other）
+new Intl.PluralRules('ar-EG').select(5)  // 'few'
+\`\`\`
+
+## 6. Intl.Segmenter（分词，ES2022）
+
+中文、日文等没有空格分隔单词，\`str.split('')\` 按字符切会出问题：
+
+\`\`\`js
+const seg = new Intl.Segmenter('zh-CN', { granularity: 'word' })
+const text = '我爱JavaScript和React'
+const words = Array.from(seg.segment(text), s => s.segment)
+// ['我', '爱', 'JavaScript', '和', 'React']（智能识别中英文混排）
+
+// sentence 粒度分句、grapheme 粒度按"用户感知字符"切（emoji 不会被切烂）
+\`\`\`
+
+## 浏览器支持与最佳实践
+
+- **现代浏览器全覆盖**，Node.js 14+ 完整支持；老环境可配 polyfill（\`@formatjs/intl-*\`）。
+- **不要自己拼日期字符串**（\`d.getMonth()+1+'/'+d.getDate()\`），用 \`DateTimeFormat\` 本地化。
+- **不要自己写正则加千分位**，\`NumberFormat\` 一行搞定。
+- **后端返回毫秒时间戳 + locale**，前端用 Intl 本地化展示，避免把"已格式化字符串"在网络上传输。
+- **货币用 \`NumberFormat\` + 标准货币代码**（CNY/USD/EUR），不要在业务里手写 ¥/$ 符号拼接。`
+  },
+  {
+    id: 'js-062',
+    category: 'javascript',
+    title: '迭代器与生成器进阶：异步迭代器、for await...of、yield* 委托怎么用？',
+    difficulty: '中等',
+    tags: ['迭代器', '生成器', 'Iterator', 'for await', '异步迭代', 'yield*'],
+    answer: `## 同步迭代（复习）
+
+一个对象**可迭代**需要实现 \`@@iterator\` 方法（\`Symbol.iterator\`），返回一个**迭代器**对象（含 \`next()\` 方法，返回 \`{value, done}\`）。
+
+\`\`\`js
+const range = {
+  from: 1, to: 3,
+  [Symbol.iterator]() {
+    let cur = this.from
+    return {
+      next: () => cur <= this.to
+        ? { value: cur++, done: false }
+        : { done: true }
+    }
+  }
+}
+[...range]  // [1, 2, 3]
+\`\`\`
+
+## 生成器函数（Generator）
+
+生成器是**自带迭代器实现**的语法糖，用 \`function*\` + \`yield\`：
+
+\`\`\`js
+function* gen() {
+  yield 1
+  yield 2
+  yield* [3, 4]          // yield* 委托给可迭代对象
+  yield* (function* () { yield* '56' })()  // 委托子生成器
+}
+const g = gen()
+g.next()  // {value:1,done:false}
+[...g]    // [2,3,4,'5','6']（注意第一次 next 消费了 1）
+\`\`\`
+
+生成器对象既是迭代器（有 next），又是可迭代对象（有 \`Symbol.iterator\` 返回自身）。
+
+## yield* 委托详解
+
+\`yield* iterable\` 将迭代**转让**给另一个可迭代对象/生成器，逐项向外产出，相当于把内层循环展开：
+
+\`\`\`js
+function* inner(n) {
+  yield n + 1
+  yield n + 2
+  return 'done-inner'     // 生成器的 return 会被 yield* 接收
+}
+function* outer() {
+  const r = yield* inner(10)
+  yield r                 // 拿到内层 return 值
+}
+[...outer()]  // [11, 12, 'done-inner']
+\`\`\`
+
+**递归生成器**经典用法——二叉树中序遍历：
+
+\`\`\`js
+class Node {
+  constructor(val, left, right) {
+    this.val = val; this.left = left; this.right = right
+  }
+  *[Symbol.iterator]() {                   // 生成器作为迭代器
+    if (this.left) yield* this.left        // 委托左子树
+    yield this.val                         // 访问当前
+    if (this.right) yield* this.right      // 委托右子树
+  }
+}
+const tree = new Node(2, new Node(1), new Node(3))
+[...tree]  // [1, 2, 3]
+\`\`\`
+
+## next / return / throw 三方法
+
+生成器对象除了 \`next(value)\`，还有 \`return(value)\` 强行终结、\`throw(err)\` 向内部抛异常：
+
+\`\`\`js
+function* calc() {
+  try {
+    const a = yield '输入 a'          // 暂停，等外部 .next(a) 传回值
+    const b = yield '输入 b'
+    yield a + b
+  } catch (e) {
+    yield '捕获异常:' + e.message
+  }
+}
+const c = calc()
+c.next()            // {value:'输入 a'}
+c.next(10)          // {value:'输入 b'}   a 被赋值为 10
+c.next(7)           // {value:17}         b = 7，返回 a+b
+// 等价流程：
+c.throw(new Error('oops'))  // {value:'捕获异常:oops'}
+c.return('强行结束')        // {value:'强行结束', done:true}
+\`\`\`
+
+这是**协程**思想：生成器可暂停/恢复，双向传值传异常。co / redux-saga 就基于此实现异步流程控制。
+
+## 异步迭代（ES2018）
+
+同步迭代的异步版本：对象实现 \`Symbol.asyncIterator\`（不是 \`iterator\`），\`next()\` 返回 **Promise<{value, done}>**。
+
+\`\`\`js
+const asyncRange = {
+  from: 1, to: 3,
+  [Symbol.asyncIterator]() {
+    let cur = this.from
+    return {
+      next: () => Promise.resolve(
+        cur <= asyncRange.to
+          ? { value: cur++, done: false }
+          : { done: true }
+      )
+    }
+  }
+}
+\`\`\`
+
+## for await...of 循环
+
+遍历**异步可迭代对象**，每次 await 下一个 next：
+
+\`\`\`js
+for await (const v of asyncRange) {
+  console.log(v)  // 依次 1、2、3
+}
+\`\`\`
+
+注意必须在 async 函数内（或模块顶层 await 场景）。
+
+典型场景：**流式数据拉取**（分页 API、Node.js 文件流）：
+
+\`\`\`js
+async function* fetchPages() {       // 异步生成器！
+  let page = 1
+  while (page <= 3) {
+    const data = await fetch(\`/api/list?page=\${page}\`).then(r => r.json())
+    if (!data.length) return
+    yield* data                      // 逐页、逐条产出
+    page++
+  }
+}
+
+// 消费
+for await (const item of fetchPages()) {
+  console.log('处理', item)           // 拿到一条处理一条，不用等全部加载完
+}
+\`\`\`
+
+## 异步生成器 vs 同步生成器
+
+| | 同步生成器 function* | 异步生成器 async function* |
+| --- | --- | --- |
+| 迭代协议 | Symbol.iterator | Symbol.asyncIterator |
+| next() 返回 | {value,done} | Promise<{value,done}> |
+| 内部可 | yield 任意值 | yield / await 都可以 |
+| 遍历 | for...of / ... | for await...of |
+| \`yield*\` 可委托 | 可迭代对象 | 异步或同步可迭代 |
+
+## Node.js 可读流也是异步可迭代对象
+
+\`\`\`js
+import { createReadStream } from 'fs'
+
+// 逐行读取大文件（内存友好）
+const lines = []
+for await (const chunk of createReadStream('big.log', 'utf8')) {
+  lines.push(...chunk.split('\\n'))
+}
+\`\`\`
+
+## 手写并发控制 + 异步迭代
+
+\`\`\`js
+// 限制并发数执行任务，逐条 yield 完成结果
+async function* asyncPool(tasks, limit = 3) {
+  const executing = new Set()
+  for (const task of tasks) {
+    const p = Promise.resolve().then(() => task())
+    executing.add(p)
+    p.then(() => executing.delete(p))
+    if (executing.size >= limit) {
+      yield await Promise.race(executing)   // 哪个先完成就先 yield
+    }
+  }
+  while (executing.size) {
+    yield await Promise.race(executing)
+  }
+}
+\`\`\`
+
+## 关键注意点
+
+1. **异步生成器产出是 Promise 包裹的**：手动 \`it.next().value\` 拿到 Promise，必须 await 才能拿到真正 value。
+2. **for await 会自动捕获 \`done\`**：内部已处理好 \`next().then(...)\`。
+3. **yield* 不能委托 Promise**：要 \`yield await p\`，不是 \`yield* p\`。
+4. **同步可迭代对象也可被 for await 消费**（自动 await 每个 value，如果 value 是 Promise）。
+5. **早期用生成器 + co 模拟 async/await**：现在 async/await 作为语法糖已是主流，但生成器在双向传值、可控分步（遍历器/Lazy序列）、异步流式等场景仍不可替代。`
+  },
+  {
+    id: 'js-063',
+    category: 'javascript',
+    title: 'Proxy/Reflect 进阶：可撤销代理、construct/apply trap、invariant 约束有哪些？',
+    difficulty: '困难',
+    tags: ['Proxy', 'Reflect', '可撤销代理', '元编程', 'invariant'],
+    answer: `## 可撤销 Proxy（Revocable Proxy）
+
+普通 Proxy 一旦创建就无法"解绑"目标；\`Proxy.revocable\` 返回一对 \`{proxy, revoke}\`，调用 revoke 后代理即失效，所有后续 trap 都抛 TypeError：
+
+\`\`\`js
+const target = { data: '敏感' }
+const { proxy, revoke } = Proxy.revocable(target, {
+  get(t, k) { return 'READ:' + t[k] }
+})
+
+proxy.data     // 'READ:敏感'
+revoke()       // 撤销
+proxy.data     // ❌ TypeError: Cannot perform 'get' on a proxy that has been revoked
+\`\`\`
+
+**核心用途**：受控访问权的生命周期。
+
+#### 场景：跨沙箱/iframe 暴露对象后撤回授权
+
+\`\`\`js
+function grantAccess(obj, expiresMs = 60_000) {
+  const { proxy, revoke } = Proxy.revocable(obj, {
+    get(t, k, r) {
+      if (typeof t[k] === 'function') return t[k].bind(t)  // 确保 this 正确
+      return Reflect.get(t, k, r)
+    }
+  })
+  setTimeout(revoke, expiresMs)   // 到期自动 revoke
+  return proxy
+}
+
+const session = grantAccess({ name: 'x', close() {} }, 1000)
+setTimeout(() => session.name, 1500)  // 1.5s 后访问 → 抛错
+\`\`\`
+
+## apply trap：拦截函数调用
+
+当 proxy 对象是函数时，调用 \`proxy(...args)\`、\`proxy.call(..)\`、\`proxy.apply(..)\` 都会触发 apply trap：
+
+\`\`\`js
+function add(a, b) { return a + b }
+const traced = new Proxy(add, {
+  apply(target, thisArg, argsList) {
+    console.log(\`调用 \${target.name}，参数=\`, argsList, 'this=', thisArg)
+    const start = performance.now()
+    const result = Reflect.apply(target, thisArg, argsList)  // 正确转发
+    console.log('耗时(ms):', performance.now() - start)
+    return result
+  }
+})
+
+traced(1, 2)          // 打印日志 + 返回 3
+traced.call(null, 3, 4)  // 也走 apply
+\`\`\`
+
+**注意陷阱**：不要用 \`target.apply(thisArg, argsList)\` 转发——如果 target 本身是个被重写了 apply 方法的对象，就会错；必须用 \`Reflect.apply\`。
+
+## construct trap：拦截 new
+
+对构造函数 proxy 使用 \`new\` 触发，签名 \`construct(target, argsList, newTarget)\`：
+
+\`\`\`js
+class User {
+  constructor(name) { this.name = name }
+}
+const UserProxy = new Proxy(User, {
+  construct(Target, args, newTarget) {
+    // newTarget 是实际被 new 的那个函数（这里就是 UserProxy），用于决定原型链
+    if (args[0]?.length < 2) throw new Error('名字太短')
+    console.log('创建用户:', args)
+    const inst = Reflect.construct(Target, args, newTarget)  // 第三个参数重要！
+    inst.createdAt = Date.now()
+    return inst
+  }
+})
+
+new UserProxy('Alice')
+// 返回 { name: 'Alice', createdAt: 171... }
+new UserProxy('A')  // ❌ 名字太短
+\`\`\`
+
+**为什么要传 newTarget？**
+\`Reflect.construct(T, args, newTarget)\` 中，新对象的 \`__proto__\` 指向 \`newTarget.prototype\`，不是 \`Target.prototype\`。如果省略，new 创建出的实例 \`instanceof 被代理类\` 可能异常。
+
+## 自有键与枚举：getOwnPropertyDescriptor / defineProperty / ownKeys
+
+这组 trap 一起使用时存在大量**不变式（invariant）**，违反直接抛 TypeError。
+
+### 常用组合：只读 & 隐藏属性
+
+\`\`\`js
+const obj = { a: 1, _secret: 42 }
+Object.defineProperty(obj, 'readonly', {
+  value: '不可改', writable: false, configurable: false, enumerable: true
+})
+
+const safe = new Proxy(obj, {
+  // 1. 拦截描述符读取
+  getOwnPropertyDescriptor(t, k) {
+    if (String(k).startsWith('_')) return undefined   // 伪装成不存在
+    return Reflect.getOwnPropertyDescriptor(t, k)
+  },
+  // 2. 拦截属性定义
+  defineProperty(t, k, desc) {
+    // invariant：原属性 configurable:false 时，不能修改其 descriptor（除 value/writable）
+    return Reflect.defineProperty(t, k, desc)
+  },
+  // 3. 拦截 Object.keys / for...in / Object.getOwnPropertyNames 等
+  ownKeys(t) {
+    //  invariant：configurable:false 且 enumerable:true 的属性"必须被包含"
+    return Reflect.ownKeys(t).filter(k => !String(k).startsWith('_'))
+  },
+  // 4. get 也要配合，不然 keys 里没有但仍可访问
+  has(t, k) {
+    if (String(k).startsWith('_')) return false
+    return Reflect.has(t, k)
+  }
+})
+
+Object.keys(safe)                 // ['a','readonly']，不含 _secret
+'secret' in safe                 // false，即使 '_secret' in target = true
+safe._secret                      // 还能拿到！？→ get trap 也要拦截
+\`\`\`
+
+### Proxy 不变式（Invariant）速览（高频踩坑）
+
+这些是规范强制校验的规则，违反直接抛错：
+
+1. **get trap**：若目标属性是"非 writable + 非 configurable 的数据属性"，返回值**必须等于**目标属性值，不能改。
+   \`\`\`js
+   const t = {}
+   Object.defineProperty(t, 'x', { value: 1, writable: false, configurable: false })
+   const p = new Proxy(t, { get: () => 2 })
+   p.x  // ❌ TypeError（'get' on proxy: property 'x' is non-configurable...）
+   \`\`\`
+
+2. **set trap**：对上述非 writable 非 configurable 属性，不能返回 true（必须失败或返回 false），否则抛错。
+
+3. **defineProperty trap**：对 configurable:false 的属性，不能把它改成 configurable:true，或修改 enumerable/get/set 以外的非兼容字段。
+
+4. **ownKeys trap**：
+   - 结果必须是数组，元素必须是 String 或 Symbol。
+   - 目标如果是 **不可扩展**（\`Object.preventExtensions(t)\`），返回结果**必须包含且仅包含**目标自有键集合——不能多不能少。
+   - 结果中**不能遗漏**那些 configurable:false 且 enumerable:true 的属性（否则与 getOwnPropertyDescriptor 结果矛盾）。
+
+5. **deleteProperty trap**：configurable:false 的属性删除时必须返回 false，不能成功。
+
+6. **getPrototypeOf trap**：目标不可扩展时，返回值必须严格等于目标真实 \`[[Prototype]]\`，不能撒谎。
+
+> 设计这些 invariant 的目的：**让代理对象不会暴露出"目标对象所不可能拥有的语义"**，维持 JS 对象行为的一致性（否则某些怪异代理能让 JS 引擎优化假设崩塌）。
+
+## preventExtensions / isExtensible
+
+不可扩展配套 trap，同样有严格 invariant：
+
+\`\`\`js
+const proxy = new Proxy({}, {
+  isExtensible(t) {
+    // invariant：返回值必须与 Reflect.isExtensible(t) 的布尔结果一致
+    return Reflect.isExtensible(t)
+  },
+  preventExtensions(t) {
+    console.log('锁定')
+    return Reflect.preventExtensions(t)
+  }
+})
+Object.preventExtensions(proxy)   // 触发锁定
+proxy.a = 1                       // 严格模式下抛错
+\`\`\`
+
+## Reflect 常被忽略的两个方法
+
+### Reflect.set 第四个参数 receiver 的深层作用
+
+当目标有 setter 时，setter 里的 \`this\` 指向 receiver，不是 target：
+
+\`\`\`js
+const t = {
+  set foo(v) { this._foo = v }
+}
+const r = {}
+Reflect.set(t, 'foo', 'bar', r)   // 执行 setter 时 this = r
+r._foo  // 'bar'（r 被挂了 _foo），t 上没有任何变化
+\`\`\`
+
+这让 Proxy 能作为"纯壳"而不污染 target，配合继承链工作（Vue3 reactive 中 receiver 就是代理实例本身，保证子对象代理嵌套正确）。
+
+### Reflect.has / has trap 配合实现"in 但不触发原型链"
+
+\`\`\`js
+const p = new Proxy(Object.create({ inherited: 1 }), {
+  has(t, k) {
+    return Object.hasOwn(t, k)  // 'in' 操作只查自身，不上原型链
+  }
+})
+'inherited' in p   // false（虽然在原型上真实存在）
+\`\`\`
+
+## Proxy 性能与适用边界
+
+- Proxy 不是零开销：大量高频访问（每秒百万次）下比直接对象慢 2~10×（V8 一直在优化），热路径上先考虑 getter/setter。
+- **不能代理内置槽位（internal slot）**：\`new Proxy(new Map(), {}).get(..)\` → TypeError，因为 Map 内部依赖 \`[[MapData]]\` 槽，proxy 转发时没有这些槽。解决方案：
+  \`\`\`js
+  const mapProxy = new Proxy(new Map(), {
+    get(t, k, r) {
+      const v = Reflect.get(t, k, r)
+      return typeof v === 'function' ? v.bind(t) : v  // bind 回原对象
+    }
+  })
+  mapProxy.set('a', 1).get('a')  // 1
+  \`\`\`
+- **数组代理**：\`length\`、索引、\`Array.isArray\` 都天然支持（Array 没有私有槽），可以放心代理。
+
+## 典型高阶应用总结
+
+| 场景 | 用到的 trap |
+| --- | --- |
+| 响应式依赖收集 | get / set / deleteProperty + Reflect 转发 |
+| 可撤销授权 | Proxy.revocable |
+| 函数埋点/性能追踪 | apply + Reflect.apply |
+| 构造工厂 + 校验 | construct + Reflect.construct(newTarget) |
+| 不可变代理（Immer 思路） | set/deleteProperty 拷贝副本后操作 |
+| 隐藏私有字段（\_前缀） | get/has/ownKeys/getOwnPropertyDescriptor 联动 |
+| 多继承/Mixin | get 里去多个对象里查属性 |
+
+**核心原则**：每个 trap 内部应该**最终调用 Reflect 同名方法**做默认转发，并在此前后加 hook 逻辑；手动实现默认行为极易遗漏语义（特别是 receiver、newTarget、invariant 这些细节）。`
+  },
+  {
+    id: 'js-064',
+    category: 'javascript',
+    title: '微任务与宏任务深入：不同任务的优先级、await 的调度、嵌套 setTimeout 延迟偏差原理？',
+    difficulty: '困难',
+    tags: ['事件循环', '微任务', '宏任务', 'Event Loop', '异步调度', 'setTimeout'],
+    answer: `## 浏览器事件循环模型（Chromium V8）
+
+JS 单线程是指**JS 执行线程**单线程；浏览器/Node 内部有多个线程（定时器、网络、UI、文件等）。事件循环就是协调"这些线程产生的事件"按什么顺序交回给 JS 线程执行的机制。
+
+### 宏任务（Task/Macrotask）队列
+
+每个宏任务来源一个**独立队列**，Chrome 内大致有这些任务队列和优先级：
+
+1. **用户交互任务队列**（点击/输入）— 最高优先级（保证 UI 流畅）
+2. **微任务队列** — 不是宏任务，但在每个宏任务尾部执行（见下文）
+3. **定时器任务队列**（setTimeout/setInterval/setImmediate Node）
+4. **网络任务队列**（fetch/XHR 回调）
+5. **历史/导航任务队列**
+6. **其他**（IndexedDB、MessageChannel...）
+
+> 规范并不要求严格优先级排序，不同引擎有差异，但"交互 > 其他"是共识。
+
+### 微任务（Microtask）
+
+微任务不是独立队列概念，而是**在"当前 JS 执行栈清空 + 当前宏任务结尾"时立刻清空**的一类任务，优先级**高于任何下一个宏任务**，哪怕那个宏任务已经到期。
+
+标准微任务来源：
+- Promise.\`then/catch/finally\`、async 函数的 await 后续
+- queueMicrotask(cb)
+- MutationObserver 回调（DOM 变化批量通知）
+- process.nextTick（Node 独有，甚至比 Promise microtask 更早）
+
+## 完整一轮循环的执行顺序
+
+\`\`\`
+1. 从宏任务队列中取"一个"最高优先级任务执行（执行同步代码直到调用栈空）
+2. 【微任务阶段】清空所有微任务（含微任务执行时新产生的微任务，直到队列真的空）
+   - 期间如果产生新的微任务，继续在本阶段跑完
+3. 【渲染阶段】（仅浏览器）
+   - requestAnimationFrame 回调（rAF）
+   - 布局 Layout → 绘制 Paint → 合成 Composite
+   - ResizeObserver / IntersectionObserver 等
+4. 判断是否要进入"空闲时间"，执行 requestIdleCallback（如果有）
+5. 回到 1
+\`\`\`
+
+关键强调：**一次事件循环只取一个宏任务，但会把微任务清空到底。**
+
+## 经典题目拆解
+
+### 题 1：Promise 与 setTimeout
+
+\`\`\`js
+console.log(1)
+setTimeout(() => console.log(2), 0)
+Promise.resolve().then(() => console.log(3))
+console.log(4)
+// 输出：1 4 3 2
+\`\`\`
+
+解释：
+- 同步先执行：1、4。
+- 末尾清微任务：Promise.then → 3。
+- 下一轮取定时器宏任务 → 2。
+
+### 题 2：微任务产生微任务，全部在本轮跑完
+
+\`\`\`js
+setTimeout(() => console.log('S1'))
+Promise.resolve()
+  .then(() => {
+    console.log('P1')
+    queueMicrotask(() => console.log('P1-micro'))
+  })
+  .then(() => console.log('P2'))
+// 输出：P1、P1-micro、P2、S1
+\`\`\`
+
+即使 P1 内部新加入了 P1-micro，微任务阶段也会一直跑到"真的空"。S1 作为下一个宏任务必须让位。
+
+## await 的调度细节（ES2023 前后差异）
+
+很多人以为 \`await p\` = \`Promise.resolve(p).then(...)\`，但规范演进中有微妙差异。
+
+### 现代 V8 行为（精确还原）
+
+\`\`\`js
+async function foo() {
+  console.log('foo-sync')   // 立即执行
+  await bar()               // 1. 执行 bar() 同步部分到第一个 await
+                            // 2. 把"foo 中 await 后面的代码"封装成微任务挂起
+  console.log('foo-after')
+}
+async function bar() {
+  console.log('bar-sync')
+  await 1                   // await 非 Promise → 等同 Promise.resolve(1).then(...)
+  console.log('bar-after')
+}
+foo()
+console.log('top-end')
+\`\`\`
+
+调用顺序：
+1. \`foo()\` → 打印 'foo-sync'
+2. 进入 \`bar()\` → 打印 'bar-sync'
+3. bar 的 await 1：创建微任务（执行 bar-after），返回 Promise
+4. foo 的 await 收到 Promise：创建微任务（执行 foo-after）
+5. 回到主脚本 → 打印 'top-end'
+6. 调用栈空 → 清微任务：
+   - 第一级：bar-after → 打印
+   - 第二级：foo-after → 打印
+   （因为 bar-after 的 Promise resolve 后再触发外层 foo 的微任务，所以 bar-after 先于 foo-after）
+
+输出：
+\`\`\`
+foo-sync
+bar-sync
+top-end
+bar-after
+foo-after
+\`\`\`
+
+> 一个容易错的点：如果 await 的值"本来就是 Promise"，仍然一定会**至少在下一个微任务**才能恢复。await **不会**同步短路。
+
+## 嵌套 setTimeout 的延迟漂移：为什么 setTimeout(f, 0) 实际是 4ms？
+
+HTML 规范规定：
+1. **同一层级嵌套 depth ≥ 5 时**，最小间隔强制 \`≥ 4ms\`。
+2. **未激活标签页（后台）** 中，setTimeout 最小 1000ms（省电/限流）。
+3. **节流追踪**：连续非常多次 setTimeout，V8/Blink 会主动加更长延迟避免占用 CPU。
+
+\`\`\`js
+let prev = performance.now()
+function test(n) {
+  if (n > 8) return
+  setTimeout(() => {
+    const now = performance.now()
+    console.log(\`n=\${n}, 实际延迟≈\${Math.round(now-prev)}ms\`)
+    prev = now
+    test(n + 1)
+  }, 0)
+}
+test(1)
+// 典型输出：
+// n=1, 实际延迟≈0ms
+// n=2, 实际延迟≈0ms
+// n=3, 实际延迟≈0ms
+// n=4, 实际延迟≈0ms
+// n=5, 实际延迟≈4ms ← 第 5 层，开始 4ms 钳制
+// n=6, 实际延迟≈4ms
+// n=7, 实际延迟≈4ms
+// n=8, 实际延迟≈4ms
+\`\`\`
+
+规避 4ms 钳制的高精度替代方案：
+- **MessageChannel**：不被 4ms 限制（但仍然是宏任务）
+  \`\`\`js
+  const channel = new MessageChannel()
+  channel.port1.onmessage = () => console.log('最快宏任务')
+  channel.port2.postMessage(null)  // 触发回调（同事件循环下一个宏任务即可触发）
+  \`\`\`
+- **setImmediate**：Node 独有（浏览器 IE10 独有）
+- 需要真·微任务就用 \`queueMicrotask\` / \`Promise.resolve().then\`
+
+## 渲染帧中的任务优先级对比
+
+\`\`\`
+微任务（最高，事件循环末尾立即执行）
+ ↓
+requestAnimationFrame（下一帧绘制"前"执行）
+ ↓
+渲染（Layout/Paint）
+ ↓
+requestIdleCallback（帧末尾有空闲才执行，最晚）
+ ↓
+setTimeout(fn, 0)（下一个"合适的"宏任务时机，可能跨多帧）
+\`\`\`
+
+例：
+
+\`\`\`js
+setTimeout(() => console.log('timeout'))
+Promise.resolve().then(() => console.log('micro'))
+requestAnimationFrame(() => console.log('rAF'))
+requestIdleCallback(() => console.log('rIC'))
+// 顺序：micro → rAF → timeout（通常，但 timeout 与 rAF 谁先在跨浏览器有差异）→ rIC
+\`\`\`
+
+micro 一定第一个，rIC 一定最后，这是确定的。
+
+## Node.js 事件循环与浏览器的差异（简要）
+
+Node 的 libuv 事件循环是**多阶段循环**：
+- timers（setTimeout/setInterval 到期回调）
+- pending callbacks（I/O 回调延迟到下一轮）
+- idle, prepare（内部）
+- poll（核心 I/O 阻塞等待）
+- check（setImmediate）
+- close callbacks
+
+Node **每两个阶段之间**都会清空 nextTick 和 microtask 队列（不是只在末尾）。
+
+\`\`\`js
+// Node 中经典顺序问题
+setTimeout(() => console.log('timeout'), 0)
+setImmediate(() => console.log('immediate'))
+// 谁先谁后？取决于进入 timers 阶段时 setTimeout 回调是否已在队列。
+// 如果恰好都不在队列，先到 poll 结束 → check 先执行 immediate，再下一轮 timers
+// 结果不固定！但同一 I/O 回调内部，setImmediate 一定先于 setTimeout
+\`\`\`
+
+## 常见死锁/饿死问题
+
+1. **微任务内持续产生微任务 → 永远到不了下一个宏任务**，UI 卡死：
+   \`\`\`js
+   function loop() { Promise.resolve().then(loop) }
+   loop()  // 浏览器主线程永远在处理微任务，定时器不跑，按钮没反应
+   \`\`\`
+
+2. **长任务阻塞渲染**：一个宏任务执行超过 50ms，用户就会感知卡顿（掉帧）。要把长逻辑拆成多个 \`setTimeout(..., 0)\` 或用 \`scheduler.postTask('background')\` 让渡给 UI。
+
+## 调试事件循环的小技巧
+
+- **Performance 面板**：录制一段执行，能看到每个 Task、每个 microtask checkpoint、每帧 Paint 的精确时间线。
+- **console.time 配合 setTimeout(0) 嵌套**能测出 4ms 钳制是否生效。
+- **断点在回调第一行**：看 Call Stack 中 'Task' / 'Microtask' / 'Animation Frame Fired' 标识可直接判断来源。
+
+## 面试答题技巧
+
+答事件循环题，务必分 3 步说：
+1. **分类**：这段同步 / 那是宏 / 那是微。
+2. **顺序**：先同步 → 微任务清空 → 下一宏任务 → 再清微任务。
+3. **边界**：提到 4ms 钳制、await 不会同步短路、微任务嵌套会饿死宏任务这些要点，突出"深入"。`
+  },
+  {
+    id: 'js-065',
+    category: 'javascript',
+    title: 'ES 模块循环依赖怎么处理？与 CommonJS 有什么区别？',
+    difficulty: '中等',
+    tags: ['ES Module', 'CommonJS', '循环依赖', 'import', 'export'],
+    answer: `## 什么是循环依赖
+
+模块 A 导入模块 B，同时模块 B 导入模块 A（或更长的环 A→B→C→A），形成依赖图上的环。
+
+\`\`\`js
+// a.js
+import { b } from './b.js'
+export const a = 'from-a'
+console.log('a.js 执行时 b =', b)
+
+// b.js
+import { a } from './a.js'
+export const b = 'from-b'
+console.log('b.js 执行时 a =', a)
+\`\`\`
+
+## 两种模块系统下的处理差异
+
+| 维度 | ES Module（ESM） | CommonJS（CJS） |
+| --- | --- | --- |
+| 加载时机 | 编译/静态分析阶段先解析所有 import；执行阶段再按顺序跑代码 | 运行时 \`require\` 到那一行才执行目标文件 |
+| 变量绑定 | **实时引用绑定（Live Binding）**：导出方和导入方指向"同一块内存"，后面变更会同步 | **值拷贝 / 对象引用拷贝**：导入时拿到快照，导出方重新赋值不会同步 |
+| 循环导出未初始化值 | 允许引用但"在初始化前访问"会抛错（TDZ），或拿到 undefined | 已执行过的代码能拿到值，未执行部分拿到 undefined，不会抛错 |
+| Tree Shaking | 支持静态分析，无副作用可移除 | 动态 require 难 Tree Shaking |
+
+## CommonJS 下的循环依赖行为
+
+\`\`\`js
+// a.js
+exports.a_init = 'a-start'
+const b = require('./b.js')
+console.log('a 中得到 b:', b)          // { b_init: 'b-start', b_use_a: undefined }
+exports.a_use_b = 'used-b:' + b.b_init
+module.exports.a_init = 'a-end'
+
+// b.js
+exports.b_init = 'b-start'
+const a = require('./a.js')
+console.log('b 中得到 a:', a)          // { a_init: 'a-start' }（只拿到 a.js 执行到 require 前的导出）
+exports.b_use_a = a.a_init ? 'ok' : 'no-val'
+// a.a_init 之后改成 'a-end'，但 b.b_use_a 已经"快照"为 'ok'，不会再变
+\`\`\`
+
+执行顺序：
+1. 从入口执行 a.js，先挂 \`exports.a_init = 'a-start'\`。
+2. a.js 遇到 \`require('./b')\` → **暂停 a，立即转去执行 b.js**（深度优先）。
+3. b.js 挂 \`b_init\`，遇到 \`require('./a')\` → 由于 a.js 已在"加载中"（Module cache 已登记，exports 就是当前 a 的导出对象），**不重复执行 a**，直接返回当下这个"半成品" exports。
+4. b.js 读到 \`a.a_init = 'a-start'\`（后续 a 再改 exports.b 的值，但 b 已完成赋值）。
+5. b 执行完，回到 a 继续。
+
+> CJS 循环依赖的关键：**遇到 require 就切换执行，从 cache 拿到半成品 exports；值拷贝/对象引用。**
+
+## ES Module 下的循环依赖行为
+
+ESM 分两个阶段：
+
+**阶段 1：构建（Instantiation）**
+- 引擎从入口递归解析所有 import/export，创建 Module Record，为每个导出变量**预留"绑定的内存位置"（绑定未初始化）**。
+- 构建一张模块依赖图，确定执行顺序（后序：先执行依赖最深的节点，相同环内按入口 dfs 序）。
+
+**阶段 2：求值（Evaluation）**
+- 按阶段 1 的顺序逐个执行模块代码，变量运行时被赋值，绑定**连通**。
+- 若一个模块**还未执行到它的 export 行**，对方 import 后访问该变量会落入 TDZ（或 undefined，取决于声明方式）。
+
+上例 ESM 版本执行分析：
+
+\`\`\`js
+// a.mjs
+import { b } from './b.mjs'     // 仅建立绑定，b 还没值
+console.log('a 运行中, b =', b)  // ？
+export const a = 'from-a'
+export const aAfter = b + '!'
+
+// b.mjs
+import { a } from './a.mjs'
+export const b = 'from-b'
+console.log('b 运行中, a =', a)  // ？
+\`\`\`
+
+实际执行链路：
+1. 构建阶段建立 a、b 两模块的绑定关系。
+2. 从入口 a.mjs 开始求值：
+   - 先执行 a 的"依赖模块 b.mjs"（ESM 规则：先把所有 import 目标跑完再跑自己，深度优先）。
+3. 进入 b.mjs：
+   - 导入的 a 绑定已经存在，但值还未初始化（因为 a 还卡在等 b）。
+   - 执行 \`b = 'from-b'\`（赋值完成，a 里的 b 绑定同步可见）。
+   - 执行 console.log(b→a)：此时 a 还没执行到 \`export const a = ...\`，**进入 TDZ → ReferenceError: Cannot access 'a' before initialization**！
+
+避免方法：把对 a 的读取放进 b 的函数中"延迟访问"：
+
+\`\`\`js
+// b.mjs（修正）
+import { a } from './a.mjs'
+export const b = 'from-b'
+export function useA() { return a }  // 真正调用时 a 早已初始化
+\`\`\`
+
+这样 a→b 完整跑：b 先导出 b/useA，回到 a 导出 a/aAfter（此时 b 已赋值），之后任何代码调 useA() 都安全。
+
+## Live Binding 实战演示（CJS 与 ESM 的差异放大）
+
+\`\`\`js
+// counter.mjs
+export let count = 0
+export function inc() { count++ }
+
+// use-counter.mjs
+import { count, inc } from './counter.mjs'
+console.log(count)  // 0
+inc()
+console.log(count)  // 1 ← count 同步涨了！是同一个"活绑定"
+\`\`\`
+
+如果是 CJS：
+\`\`\`js
+// counter.cjs
+let count = 0
+function inc() { count++ }
+module.exports = { count, inc }
+
+// use-counter.cjs
+const { count, inc } = require('./counter.cjs')  // 解构时 count 拷贝了 0
+inc()
+console.log(count)  // 0 ← 不会变！只是快照
+// 解决方案：把 count 写进对象属性里（共用引用），导出 { state: {count} }
+\`\`\`
+
+## 为什么 CommonJS 默认导出函数不会 TDZ 报错？
+
+\`\`\`js
+// a.cjs
+const b = require('./b.cjs')
+function foo() { return b() }
+exports.foo = foo
+
+// b.cjs
+const a = require('./a.cjs')
+function bar() { return 'bar' + (a.foo ? '+' : '-') }   // a.foo 存在 → 'bar+'
+exports.bar = bar
+\`\`\`
+
+a 先执行一部分，require b → b 里 require a，拿到的 a.exports 此时有 foo（因为函数声明提升，赋值在 require 前）。**CJS 导出的是对象，不是变量绑定**，只要导出时属性存在就行；ESM 导出变量本身，访问时要判断初始化没。
+
+## 循环依赖的诊断与规避策略
+
+### 1. 诊断工具
+
+- **Webpack/Vite/Rollup**：构建产物分析插件（webpack-bundle-analyzer）或 \`madge\` 工具能画出依赖图并检测环：
+  \`\`\`bash
+  npx madge --circular src/index.js      # 检测循环依赖
+  npx madge --image graph.svg src/       # 生成可视化 SVG
+  \`\`\`
+- **TypeScript/ESLint**：\`import/no-cycle\` 规则直接报警。
+
+### 2. 规避与解环设计
+
+#### 方案 A：延迟访问（放进函数/类方法里）
+
+循环导出互相读值几乎都出现在"模块顶层直接用"。放进函数中：
+
+\`\`\`js
+// bad
+import { b } from './b.js'
+export const a = b + '-a'      // 顶层依赖，容易触发 TDZ / undefined
+
+// good
+import { b } from './b.js'
+export function getA() { return b + '-a' }   // 调函数时两模块早执行完了
+\`\`\`
+
+#### 方案 B：抽取共享模块到第三者（打破环）
+
+\`\`\`
+ 原环：A → B → A
+ 变：  A → C ← B    （把互相需要的公共接口抽到 C）
+\`\`\`
+
+例：表单引擎中 \`Form\` 和 \`Field\` 互相引用，抽取 \`Context\` 保存共享状态，两者都 import Context。
+
+#### 方案 C：依赖注入（DI）
+
+不互相 import，由"组合根"创建实例后互相 set：
+
+\`\`\`js
+// root.js（组合根）
+import { A } from './a.js'
+import { B } from './b.js'
+const a = new A()
+const b = new B()
+a.setB(b)
+b.setA(a)
+\`\`\`
+
+#### 方案 D：只 import 类型（TS 场景）
+
+TypeScript 中大量循环只是"类型层面"，用 \`import type { T } from './x'\` 避免产生运行时 import，彻底打破运行时环。
+
+## 实际开发中遇到循环依赖如何定位"谁坏了"？
+
+三个快速定位法：
+
+1. **看报错堆栈**：ReferenceError: Cannot access 'X' before initialization → 说明这个 X 的导出模块还没跑到 export 行就被对方读了。把对方读取代码改成延迟访问。
+2. **二分删代码**：逐段注释 A/B 导入部分，直到错误消失，缩小到具体哪一行触发了跨环取值。
+3. **打印"模块执行开始/结束"日志**：
+   \`\`\`js
+   // a.js 顶部 console.log('a:start')，底部 console.log('a:end')
+   // b.js 同理
+   // 若出现 a:start → b:start → b:end → a:end，顺序正常；
+   // 若中间穿插报错，断点卡在错误处，检查此时双方 exports。
+   \`\`\`
+
+## 总结
+
+- **CJS 循环依赖**：执行时遇到 require 就切换走，cache 返回半成品 exports，核心风险是"拿到 undefined 但不报错，逻辑悄悄错"。
+- **ESM 循环依赖**：先构建绑定再执行，核心风险是"提前访问未初始化变量导致 TDZ 报错"，但错误是显式的。
+- **Live Binding**：ESM 导入的是"同一个变量"，导出方修改变量导入方能看到；CJS 是值快照（原始值）或对象引用拷贝。
+- **设计原则**：模块应单向依赖，DAG（有向无环图）最健康。出现环先考虑"是否职责划分混乱"，再用延迟访问 / 抽公共模块 / DI 等解环。`
+  },
+  {
+    id: 'js-066',
+    category: 'javascript',
+    title: '可选链 ?. 和空值合并 ?? 深入：与 &&、|| 的边界、短路机制、delete 场景？',
+    difficulty: '简单',
+    tags: ['可选链', '空值合并', '?.', '??', '短路求值'],
+    answer: `## 可选链 Optional Chaining（?.）ES2020
+
+访问深层嵌套属性时，遇到 null/undefined 不会抛错，而是短路返回 undefined，替代手写长串 \`a && a.b && a.b.c\`。
+
+### 三种语法形式
+
+\`\`\`js
+const obj = { a: { b: { c: 1 } }, arr: [1, 2], fn: x => x + 1 }
+
+// 1. 静态属性访问
+obj?.a?.b?.c        // 1
+obj?.x?.y?.z        // undefined（x 不存在，短路，不再访问 y/z）
+obj?.['a']?.['b']   // 1
+
+// 2. 动态属性访问
+const key = 'b'
+obj?.a?.[key]?.c    // 1
+
+// 3. 可选调用 + 可选索引
+obj?.arr?.[0]       // 1
+obj?.fn?.(40)       // 41
+obj?.notExistFn?.(1)  // undefined（不是函数也不会抛错，直接短路）
+\`\`\`
+
+### 短路（Short-circuit）机制
+
+一旦 \`?.\` 左边求值为 \`null\` 或 \`undefined\`，**后面的整条访问链不再执行**：
+
+\`\`\`js
+let i = 0
+const a = null
+a?.[i++]        // undefined（右边 i++ 不执行）
+i               // 0（没变）
+\`\`\`
+
+注意与括号的关系：
+
+\`\`\`js
+a?.b.c        // ≡ (a?.b).c   → a null/undefined 时短路，返回 undefined
+a?.b?.c       // ≡ (a?.b)?.c  → 每一层都可选，更安全
+a?.(b).c      // a 不是函数时短路，后续 .c 不执行
+\`\`\`
+
+### 搭配 delete 使用
+
+\`\`\`js
+delete obj?.a?.b   // obj 和 obj.a 都存在才 delete obj.a.b
+// 等价：if (obj?.a) delete obj.a.b
+// 返回值：delete 永远返回布尔（configurable:false 返回 false，其余 true）
+\`\`\`
+
+### 不能用于赋值左侧（LValue）
+
+\`\`\`js
+obj?.a?.b = 1   // ❌ SyntaxError: Invalid left-hand side in assignment
+// 语法上不允许。原因：若 obj.a 不存在，该把 1 写到哪？语义不明确。
+// 替代写法：
+if (obj?.a) obj.a.b = 1
+\`\`\`
+
+### 边界情况辨析
+
+1. **空字符串、0、false 不会短路**：只认 \`null/undefined\`。
+   \`\`\`js
+   const o = { a: '', b: 0, c: false }
+   o?.a?.length    // 0（不是短路，是 ''.length）
+   o?.b?.toString() // '0'
+   \`\`\`
+
+2. **对 非对象 使用 ?. 会不会报错？**
+   \`\`\`js
+   const s = 'hi'
+   s?.length         // 2（字符串不是 null，正常走属性访问）
+   123?.toString()   // '123'（基本类型包装对象后访问）
+   null?.anything    // undefined
+   undefined?.foo()  // undefined
+   \`\`\`
+
+3. **super?.method() 不允许**：super 有特殊语义，?. 不能直接跟在 super 后。
+
+## 空值合并 Nullish Coalescing（??）ES2020
+
+当左侧**仅为 \`null\` 或 \`undefined\`** 时返回右侧，否则返回左侧。专门解决 \`||\` 对所有假值都 fallback 的痛点。
+
+### 与 || 的差异对比
+
+\`\`\`js
+const cfg = {
+  name: '',
+  retry: 0,
+  enabled: false,
+  value: null,
+}
+
+// || 对 空串/0/false 都走 fallback（不符合预期）
+cfg.name || '默认名'         // '默认名' ❌
+cfg.retry || 3               // 3 ❌
+cfg.enabled || true          // true ❌
+cfg.value || '默认值'        // '默认值' ✅
+
+// ?? 只对 null/undefined fallback
+cfg.name ?? '默认名'         // '' ✅ 保留用户显式空串
+cfg.retry ?? 3               // 0 ✅ 保留用户显式 0
+cfg.enabled ?? true          // false ✅ 保留用户显式 false
+cfg.value ?? '默认值'        // '默认值' ✅
+\`\`\`
+
+### 典型应用场景
+
+1. **配置/表单默认值**：用户输入了 0、''、false 时要尊重用户输入，不要被 || 吞掉。
+   \`\`\`js
+   function createUser({
+     name = '新用户',       // 解构默认值：仅对 undefined 生效（和 ?? 一致，不含 null）
+     age,
+     role = 'user',
+   } = {}) {
+     age = age ?? 18       // null 也要走默认值，用 ?? 补上 null 分支
+     return { name, age, role }
+   }
+   createUser({ name: null, age: 0 })
+   // { name: null, age: 0, role: 'user' }  ← age 被保留 0
+   \`\`\`
+
+2. **深层读取 + 默认值**：
+   \`\`\`js
+   const title = data?.list?.[0]?.title ?? '无标题'
+   // 标题不存在或链上任何一步 null/undefined → '无标题'
+   // 标题是空串 '' → 保留 ''
+   \`\`\`
+
+3. **函数参数兜底**：
+   \`\`\`js
+   function log(msg) {
+     console.log(msg ?? '(空消息)')
+   }
+   \`\`\`
+
+### 短路与 ??=
+
+\`??\` 短路：左侧非 null/undefined 时右侧不求值。
+
+\`\`\`js
+let i = 0
+0 ?? i++     // 0，i 不增
+null ?? i++  // 0（返回 i++ 的值），i = 1
+\`\`\`
+
+**空值合并赋值（??=）** ES2021 逻辑赋值运算符：
+
+\`\`\`js
+const config = {}
+config.port ??= 3000     // 只在 port 为 null/undefined 时赋值
+config.host ??= '0.0.0.0'
+config.debug ??= false   // config.debug = undefined → 赋值 false
+config.debug ??= true    // config.debug 已是 false → 不再赋值
+// 等价：config.port = config.port ?? 3000
+\`\`\`
+
+同类还有 \`||=\`、\`&&=\`：
+- \`a ||= b\` → a falsy 时赋值 b
+- \`a &&= b\` → a truthy 时赋值 b
+
+### ?? 和 ||、&& 混用时必须加括号
+
+\`\`\`js
+a || b ?? c     // ❌ SyntaxError（优先级不明确）
+(a || b) ?? c   // ✅
+a || (b ?? c)   // ✅
+\`\`\`
+
+规范刻意不定义三者相对优先级，要求显式括号，避免阅读歧义。推荐统一写法：**所有短路运算符混用都加括号**，不用纠结顺序。
+
+## 组合拳：深层读 + 可选调用 + 空值兜底（日常最高频写法）
+
+\`\`\`js
+const data = {
+  page: {
+    list: [
+      { id: 1, author: { name: 'Alice', getName: () => 'A' } },
+    ],
+    total: 0,
+  }
+}
+
+// 取第一个作者的名字，所有环节缺失都回退 'Unknown'
+const name = data?.page?.list?.[0]?.author?.getName?.() ?? 'Unknown'
+// 任意一步 null/undefined，或 getName 不存在→短路 undefined→走 'Unknown'
+
+// 翻页时 total 可能被服务端返回 0，不要被 || 变成默认值
+const total = data?.page?.total ?? 0   // 0 就保留 0
+\`\`\`
+
+## 性能与 Polyfill
+
+- 两者都是语法级短路，Babel/TS 编译后等价手写 \`if\` 判断，几乎无额外开销。
+- 对现代 Chrome/FF/Safari/Node 14+ 全部原生支持；老浏览器需编译。
+- **TypeScript** 对 ?. 有完整类型推断，类型会自动变 \`T | undefined\`，配合 ?? 后又被收窄成非 undefined。
+
+## 常见面试错误
+
+1. \`a?.b = 1\` 左侧赋值 → 答"语法错误"。
+2. \`0 || 1 vs 0 ?? 1\` → 分别 1 vs 0。
+3. \`false ?? 1\` vs \`false || 1\` → false vs 1。
+4. 混用运算符无括号 → 抛 SyntaxError。
+5. ?. 短路到哪一级 → \`a?.b.c\` 只短 a，b 必须存在；要每层都短写 \`a?.b?.c\`。
+
+记住这 5 条，面试不丢分。`
+  },
+  {
+    id: 'js-067',
+    category: 'javascript',
+    title: '结构化克隆算法（Structured Clone）是什么？postMessage、history 等用到它的 API 有哪些？与 JSON.parse(JSON.stringify)、扩展运算符有什么区别？',
+    difficulty: '困难',
+    tags: ['结构化克隆', 'Structured Clone', 'postMessage', 'MessageChannel', '深拷贝'],
+    answer: `## 什么是结构化克隆
+
+**结构化克隆（Structured Clone Algorithm / SCA）** 是 HTML 规范定义的一套标准序列化/反序列化算法，用于 JS 值在"不同上下文/线程/存储空间"之间安全复制。相比 JSON，它能克隆更多类型、保留循环引用，几乎就是一份"可被序列化的深拷贝"。
+
+\`\`\`js
+// 直接调用：structuredClone 全局函数（ES2022 / Node 17+）
+const original = {
+  n: 1n,
+  d: new Date(),
+  re: /ab+c/i,
+  m: new Map([['a', { x: 1 }]]),
+  s: new Set([1, 2, 3]),
+  buf: new Uint8Array([1, 2, 3]),
+}
+original.self = original    // 循环引用
+
+const clone = structuredClone(original)
+clone === original          // false
+clone.self === clone        // true（循环引用也正确克隆）
+clone.m.get('a').x          // 1（深拷贝，非共享）
+clone.n + 1n                // 2n（BigInt 正确）
+clone.re.test('abbbc')      // true（正则 flag 保留）
+\`\`\`
+
+## 哪些 Web API 使用了 SCA
+
+凡是"需要把值在不同 JS Realm/线程传递"的 API 基本都基于它：
+
+| API | 传递场景 |
+| --- | --- |
+| \`window.postMessage\` / \`MessagePort.postMessage\` | 跨窗口、跨 iframe、跨 Worker 通信 |
+| \`Worker.postMessage\` | 主线程 ↔ Worker、Worker 间 |
+| \`BroadcastChannel.postMessage\` | 同源多标签广播 |
+| \`History.pushState/replaceState(state)\` | state 对象必须可被结构化克隆 |
+| \`IndexedDB\` 存/读对象、\`CacheStorage\` 部分接口 | 持久化存储 |
+| \`Notification\` 构造函数的 data 字段 | 通知数据 |
+| \`localStorage/sessionStorage\` | 实际用字符串形式，但可配合存 JSON |
+
+> 这些 API 一旦传入"不能克隆的对象"就会抛 **DataCloneError** DOMException。
+
+## SCA 支持的类型大盘点
+
+### 必背可克隆清单（面试爱问 Map/Set/Date/RegExp/BigInt）
+
+- **所有原始类型**（除 Symbol）：string、number、bigint、boolean、undefined、null。
+- **包装对象**：\`new Boolean/String/Number\`。
+- **Date / RegExp**：\`lastIndex\` 状态会重置为 0（RegExp flag 保留）。
+- **集合**：Map / Set（深拷贝，元素也递归克隆）。
+- **二进制数据**：ArrayBuffer、SharedArrayBuffer、各类 TypedArray、DataView。
+- **Blob / File**（浏览器）、FileList。
+- **ImageData**（Canvas）。
+- **DOM Rect、DOMPoint、DOMQuad**（几何类型）。
+- **普通 Object / Array**（包括原型链继承的属性？——**不继承原型**，一律变成普通对象，见下文坑位）。
+- **循环引用**：正确处理，不会无限递归。
+
+### ❌ 不可克隆清单（碰到直接抛 DataCloneError）
+
+1. **Function**（含箭头函数、类方法、生成器）→ 函数不能跨 Realm 克隆。
+2. **Symbol** → 每个 Realm 的 symbol 池独立。
+3. **Proxy / WeakMap / WeakSet / WeakRef / FinalizationRegistry** → 依赖上下文。
+4. **类实例（自定义构造函数）** → 克隆后丢失原型，变成普通对象！见下文。
+5. **Error 对象（大部分浏览器）** → 规范原本不支持，部分新版浏览器开始支持。
+6. **DOM Node、Window、Document** → 绑定文档，不可跨 Realm。
+7. **Getter / Setter** → 不会被保留，克隆后变成普通数据属性。
+8. **属性描述符（writable/configurable/enumerable）** → 丢失，变成默认 true。
+
+## 类实例与原型丢失（大坑）
+
+\`\`\`js
+class User {
+  constructor(name) { this.name = name }
+  greet() { return 'Hi ' + this.name }
+  get tag() { return 'user:' + this.name }
+}
+
+const alice = new User('Alice')
+const cloned = structuredClone(alice)
+
+cloned.name             // 'Alice' ← 数据还在
+cloned instanceof User  // false！原型丢失
+cloned.greet()          // ❌ TypeError: cloned.greet is not a function
+cloned.tag              // undefined（getter 没了，不是属性）
+cloned.__proto__        // Object.prototype，不是 User.prototype
+\`\`\`
+
+> 面试高频：**SCA 不会保留原型链、不会复制方法/getter/setter**，只会克隆"可枚举自有数据属性"。类实例要跨线程，得自己序列化再在目标端 \`Object.setPrototypeOf(obj, Cls.prototype)\`，或者手动构造新实例。
+
+## 与 JSON 深拷贝、扩展运算符、手写递归深拷贝对比
+
+\`\`\`js
+const sample = {
+  a: new Map([['k', new Set([1, 2])]]),
+  b: /abc/i,
+  c: new Date('2024-01-01'),
+  d: 123n,
+  arr: new Uint8Array([1, 2, 3]),
+}
+sample.self = sample
+
+// 方式 1：JSON 深拷贝
+try { JSON.parse(JSON.stringify(sample)) }
+catch (e) { /* ❌ BigInt 序列化报错，循环引用直接 TypeError */ }
+// Map/Set → {}, 正则 → {}, Date → 字符串（丢失时区类型），Uint8Array → {0:1,1:2,2:3}
+
+// 方式 2：扩展运算符（浅！）
+const spread = { ...sample, a: { ...sample.a } }
+spread.a === sample.a                // false
+spread.a.get('k') === sample.a.get('k') // true（Set 还是同一个引用）
+
+// 方式 3：structuredClone
+const sc = structuredClone(sample)   // ✅ Map/Set/Date/RegExp/BigInt/Uint8Array 都对
+sc.self === sc                       // ✅ 循环引用也对
+\`\`\`
+
+完整对比：
+
+| | structuredClone | JSON | 扩展运算符 | 手写递归深拷贝 |
+| --- | --- | --- | --- | --- |
+| 深拷贝度 | 深 | 深 | 浅 | 可控（看实现） |
+| 循环引用 | ✅ | ❌ 抛错 | 不涉及 | ❌（需 map 额外处理） |
+| Map/Set | ✅ | ❌ → {} | 不深 | 需特殊分支 |
+| Date/RegExp | ✅ | ❌ 变字符串/空对象 | 不深 | 需特殊分支 |
+| BigInt | ✅ | ❌ 抛错 | ✅ | ✅ |
+| TypedArray/Buffer | ✅（可 Transfer） | ❌ → 普通对象 | ✅ | 需特殊分支 |
+| 函数 | ❌ 抛错 | ❌ 丢 | ✅ | ❌ 一般跳过 |
+| Symbol | ❌ 抛错 | ❌ 丢 | ✅ | 可选支持 |
+| 原型链/方法 | ❌ 丢 | ❌ 丢 | ✅ | ❌ 通常丢 |
+| 性能（大对象） | 引擎级实现，快 | 快（但类型损失多） | 最快（浅） | 慢（纯 JS 递归） |
+
+## Transferable Objects（所有权转移）
+
+\`postMessage\` 配合 SCA 还支持**可转移对象**（ArrayBuffer、MessagePort、ImageBitmap 等）——不是复制，是把所有权移到目标线程，原线程立刻不能用：
+
+\`\`\`js
+const worker = new Worker('worker.js')
+const buf = new ArrayBuffer(1_000_000)  // 1MB 数据
+
+// 第二个参数 transfer 列表：这些 buf 的所有权直接"搬家"
+worker.postMessage({ data: buf }, [buf])
+// 主线程里 buf.byteLength 现在变成 0（已被 neutered）
+\`\`\`
+
+比复制快得多（零拷贝），适合大体积二进制（音视频、图像处理）。\`structuredClone\` 本身不支持 transfer，它是纯克隆。
+
+## structuredClone 的额外选项
+
+\`\`\`js
+structuredClone(value, {
+  // 1. 克隆失败时抛出更详细的信息（Chrome 新版支持）
+  // 2. 预留参数
+
+  // Node 17+ 支持：
+  // structuredClone(value, { transfer: [...] })  ← 仅限 Node，会移动不是克隆
+})
+\`\`\`
+
+## 手写"能覆盖 SCA 常用子集"的深拷贝（面试考点）
+
+面试官常要求：处理基本类型 + Object/Array + Map/Set + Date/RegExp + 循环引用。
+
+\`\`\`js
+function deepClone(src, cache = new WeakMap()) {
+  // 1. 原始值 & 函数直接返回
+  if (src === null || typeof src !== 'object') return src
+
+  // 2. 循环引用处理
+  if (cache.has(src)) return cache.get(src)
+
+  // 3. 内置特殊类型
+  let clone
+  const Ctor = src.constructor
+  switch (Ctor) {
+    case Date:    return new Date(src.getTime())
+    case RegExp:  return new RegExp(src.source, src.flags)
+    case Map:
+      clone = new Map(); cache.set(src, clone)
+      src.forEach((v, k) => clone.set(deepClone(k, cache), deepClone(v, cache)))
+      return clone
+    case Set:
+      clone = new Set(); cache.set(src, clone)
+      src.forEach(v => clone.add(deepClone(v, cache)))
+      return clone
+    default:
+      // TypedArray（简易版）
+      if (ArrayBuffer.isView(src)) {
+        clone = new Ctor(src.buffer.slice())
+        cache.set(src, clone)
+        return clone
+      }
+      // 普通对象 & 数组
+      clone = new Ctor()
+      cache.set(src, clone)
+      for (const k of Object.keys(src)) {
+        clone[k] = deepClone(src[k], cache)
+      }
+      return clone
+  }
+}
+\`\`\`
+
+说明：
+- 面试写深拷贝一定要**先处理循环引用**（WeakMap），否则一遇到循环直接栈爆。
+- Map/Set 要 \`forEach\` 递归 value（key 也要，Map key 可以是对象）。
+- Date 用 \`getTime()\` / RegExp 用 source+flags，不要 \`new Ctor(src)\`（某些引擎 RegExp 构造不直接支持另一个 RegExp 的 flags）。
+
+## 实战常见踩坑题
+
+1. **postMessage 传了一个带函数的对象 → 抛 DataCloneError**：回答 strip 掉函数或仅序列化必要属性。
+2. **pushState(state) 后刷新，state 中的类实例方法丢失**：回答 SCA 不保留原型链。
+3. **想深拷贝一个 Proxy → 报错**：回答 Proxy 不可克隆，需先 clone target 再 new Proxy。
+4. **为什么 WeakMap 不能克隆？** 回答 WeakMap key 是弱引用，克隆语义不明确（会不会让本该回收的 key 被新对象强引用？），规范直接禁止。
+5. **structuredClone 和 lodash.cloneDeep 谁更好？** 回答：前者是标准、浏览器原生、能处理循环/BigInt/Buffer，性能更好；后者能保留 Symbol、能配置自定义 clone 器、老浏览器 polyfill 友好。看场景。
+
+## SCA 的意义
+
+SCA 出现前，postMessage/IndexedDB 各自实现自己的"可序列化白名单"，互有差异。现在 HTML 规范以 **Structured Serialize / Structured Deserialize** 一对操作为标准，所有 API 统一；暴露给 JS 开发者的直接入口就是 \`structuredClone()\`，深拷贝用它，类型边界清晰、代码可读。`
+  },
+  {
+    id: 'js-068',
+    category: 'javascript',
+    title: '事件委托深入：target vs currentTarget、事件阶段、动态元素绑定、委托的性能边界与反模式？',
+    difficulty: '中等',
+    tags: ['事件委托', '事件冒泡', 'target', 'currentTarget', '事件模型', '性能优化'],
+    answer: `## 事件委托（Event Delegation）是什么
+
+**利用事件冒泡机制，不把子元素的监听器一个个绑，而是统一绑到父/祖先元素上，靠 event.target 识别是哪个子元素触发的。**
+
+最经典：列表项点击
+
+\`\`\`js
+// ❌ 不委托：每个 li 绑一个（新建 li 还要再绑）
+document.querySelectorAll('#list > li').forEach(li => {
+  li.addEventListener('click', e => { ... })
+})
+
+// ✅ 委托：父元素只绑一个
+document.getElementById('list').addEventListener('click', e => {
+  const li = e.target.closest('li')      // 找到最近的 li（包含点击目标或其祖先中是 li 的）
+  if (!li) return                         // 不是 li 的点击，忽略
+  console.log('点击项内容:', li.textContent)
+})
+\`\`\`
+
+## target、currentTarget、this 的区别
+
+| 标识 | 含义 |
+| --- | --- |
+| \`event.target\` | **原始触发事件的那个最具体元素**（不变），指事件"从哪来" |
+| \`event.currentTarget\` | **当前正在执行监听器的那个元素**（随冒泡改变），等于绑监听的元素 |
+| 监听器内的 \`this\` | 默认等于 currentTarget（箭头函数无 this、或 bind 后例外） |
+
+\`\`\`html
+<ul id="list">
+  <li>点 <em>这里</em></li>
+</ul>
+\`\`\`
+\`\`\`js
+document.getElementById('list').addEventListener('click', function (e) {
+  console.log('target:', e.target.tagName)         // 'EM'（点到 em 时）
+  console.log('currentTarget:', e.currentTarget.id) // 'list'
+  console.log(this.id)                             // 'list'（和 currentTarget 同）
+})
+\`\`\`
+
+> 面试高频：如果点到 \`<em>\`，target 是 EM，currentTarget 是 UL。做委托时要**向上找祖先**（closest），而不是直接判断 e.target。
+
+## 三个事件阶段：捕获→目标→冒泡
+
+\`\`\`
+  document
+    ↓  捕获阶段（addEventListener 第三参 true，从外到内）
+  <html>
+    ↓
+  <body>
+    ↓
+  <div id="outer">
+    ↓
+    <button id="btn">        ← 目标阶段（到达实际触发元素）
+    ↑
+  </div>
+    ↑  冒泡阶段（默认，从内到外，委托靠这个阶段）
+  <body>
+    ↑
+  document
+\`\`\`
+
+- \`addEventListener(type, fn, { capture: true })\` 或第三参 \`true\`：监听器在**捕获**阶段触发。
+- 默认 \`false\`：监听器在**冒泡**阶段触发（委托用的就是这个）。
+- \`e.eventPhase\` 返回当前阶段（1=捕获 2=目标 3=冒泡）。
+
+**阻止传播**：
+- \`e.stopPropagation()\`：阻止继续往下一节点传播（捕获/冒泡都停）。
+- \`e.stopImmediatePropagation()\`：同元素上后面绑定的监听器也不执行了。
+- ⚠️ 委托时子元素不能随便 stopPropagation，否则委托收不到。
+
+## closest 的正确用法 vs e.target.matches
+
+\`\`\`js
+// ❌ 错误写法：e.target 直接 matches
+ul.addEventListener('click', e => {
+  if (e.target.matches('li')) handleLi(e.target)    // 点到 li 内部的 <a> 就不命中
+})
+
+// ✅ 推荐：向上找最近的匹配祖先
+ul.addEventListener('click', e => {
+  const li = e.target.closest('li')
+  if (li && ul.contains(li)) handleLi(li)           // 保证点到 ul 外部的 closest 不会误伤
+})
+\`\`\`
+
+closest 找的是"元素自身或其祖先中第一个匹配选择器的"，正好处理目标元素是委托元素的内部节点这一常见情形。
+
+## 为什么要用委托：三大优势
+
+### 1. 内存 & 初始化开销大幅降低
+
+1000 个列表项：绑 1000 个函数 vs 绑 1 个函数，GC 压力、函数对象创建、DOM 引用都更少。
+
+### 2. 动态新增元素自动"带监听"
+
+DOM 变动（新增、替换）后不需要 re-bind：
+
+\`\`\`js
+const ul = document.getElementById('list')
+ul.addEventListener('click', e => {
+  const li = e.target.closest('li')
+  if (li) alert('点了:' + li.textContent)
+})
+
+// 后续动态加 li，直接可用，不用再 addEventListener
+ul.insertAdjacentHTML('beforeend', '<li>新项</li>')
+\`\`\`
+
+### 3. 代码组织集中
+
+一组同类逻辑集中到父级，避免散落在创建元素的每个角落。
+
+## 事件委托的性能边界 & 反模式
+
+### ❌ 反模式 1：任何东西都委托到 document / body 上
+
+\`\`\`js
+// 超大型 SPA 常见坑
+document.addEventListener('click', e => {
+  if (e.target.matches('.a')) handleA(e.target)
+  else if (e.target.matches('.b')) handleB(e.target)
+  // ... 50+ 个 else if
+})
+\`\`\`
+
+问题：
+- **每一次点击都要跑 50+ 分支判断**，热门交互（点击、mousemove）积少成多卡顿。
+- **中间任何祖先 stopPropagation() 就让委托失效**，排查极难。
+- **错误栈深、调试难**：一个监听出问题，影响全局。
+
+**替代**：按模块/区块委托到最近的合理祖先（一个组件根元素），不要"全球一个"。
+
+### ❌ 反模式 2：高频事件委托到上层
+
+mousemove、scroll、resize、pointermove 这类高频事件，委托意味着：
+- 事件必须一路冒泡到祖先，每层的监听器都要跑（包括浏览器默认的）。
+- 祖先判断 target 的逻辑还要跑。
+- 本来可以在子元素层 stopPropagation 阻断的，现在全部涌入。
+
+建议：高频事件**就近绑定**或使用 CSS（如 pointer-events、:hover）减少 JS 依赖。
+
+### ❌ 反模式 3：委托时判断逻辑很重
+
+\`\`\`js
+parent.addEventListener('click', e => {
+  if (longChainOfChecks(e.target)) { /* ... */ }   // 长耗时判断
+})
+\`\`\`
+
+委托把"绑定时的成本"换成了"每次触发时的成本"。如果每次触发判断很复杂，还不如直接绑在目标上。
+
+### ✅ 委托适用场景的边界
+
+| 适合委托 | 不适合委托 |
+| --- | --- |
+| 列表/表格/卡片的"同类点击、展开、选择" | mousemove、scroll、pointermove 等高频事件 |
+| 生命周期短、动态增删频繁的元素（分页加载列表） | 只需一次绑定的少量静态按钮 |
+| 语义一致的"批量交互"（菜单、折叠项） | 需要 stopPropagation 阻断冒泡的组件 |
+| 跨组件可复用的语义事件（如 data-action） | 复杂拖拽、手势识别（必须本地绑定大量状态） |
+
+## 实战设计：通用可复用委托模式
+
+用 data-action 属性做"语义路由"：
+
+\`\`\`html
+<div id="app">
+  <button data-action="save">保存</button>
+  <button data-action="delete" data-id="123">删除</button>
+  <a href="#" data-action="share" data-target="wechat">分享</a>
+</div>
+\`\`\`
+
+\`\`\`js
+const actions = {
+  save(el, dataset) { /* 保存 */ },
+  delete(el, { id }) { /* 删除 id */ },
+  share(el, { target }) { /* 分享到 target */ },
+}
+
+document.getElementById('app').addEventListener('click', e => {
+  const trigger = e.target.closest('[data-action]')
+  if (!trigger) return
+  e.preventDefault()
+  const { action, ...params } = trigger.dataset
+  actions[action]?.(trigger, params)
+})
+\`\`\`
+
+好处：
+- 新增按钮只需加 data-action，不用改 JS。
+- action 映射集中，测试/换行为都简单。
+- 这是 jQuery 时代的最佳实践，到今天依然有效。
+
+## stopPropagation 对委托的破坏力与规避
+
+\`\`\`js
+// A 组件在自己的按钮上：
+btn.addEventListener('click', e => {
+  // 业务代码……
+  e.stopPropagation()      // 为了防止外层某个老组件的监听
+})
+
+// B 组件在外层 UL 上委托：
+ul.addEventListener('click', e => {
+  const li = e.target.closest('li')
+  // 永远不会触发！因为 btn 里 stopPropagation 了，冒泡到不了 ul
+})
+\`\`\`
+
+规避方式：
+1. **尽量不用 stopPropagation**：除非确定要阻止默认行为且必须阻断外层。
+2. **改用 \`e.defaultPrevented\` 协议**：内层 \`e.preventDefault()\`，外层判断 \`if (e.defaultPrevented) return\`，语义化的"已处理"标记。
+3. **用捕获阶段监听**：委托绑 capture:true，捕获阶段先于冒泡 stopPropagation 触发（更 hack，谨慎）。
+
+## 自定义事件 + 委托的组合拳
+
+\`\`\`js
+// 子组件派发自定义事件
+function emit(parent, type, detail = {}) {
+  parent.dispatchEvent(new CustomEvent(type, {
+    bubbles: true,          // 必须 bubbles:true，才能被父级委托捕获
+    composed: true,         // 允许穿过 Shadow DOM 边界
+    detail,
+  }))
+}
+
+// 父级委托监听
+container.addEventListener('item:changed', e => {
+  console.log('谁变了？', e.detail.id)
+})
+\`\`\`
+
+这是组件间解耦通信的最佳轻量方案之一，"谁触发谁不知道谁在监听"，完美契合委托思想。
+
+## 性能优化小技巧
+
+1. **节流/防抖**：委托在 scroll、input 等事件上仍需配合 lodash.throttle。
+2. **单次绑定选项**：\`{ once: true }\` 触发一次自动移除（委托时可能用不上，但知道是特性）。
+3. **passive 选项**：\`{ passive: true }\` 告诉浏览器 preventDefault 不会被调用，滚动更流畅（尤其 touchmove）。
+4. **closest + contains 双保险**：避免点击发生在委托容器外，但 closest 匹配到（罕见但可能）。
+5. **dataset 选择器匹配优于 className**：\`[data-action]\` 比 \`.btn-item\` 更稳定，样式改动不会影响 JS 逻辑。
+
+## 面试官追问"手写事件委托"怎么答
+
+写一个 \`delegate(parent, selector, type, handler)\` 工具：
+
+\`\`\`js
+function delegate(parent, selector, type, handler) {
+  const wrapper = function (e) {
+    const target = e.target.closest(selector)
+    if (target && parent.contains(target)) {
+      // 把真实的目标元素作为 this 和第二参传进去
+      handler.call(target, e, target)
+    }
+  }
+  parent.addEventListener(type, wrapper)
+  // 返回解绑函数（闭包记住 wrapper，否则没法 off）
+  return () => parent.removeEventListener(type, wrapper)
+}
+
+// 使用
+const undelegate = delegate(ul, 'li', 'click', (e, li) => {
+  console.log(li.textContent)
+})
+// 以后 undelegate() 可解绑
+\`\`\`
+
+要点：
+- **返回解绑函数**（面试加分点，新手常漏）。
+- **closest + contains** 双重校验。
+- **this 还原成真实子元素**（让 handler 写起来和绑在子元素上一致）。
+
+## 总结
+
+- **事件委托的本质 = 冒泡 + target/closest 判断**，省内存、自动适配动态 DOM。
+- **target 是触发源，currentTarget 是监听器绑定者**，不要直接用 target.matches 做判断。
+- **委托有利有弊**：不要全部堆在 document，按功能模块就近委托；高频、重判断场景慎用。
+- **规避 stopPropagation 破坏**：改 defaultPrevented 协议或设计自定义事件；实在要用在委托之前先想好。
+- **通用委托模式**：data-action 路由 + CustomEvent 派发，代码组织清晰且易扩展。`
   }
 ]

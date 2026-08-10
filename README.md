@@ -2,7 +2,7 @@
 
 一个基于 **Vue 3 + Vite + Pinia + Vue Router** 的前端技术总结与面试题库项目，收录覆盖全面的前端面试题与**详尽答案解析**，支持分类浏览、全文搜索、难度筛选、收藏、深色模式，以及**代码块高亮 + 一键复制 / 在线运行**。
 
-> 📊 当前共 **14 个分类 · 426 道题** + 模拟考试 **89 道选择题**，持续扩充中。
+> 📊 当前共 **14 个分类 · 487 道题** + 模拟考试 **120 道选择题**，持续扩充中。
 
 ---
 
@@ -17,7 +17,7 @@
 - 📱 **响应式布局**：桌面与移动端均适配。
 - 🔗 **上下题导航 + 关联推荐**，便于连贯学习。
 - 📝 **Markdown 富文本渲染**：答案支持代码块、表格、引用、列表等。
-- 📝 **模拟考试**：从选择题题库随机抽取 30 题，交卷即时出分，附错题解析与正确答案对照。
+- 📝 **模拟考试（进阶）**：从 120 道选择题题库**按分类权重 + 难度比例**抽取 30 题，支持「简单/均衡/困难」三档模式、可选指定分类，交卷即时出分，附**分类 + 难度分布统计**、错题解析与正确答案对照。
 
 ### 代码区增强（✨ v2）
 答案中所有代码块自带工具栏，支持：
@@ -31,37 +31,42 @@
 
 ---
 
-## 🗂️ 题库覆盖（426 题）
+## 🗂️ 题库覆盖（487 题）
 
 | 分类 | 数量 | 核心主题 |
 | --- | ---: | --- |
-| 🟧 HTML | 44 | DOM、语义化、SEO、meta、表单、ARIA、响应式图片、Web Components |
-| 🎨 CSS | 36 | 盒模型、BFC、Flex/Grid、动画、响应式、CSS 变量、伪类/伪元素、清除浮动、隐藏元素、逻辑属性、@layer、@property、clip-path/mask |
-| 🟨 JavaScript | 58 | 数据类型、闭包、原型链、this、事件循环、Promise、ES6+、模块化、防抖节流、FP、GC、正则 |
+| 🟧 HTML | 50 | DOM、语义化、SEO、meta、表单、ARIA、响应式图片、Web Components、CSP/SRI、fetchpriority |
+| 🎨 CSS | 44 | 盒模型、BFC、Flex/Grid、动画、响应式、CSS 变量、伪类/伪元素、清除浮动、隐藏元素、逻辑属性、@layer、@property、:has/@scope/@container、滚动捕捉、堆叠上下文、遮罩混合模式 |
+| 🟨 JavaScript | 68 | 数据类型、闭包、原型链、this、事件循环、Promise、ES6+、模块化、防抖节流、FP、GC、正则、ES2021+、BigInt、Intl、迭代器生成器、Proxy/Reflect、结构化克隆、事件委托 |
 | 🔷 TypeScript | 26 | 类型系统、接口、泛型、类型守卫、条件类型、infer、工具类型、映射类型、模板字面量类型 |
-| 🟢 Vue 3 | 66 | 响应式原理、组合式 API、Pinia、Router、编译优化、Composables、编译器、SSR、diff、调度器 |
-| 🟦 React | 58 | Hooks、Fiber、状态管理、性能优化、React 18/19、并发渲染、Suspense、Server Components |
-| 🧭 浏览器原理 | 16 | 渲染流水线、事件循环、存储、同源策略、跨域 |
-| 🌐 计算机网络 | 16 | HTTP/HTTPS、缓存、TCP、CORS、状态码、HTTP/2/3 |
-| ⚡ 性能优化 | 15 | Core Web Vitals、懒加载、防抖节流、构建优化、监控 |
-| 🏗️ 工程化 | 15 | 模块系统、Webpack/Vite、CI/CD、Monorepo、代码规范 |
+| 🟢 Vue 3 | 74 | 响应式原理、组合式 API、Pinia、Router、编译优化、Composables、编译器、SSR、diff、调度器、defineModel、自定义渲染器、自定义指令、VueUse、SFC 编译 |
+| 🟦 React | 66 | Hooks、Fiber、状态管理、性能优化、React 18/19、并发渲染、Suspense、Server Components、useTransition、React Compiler、Custom Hook 模式、Zustand/Jotai |
+| 🧭 浏览器原理 | 23 | 渲染流水线、事件循环、存储、同源策略、跨域、WebAssembly、Service Worker、Cookie SameSite、XSS/CSRF 进阶、浏览器指纹、COOP/COEP、BFCache、Observer 系列 |
+| 🌐 计算机网络 | 23 | HTTP/HTTPS、缓存、TCP、CORS、状态码、HTTP/2/3、QUIC、TLS 1.3、OAuth2/OIDC、WebSocket、证书链+HSTS、gRPC/Protobuf、CDN、DNS |
+| ⚡ 性能优化 | 22 | Core Web Vitals、懒加载、防抖节流、构建优化、监控、长任务、Web Worker 优化、内存泄漏、INP、骨架屏、图片优化进阶（AVIF）、打包体积优化 |
+| 🏗️ 工程化 | 22 | 模块系统、Webpack/Vite、CI/CD、Monorepo、代码规范、Vite vs Webpack 原理、ESBuild/Rolldown、微前端方案、PWA、错误监控与性能埋点、灰度发布与 A/B 测试 |
 | 🧮 数据结构与算法 | 15 | 排序、二分、栈队列、链表、二叉树、动态规划、贪心 |
 | ✍️ 手写代码 | 16 | 防抖节流、深拷贝、Promise、call/apply/bind、发布订阅 |
 | 🤖 AI 编程 | 24 | AI 辅助编程、Agent、RAG、提示工程、MCP 协议、Vibe Coding |
-| 🗺️ GIS 地理信息 | 21 | GeoJSON、坐标系纠偏、瓦片、Turf.js、OpenLayers、Mapbox/MapLibre、Leaflet、Cesium、Three.js、Deck.gl（分类页按框架分组） |
+| 🗺️ GIS 地理信息 | 41 | GeoJSON、坐标系纠偏、瓦片、Turf.js、OpenLayers、Mapbox/MapLibre、Leaflet、Cesium、Three.js、Deck.gl（分类页按框架分组） |
 
-### 📝 模拟考试题库（89 道选择题）
+### 📝 模拟考试题库（120 道选择题 · 全部带难度分级）
 
-独立的单选题库（结构与 Q&A 不同：`question / options / answer / analysis`），覆盖 10 个分类，一次考试随机抽取 30 题：
+独立的单选题库（结构：`category / difficulty / question / options / answer / analysis`），覆盖 10 个核心分类，每次从 120 道中**按预设权重 + 难度比例**抽取 30 题：
 
 | 分类 | 数量 | 分类 | 数量 |
 | --- | ---: | --- | ---: |
-| JavaScript | 15 | 浏览器原理 | 6 |
-| CSS | 13 | 计算机网络 | 6 |
-| Vue | 11 | 性能优化 | 6 |
-| HTML | 9 | 工程化 | 5 |
-| React | 9 | | |
-| TypeScript | 9 | | |
+| JavaScript | 19 | 浏览器原理 | 9 |
+| CSS | 17 | 计算机网络 | 9 |
+| Vue | 14 | 性能优化 | 9 |
+| HTML | 12 | 工程化 | 8 |
+| React | 12 | | |
+| TypeScript | 11 | | |
+
+**考试进阶配置：**
+- 🎚️ **难度模式**：简单（60/30/10）、均衡（30/50/20，默认）、困难（10/40/50）
+- 🗂️ **分类选择**：可选 1 个或多个分类重点练习（权重自动归一化）
+- 📊 **分布统计**：结果页展示「分类分布」+「难度分布」条形图，直观了解知识结构
 
 ---
 
@@ -151,14 +156,34 @@ npm run preview
 │       ├── browser.js · network.js · performance.js
 │       ├── engineering.js · algorithm.js · handwriting.js
 │       ├── aicode.js           # AI 编程分类
-│       ├── exam.js             # 模拟考试选择题题库（独立结构，89 题）
+│       ├── exam.js             # 模拟考试选择题题库（独立结构，120 题，全部带 difficulty 难度字段）
 │       └── gis.js              # GIS 地理信息分类
+├── screenshots/                # 🖼️ 系统运行截图位置（用户可手动存放展示图）
+│   ├── home.png                #   首页概览（分类卡片 + 搜索 + 题量统计）
+│   ├── question-detail.png     #   题目详情页（答案解析 + 代码块复制/运行）
+│   ├── exam-config.png         #   模拟考试开始页（难度模式 + 分类选择）
+│   ├── exam-taking.png         #   答题页（题目 + 选项 + 题号导航）
+│   └── exam-result.png         #   结果页（分数 + 分布统计 + 错题解析）
 ├── index.html
 ├── vite.config.js
 ├── jsconfig.json
 ├── package.json
 └── README.md
 ```
+
+### 🖼️ 系统运行截图说明
+
+项目中预留了 **`screenshots/`** 目录用于存放系统运行时的界面截图，便于在 README 或分享文档中直接引用展示：
+
+| 截图文件 | 说明 | 采集建议 |
+| --- | --- | --- |
+| `screenshots/home.png` | 首页概览：展示分类卡片、搜索框、总题量统计、深色模式切换等 | 顶部导航完整显示 + 至少 3 行分类卡片 |
+| `screenshots/question-detail.png` | 题目详情页：题目标题、难度 badge、Markdown 答案、代码块高亮 + 复制/运行按钮 | 展示 1-2 个代码块效果 |
+| `screenshots/exam-config.png` | 模拟考试开始页：三种难度模式卡片、10 个分类 chip 选择、规则说明 | 「均衡模式」高亮状态 |
+| `screenshots/exam-taking.png` | 答题页：进度条、分类 + 难度 badge、选项 A/B/C/D、底部题号导航 | 第 5-10 题左右的答题中间状态 |
+| `screenshots/exam-result.png` | 结果页：分数圆环、对/错/未答统计、分类/难度分布条形图、1-2 道错题解析 | 分数 70-85 分（含错题解析）最佳 |
+
+> 💡 截图建议尺寸：宽度 1400px 左右、保留顶部标题栏、配合浅色主题；如需 README 内联引用，可在下方 Markdown 表格中通过 `![首页](./screenshots/home.png)` 插入。
 
 ---
 

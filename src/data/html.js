@@ -2745,5 +2745,1548 @@ window.addEventListener('load', () => {
    }
    \`\`\`
 5. **\`unload\`/\`beforeunload\`** 是页面卸载事件，与加载无关；现代浏览器对它们降权（移动端常不触发），埋点改用 \`pagehide\` + \`sendBeacon\`。`
+  },
+  {
+    id: 'html-045',
+    category: 'html',
+    title: 'Web Components 详解：Custom Elements 与 Shadow DOM 的原理与实践？',
+    difficulty: '困难',
+    tags: ['Web Components', 'Custom Elements', 'Shadow DOM', '组件化'],
+    answer: `## Web Components 是什么
+
+Web Components 是浏览器**原生支持的组件化规范**，无需框架即可封装可复用的 UI 组件，由三大技术组成：
+
+1. **Custom Elements**：自定义 HTML 标签。
+2. **Shadow DOM**：封装组件内部 DOM 与样式，隔离外部影响。
+3. **HTML Templates**：用 \`<template>\` / \`<slot>\` 声明可复用模板。
+
+---
+
+## 一、Custom Elements（自定义元素）
+
+### 两种类型
+
+1. **Autonomous Custom Elements**（独立自定义元素）：继承 \`HTMLElement\`，完全自定义标签。
+2. **Customized Built-in Elements**（扩展内置元素）：继承 \`HTMLButtonElement\` 等，扩展原生标签行为（Safari 不支持）。
+
+### 基本用法
+
+\`\`\`js
+class MyButton extends HTMLElement {
+  constructor() {
+    super()
+    this.attachShadow({ mode: 'open' })
+  }
+
+  // 元素被挂载到 DOM
+  connectedCallback() {
+    this.shadowRoot.innerHTML = \`
+      <style>button { background: #42b883; color: #fff; padding: 8px 16px; border: none; border-radius: 4px; }</style>
+      <button><slot></slot></button>
+    \`
+  }
+
+  // 元素被移除
+  disconnectedCallback() { /* 清理订阅 */ }
+
+  // 元素被移动到新 document
+  adoptedCallback() {}
+
+  // 监听的属性变化
+  static get observedAttributes() { return ['type'] }
+  attributeChangedCallback(name, oldVal, newVal) {
+    console.log(\`\${name}: \${oldVal} -> \${newVal}\`)
+  }
+}
+
+customElements.define('my-button', MyButton)
+\`\`\`
+
+\`\`\`html
+<my-button type="primary">提交</my-button>
+\`\`\`
+
+### 生命周期
+
+| 钩子 | 触发时机 |
+| --- | --- |
+| \`constructor\` | 元素实例创建时（还未挂载，不能访问属性/子元素） |
+| \`connectedCallback\` | 首次挂载到 DOM（可安全操作 DOM、绑定事件） |
+| \`disconnectedCallback\` | 从 DOM 移除（清理定时器、订阅） |
+| \`adoptedCallback\` | \`document.adoptNode()\` 移入另一个文档 |
+| \`attributeChangedCallback\` | \`observedAttributes\` 列表中的属性变化 |
+
+### 命名规则
+
+- 必须包含**连字符** \`-\`（避免与原生标签冲突）：\`<my-card>\` ✅ / \`<card>\` ❌。
+- 不能重复注册，重复定义抛 \`NotSupportedError\`。
+- 用 \`customElements.whenDefined('my-button').then(() => {})\` 等待元素注册完成。
+
+---
+
+## 二、Shadow DOM（影子 DOM）
+
+Shadow DOM 将组件的内部 DOM 树与外部文档**隔离**，实现样式和 DOM 的封装，解决：
+
+1. **样式冲突**：外部 CSS 不影响 Shadow 内部，内部样式也不泄漏。
+2. **DOM 封装**：\`document.querySelector\` 无法直接选中 Shadow 内元素。
+3. **ID 不冲突**：内部 ID 可重复。
+
+### 模式（mode）
+
+\`\`\`js
+const shadow = el.attachShadow({ mode: 'open' })
+// open:  外部可通过 el.shadowRoot 访问（推荐用于可交互组件）
+// closed: 外部无法访问，只能在组件内部操作（极少见场景）
+\`\`\`
+
+### 样式隔离
+
+\`\`\`html
+<my-card></my-card>
+
+<script>
+class MyCard extends HTMLElement {
+  constructor() {
+    super()
+    const shadow = this.attachShadow({ mode: 'open' })
+    shadow.innerHTML = \`
+      <style>
+        :host { display: block; border: 1px solid #ddd; padding: 16px; border-radius: 8px; }
+        :host([theme="dark"]) { background: #333; color: #fff; }
+        ::slotted(h2) { margin-top: 0; } /* 选中 slot 分发的 h2 */
+        .title { color: #42b883; }
+      </style>
+      <h2 class="title"><slot name="title">默认标题</slot></h2>
+      <slot></slot>
+    \`
+  }
+}
+customElements.define('my-card', MyCard)
+</script>
+
+<!-- 使用 -->
+<style>
+  .title { color: red; } /* ❌ 不生效，被 Shadow 隔离 */
+</style>
+<my-card theme="dark">
+  <span slot="title">自定义标题</span>
+  <p>正文内容</p>
+</my-card>
+\`\`\`
+
+### 关键 CSS 伪类/伪元素
+
+| 选择器 | 作用 |
+| --- | --- |
+| \`:host\` | 选中 Shadow 的宿主元素（即自定义元素本身） |
+| \`:host(selector)\` | 宿主元素匹配 selector 时生效 |
+| \`:host-context(selector)\` | 宿主祖先匹配 selector 时生效（如暗黑模式） |
+| \`::slotted(selector)\` | 选中通过 slot 分发进来的外部元素 |
+
+### 事件穿透
+
+- Shadow 内触发的**冒泡事件**会"重定向 target"：外部监听器中 \`e.target\` 指向**宿主元素**而非内部子元素，避免内部结构泄漏。
+- 非冒泡事件（如 \`focus\`）不会逃逸出 Shadow。
+- 可用 \`composed: true\` 的自定义事件强制穿透：
+  \`\`\`js
+  this.dispatchEvent(new CustomEvent('change', { detail: data, bubbles: true, composed: true }))
+  \`\`\`
+
+---
+
+## 三、Template 与 Slot
+
+\`<template>\` 内容不会被渲染，实例化时克隆节点：
+
+\`\`\`html
+<template id="tpl">
+  <style>...</style>
+  <div class="card">
+    <slot name="header"></slot>
+    <slot></slot>
+  </div>
+</template>
+
+<script>
+class XCard extends HTMLElement {
+  constructor() {
+    super()
+    const tpl = document.getElementById('tpl').content.cloneNode(true)
+    this.attachShadow({ mode: 'open' }).appendChild(tpl)
+  }
+}
+</script>
+\`\`\`
+
+Slot 与 Web Components 的 slot 语义同 Vue/React，支持**具名插槽**与**默认插槽**。
+
+---
+
+## 四、与框架对比
+
+| 特性 | Web Components | React / Vue |
+| --- | --- | --- |
+| 原生支持 | ✅ 浏览器原生，零依赖 | ❌ 需要运行时 |
+| 样式隔离 | ✅ Shadow DOM 原生隔离 | CSS-in-JS / Scoped CSS |
+| 生态/工具链 | 弱 | 强（DevTools、测试、路由） |
+| 状态管理 | 手动实现（属性 + 事件） | 响应式 / Hooks |
+| SSR 支持 | 较麻烦（Declarative Shadow DOM） | 成熟 |
+| 跨框架复用 | ✅ 在任意框架中都能用 | ❌ 只在自家生态 |
+
+### 最佳适用场景
+
+- **设计系统 / UI 组件库**：一套组件在 React、Vue、Angular、原生项目中通用。
+- **微前端**：子应用独立发布组件，宿主框架无关。
+- **浏览器扩展**：Shadow DOM 隔离宿主页面样式污染。
+- **第三方嵌入组件**（如评论、聊天、播放器）：样式不受宿主影响。
+
+---
+
+## 五、Declarative Shadow DOM（DSD，SSR 方案）
+
+传统 Shadow DOM 只能在客户端 JS 里创建，SSR 会出现闪烁。DSD 允许直接在服务端 HTML 中声明 Shadow：
+
+\`\`\`html
+<my-card>
+  <template shadowrootmode="open">
+    <style>...</style>
+    <slot></slot>
+  </template>
+  <p>我是内容</p>
+</my-card>
+\`\`\`
+
+浏览器解析到 \`<template shadowrootmode>\` 会**自动 attachShadow**，无需 JS。Chrome 90+、Firefox 123+ 已支持。
+
+---
+
+## 六、注意事项与坑
+
+1. **属性 vs 数据**：Custom Elements 只能通过**字符串属性**传值，复杂数据（对象/数组）建议用 \`.property = obj\` 或 postMessage 式事件通信。
+2. **\`<img>\` / \`<link>\` 等外部资源路径**在 Shadow DOM 中是**相对于宿主文档 URL** 而非组件路径，资源需用绝对路径或 CSS \`url()\` 处理。
+3. **表单关联**：自定义表单控件需用 \`ElementInternals\` API 才能参与原生表单校验、\`formdata\` 事件、标签关联。
+4. **兼容性**：主流现代浏览器已全面支持（Chrome 67+、Safari 10.1+、Firefox 63+），旧项目可加 polyfill（@webcomponents/webcomponentsjs）。
+5. **不要 over-engineer**：业务级组件仍推荐框架（React/Vue）开发效率高；跨生态复用才选 Web Components。`
+  },
+  {
+    id: 'html-046',
+    category: 'html',
+    title: 'HTML 表单新特性有哪些？（formdata 事件、requestSubmit、ElementInternals、Popover 等）',
+    difficulty: '中等',
+    tags: ['表单新特性', 'formdata', 'requestSubmit', 'ElementInternals', 'Popover'],
+    answer: `## 近年 HTML 表单/交互相关的原生新特性大盘点
+
+现代浏览器持续强化 HTML 原生能力，很多过去需要库的功能现在可以直接用。
+
+---
+
+## 1. formdata 事件（拦截表单数据）
+
+\`<form>\` 在构造 FormData 准备提交时会触发 \`formdata\` 事件，可以**修改/追加字段**，无需再拦截 submit 手动 new FormData。
+
+\`\`\`html
+<form id="f">
+  <input name="name" value="Tom">
+  <button>提交</button>
+</form>
+
+<script>
+const form = document.getElementById('f')
+form.addEventListener('formdata', (e) => {
+  const fd = e.formData
+  fd.append('csrf', getToken())   // 追加隐藏字段
+  fd.set('name', fd.get('name').trim())  // 修改已有字段
+})
+</script>
+\`\`\`
+
+触发时机：\`form.submit()\`、\`form.requestSubmit()\`、点击 \`<button type="submit">\` **之前**。
+
+---
+
+## 2. form.requestSubmit() vs form.submit()
+
+| 方法 | 触发 submit 事件 | 触发表单校验 | 要求 submit 按钮可交互 |
+| --- | --- | --- | --- |
+| \`.submit()\` | ❌ 不触发 | ❌ 不校验 | — |
+| \`.requestSubmit(submitter?)\` | ✅ 触发 | ✅ 正常校验 | ✅ 若 submitter 被禁用会失败 |
+
+\`requestSubmit(submitter)\` 允许指定**以哪个按钮的名义提交**（按钮的 \`formaction\` / \`formmethod\` 等覆盖生效）：
+
+\`\`\`js
+const btn = form.querySelector('button[formaction="/draft"]')
+form.requestSubmit(btn)  // 走 /draft 而不是 form.action
+\`\`\`
+
+> 过去用 \`form.submit()\` 会跳过验证与事件，是 XSS/绕过校验的常见入口；新代码统一用 \`requestSubmit()\`。
+
+---
+
+## 3. ElementInternals（自定义表单元素）
+
+让自定义元素（Custom Elements）成为**合格的表单控件**，参与原生表单校验、提交、标签关联，不再只能 div+input 模拟。
+
+\`\`\`js
+class MySwitch extends HTMLElement {
+  static formAssociated = true  // ✅ 声明为"表单关联自定义元素"
+  #internals
+
+  constructor() {
+    super()
+    this.#internals = this.attachInternals()  // 获取 ElementInternals
+    this._value = 'off'
+  }
+
+  connectedCallback() {
+    this.innerHTML = \`<button type="button" role="switch" aria-checked="false">OFF</button>\`
+    this.querySelector('button').onclick = () => this.toggle()
+  }
+
+  toggle() {
+    this._value = this._value === 'on' ? 'off' : 'on'
+    this.#internals.setFormValue(this._value)  // 写入表单值
+    const on = this._value === 'on'
+    this.querySelector('button').setAttribute('aria-checked', on)
+    this.querySelector('button').textContent = on ? 'ON' : 'OFF'
+    this.#internals.setValidity({})  // 校验状态，可传 ValidityState
+    this.#internals.reportValidity()
+  }
+
+  // 表单重置时调用
+  formResetCallback() { this._value = 'off'; /* 重置 UI */ }
+
+  // 所在 <form> 的 id/form 属性变化时
+  formAssociatedCallback(form) {}
+  formDisabledCallback(disabled) {}
+  formStateRestoreCallback(state, reason) {}
+}
+customElements.define('my-switch', MySwitch)
+\`\`\`
+
+使用方式与原生 input 完全一致：
+
+\`\`\`html
+<form>
+  <label for="sw">启用</label>
+  <my-switch id="sw" name="enabled"></my-switch>
+  <button>提交</button>
+</form>
+\`\`\`
+
+提交时表单里会带 \`enabled=on/off\`，且支持 \`form.elements.namedItem('enabled')\` 访问。
+
+---
+
+## 4. Popover API（原生弹出层）
+
+实验但已在 Chrome 114+ / Safari 17+ 落地，**零 JS 做 tooltip、菜单、弹窗**（非模态）：
+
+\`\`\`html
+<button popovertarget="menu">菜单</button>
+<div id="menu" popover>
+  <ul>
+    <li>新建</li>
+    <li>打开</li>
+    <li><button popovertarget="menu" popovertargetaction="hide">关闭</button></li>
+  </ul>
+</div>
+\`\`\`
+
+### 属性/行为
+
+- \`popover="auto"\`（默认）：点击外部 / Esc 自动关闭；一次只开一个。
+- \`popover="manual"\`：需手动关闭，不抢焦点。
+- \`popovertargetaction="show | hide | toggle"\`：按钮触发动作。
+- 支持 \`:popover-open\` CSS 伪类自定义样式。
+- JS 控制：\`el.showPopover()\` / \`el.hidePopover()\` / \`el.togglePopover()\`。
+- 事件：\`beforetoggle\`、\`toggle\`。
+
+与 \`<dialog>\` 的区别：
+| | Popover | Dialog |
+| --- | --- | --- |
+| 类型 | 非模态浮动层（Tooltip / Menu） | 模态/非模态对话框 |
+| 焦点陷阱 | ❌ 不抢焦点 | ✅ \`showModal()\` 有焦点陷阱 |
+| 遮罩 | ❌ 无 ::backdrop | ✅ 有 ::backdrop |
+| 顶层渲染 | ✅ top layer | ✅ top layer |
+
+---
+
+## 5. Invokers（调用者协议）
+
+更通用的"按钮→目标"调用协议（Chrome 129+），取代零散的 \`popovertarget\` / \`showModal()\`：
+
+\`\`\`html
+<button invoketarget="dlg" invokeaction="showModal">打开对话框</button>
+<dialog id="dlg">内容</dialog>
+\`\`\`
+
+支持的 invokeaction：\`showPopover\` / \`hidePopover\` / \`togglePopover\` / \`showModal\` / \`close\`。
+
+JS 监听 \`invoke\` 事件自定义行为：
+
+\`\`\`js
+el.addEventListener('invoke', (e) => {
+  if (e.action === 'custom-action') doSomething()
+})
+\`\`\`
+
+---
+
+## 6. 输入类型增强
+
+### inputmode（只影响移动端键盘，不校验）
+
+比 \`type="number"\` 更灵活——想保留文本框但弹数字键盘：
+
+\`\`\`html
+<input inputmode="numeric">       <!-- 数字键盘 -->
+<input inputmode="decimal">       <!-- 数字+小数点 -->
+<input inputmode="tel">           <!-- 电话键盘 -->
+<input inputmode="email">         <!-- 邮箱键盘 -->
+<input inputmode="url">           <!-- 带斜杠的键盘 -->
+<input inputmode="search">        <!-- 带搜索键 -->
+\`\`\`
+
+### Enterkeyhint（软键盘"回车"按钮文案）
+
+\`\`\`html
+<input enterkeyhint="search">     <!-- iOS 右下显示"搜索" -->
+<input enterkeyhint="send">       <!-- "发送" -->
+<input enterkeyhint="next">       <!-- "下一项" -->
+<input enterkeyhint="done">       <!-- "完成" -->
+\`\`\`
+
+---
+
+## 7. 校验新能力
+
+### reportValidity() / checkValidity()
+
+不仅 input，整个 form 也能手动触发校验：
+
+\`\`\`js
+form.reportValidity()  // 校验并显示浏览器原生气泡提示
+form.checkValidity()   // 只返回布尔，不显示 UI
+\`\`\`
+
+### :user-invalid 伪类（用户交互后才报错的样式）
+
+过去 \`:invalid\` 页面一加载就显示红框，体验差。\`:user-invalid\` 只在**用户已修改过且校验未通过**时生效：
+
+\`\`\`css
+input:user-invalid { border-color: red; }
+\`\`\`
+
+配套 \`:user-valid\`、\`:valid\`、\`:invalid\`、\`:required\`、\`:optional\`，组合可覆盖大部分表单样式需求。
+
+---
+
+## 8. <selectmenu> / <combobox>（完全可定制的下拉）
+
+原生 \`<select>\` 样式定制受限，\`<selectmenu>\`（Chrome 126+ 实验）允许替换按钮、下拉列表、选项的每一部位：
+
+\`\`\`html
+<selectmenu>
+  <button slot="button" behavior="button">
+    <selectedoption></selectedoption>
+    <span>▼</span>
+  </button>
+  <listbox slot="listbox" class="my-listbox">
+    <option>北京</option>
+    <option>上海</option>
+    <option>广州</option>
+  </listbox>
+</selectmenu>
+\`\`\`
+
+---
+
+## 9. Inert 属性（整棵子树不可交互）
+
+标记某个 DOM 子树为"惰性"：内容不可点击、不可聚焦、不可被辅助技术访问，常用于打开弹窗时冻结背景页面：
+
+\`\`\`js
+document.getElementById('app').inert = true  // 背景全冻结
+dialog.showModal()
+\`\`\`
+
+比手动遍历 aria-hidden + pointer-events 更彻底（也会禁用 Tab 键聚焦子元素）。
+
+---
+
+## 10. View Transitions API（页面/路由过渡动画）
+
+原生提供"截图 → 做动画 → 切新内容"的页面切换过渡，甚至跨文档：
+
+\`\`\`js
+// SPA 切换路由
+document.startViewTransition(() => {
+  renderNewRoute()
+})
+\`\`\`
+
+\`\`\`css
+::view-transition-old(root) { animation: fade-out .3s; }
+::view-transition-new(root) { animation: fade-in .3s; }
+\`\`\`
+
+---
+
+## 小结
+
+原生 HTML 在"少 JS 甚至零 JS 实现交互"上进步飞快：
+
+| 场景 | 建议替代方案 | 旧方案 |
+| --- | --- | --- |
+| 下拉菜单 / Tooltip | Popover API | JS + z-index |
+| 对话框 | \<dialog> + showModal | 模态组件库 |
+| 自定义表单控件 | ElementInternals | 模拟 + 手动同步 |
+| 拦截表单数据 | formdata 事件 | submit + new FormData |
+| 冻结背景交互 | inert 属性 | aria-hidden + 样式 |
+| 移动端键盘 | inputmode / enterkeyhint | type="number" 各种坑 |
+
+用原生的好处：**无障碍默认友好、代码少、体积小、性能好、不被升级破坏**。`
+  },
+  {
+    id: 'html-047',
+    category: 'html',
+    title: 'Web 安全：CSP（内容安全策略）与 SRI（子资源完整性）如何配置？',
+    difficulty: '困难',
+    tags: ['安全', 'CSP', 'SRI', 'XSS'],
+    answer: `## 为什么需要 CSP 与 SRI
+
+XSS（跨站脚本）是 OWASP Top 10 常客，传统防御是输入转义 + HttpOnly Cookie，但仍难防：
+
+- 内联脚本被注入（\`<script>steal()</script>\`）。
+- 第三方 CDN 被劫持，加载恶意脚本。
+- 打包产物被篡改。
+
+**CSP（Content Security Policy）** 是浏览器层面的白名单机制，限制页面能加载哪些来源的脚本、样式、图片、接口等；**SRI（Subresource Integrity）** 则保证第三方资源内容与预期哈希一致，防 CDN 被篡改。两者常配合使用。
+
+---
+
+## 一、CSP（内容安全策略）
+
+### 启用方式二选一
+
+#### 方式 1：HTTP 响应头（推荐，更安全）
+
+\`\`\`
+Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.example.com
+\`\`\`
+
+#### 方式 2：HTML meta 标签
+
+\`\`\`html
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'">
+\`\`\`
+
+> ⚠️ meta 方式**不支持**：\`frame-ancestors\`、\`report-uri\`、\`sandbox\` 指令；也**不能覆盖**已在响应头设置的更严格规则。
+
+### 报告模式（仅监控不拦截）
+
+先用 \`Content-Security-Policy-Report-Only\` 观察日志，全绿后再切正式：
+
+\`\`\`
+Content-Security-Policy-Report-Only: default-src 'self'; report-uri /csp-report
+\`\`\`
+
+所有违约会 POST JSON 到 \`/csp-report\`，开发者借此迭代白名单。
+
+---
+
+### 核心指令（常用）
+
+CSP 指令按资源类型划分，一条策略里可以写多个指令，分号分隔。
+
+| 指令 | 作用 |
+| --- | --- |
+| \`default-src\` | 未显式指定指令的**默认兜底**（脚本/样式/图片/字体等） |
+| \`script-src\` | 脚本来源 |
+| \`style-src\` | 样式来源 |
+| \`img-src\` | 图片来源 |
+| \`font-src\` | 字体来源 |
+| \`connect-src\` | fetch / XHR / WebSocket / SSE 接口来源 |
+| \`media-src\` | video / audio 来源 |
+| \`frame-src\` / \`child-src\` | iframe 来源 |
+| \`worker-src\` | Web Worker / Service Worker |
+| \`object-src\` | \<object> / \<embed> / \<applet>（Flash 等），一般设为 \`'none'\` |
+| \`base-uri\` | 限制 \<base> 能指向的 URL |
+| \`form-action\` | 限制 \<form> 能提交到的 URL |
+| \`frame-ancestors\` | 限制哪些页面可把本站点嵌入 iframe（替代 X-Frame-Options） |
+| \`manifest-src\` | PWA manifest 来源 |
+| \`report-uri\` / \`report-to\` | 上报违规地址 |
+
+### 源值（来源格式）
+
+| 值 | 含义 |
+| --- | --- |
+| \`'self'\` | 同源（同协议/域名/端口） |
+| \`'none'\` | 完全禁止该类型资源 |
+| \`'unsafe-inline'\` | 允许内联脚本/样式（**不建议**，削弱 XSS 防护） |
+| \`'unsafe-eval'\` | 允许 \`eval()\` / \`new Function\`（**强烈不建议**） |
+| \`https://cdn.example.com\` | 允许该具体来源 |
+| \`https://*.example.com\` | 允许任意子域（通配） |
+| \`'nonce-xxxxxx'\` | 只允许携带对应 nonce 的内联脚本（更安全替代 unsafe-inline） |
+| \`'sha256-xxxxxx'\` | 只允许内容哈希匹配的内联脚本 |
+| \`data:\` | 允许 data: URL（内联 base64 图/字体） |
+| \`blob:\` | 允许 Blob URL |
+
+---
+
+### 最佳实践策略示例
+
+\`\`\`
+Content-Security-Policy:
+  default-src 'self';
+  script-src  'self' 'nonce-a8F3k2D' https://cdn.jsdelivr.net;
+  style-src   'self' 'unsafe-inline' https://cdn.jsdelivr.net;   # CSS 库常用注入样式
+  img-src     'self' data: https: blob:;                          # https: = 任意 HTTPS 图
+  font-src    'self' data: https://fonts.gstatic.com;
+  connect-src 'self' https://api.example.com;
+  object-src  'none';                                             # 禁 Flash 等
+  base-uri    'self';
+  form-action 'self';
+  frame-ancestors 'none';                                         # 禁止被嵌入 iframe，相当于 DENY
+  upgrade-insecure-requests;                                      # 自动把 http 升级成 https
+  report-uri    /csp-report;
+\`\`\`
+
+#### nonce 机制（替代 unsafe-inline）
+
+当业务**必须**有内联脚本（如 SSR 注入初始数据），不要用 \`'unsafe-inline'\`，改用 **nonce**：
+
+服务端每次请求生成**随机、一次性、不可预测**的 nonce 字符串：
+
+1. 塞进 CSP 响应头：\`script-src 'nonce-Xc2k9'\`
+2. 内联脚本加属性：\`<script nonce="Xc2k9">window.__DATA = {...}</script>\`
+
+哈希匹配同理（\`'sha256-...'\`），用于内联内容固定不变的场景。
+
+---
+
+### 常见踩坑
+
+1. **第三方分析/广告脚本**：Google Analytics、Sentry、热图等通常来自多域名，需仔细加白名单（建议看它们的 CSP 文档）。
+2. **打包工具 sourceMap**：inline-source-map 会把 map 塞进 data URL，正式环境禁用或加 \`'self'\` 允许。
+3. **SPA 外链跳转**：\`window.open('https://...')\` 不受 CSP 影响（那是跨文档跳转），但 fetch/XHR/iframe 受影响。
+4. **script 里动态创建 script**：动态脚本的 src 仍需在白名单里，且非同源不允许用 \`document.write('<script>...')\`。
+5. **\`'strict-dynamic'\`**：允许已被信任的脚本（nonce/hash 验证通过的）动态加载其他脚本，避免列出庞大的子依赖白名单。
+
+\`\`\`
+script-src 'nonce-abc' 'strict-dynamic';
+\`\`\`
+
+---
+
+## 二、SRI（Subresource Integrity，子资源完整性）
+
+用于**校验第三方 CDN 资源内容是否被篡改**，浏览器在下载脚本/样式后先做哈希比对，不一致就拒绝执行。
+
+### 基本用法
+
+\`\`\`html
+<link
+  rel="stylesheet"
+  href="https://cdn.example.com/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+  integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM"
+  crossorigin="anonymous">
+
+<script
+  src="https://cdn.example.com/vue@3.4.27/dist/vue.global.prod.js"
+  integrity="sha256-jE8w+L7i7A4a4jT1oAeQpK4P45yG271mJ9n6RqKvKzY="
+  crossorigin="anonymous"></script>
+\`\`\`
+
+### integrity 值的格式
+
+\`\`\`
+sha256-<base64编码的哈希值>
+sha384-<base64编码的哈希值>
+sha512-<base64编码的哈希值>
+\`\`\`
+
+推荐用 **SHA-384**（安全性/长度平衡），同时可以写多个用空格分隔以提供降级。
+
+### 生成 SRI 哈希
+
+#### 1. 命令行（openssl）
+
+\`\`\`bash
+cat vue.global.prod.js | openssl dgst -sha384 -binary | openssl base64 -A
+\`\`\`
+
+#### 2. 在线工具
+
+<https://www.srihash.org/> 直接输入资源 URL，生成带 integrity 的标签。
+
+#### 3. 打包插件
+
+- **Webpack / Vite**：\`webpack-subresource-integrity\` 自动为产物生成 SRI。
+- **Rollup**：\`rollup-plugin-sri\`。
+
+---
+
+### 为什么必须有 crossorigin 属性？
+
+SRI 需要读取资源的原始字节做哈希，但跨域脚本默认浏览器不暴露内容给 JS，因此需要：
+
+\`\`\`html
+<script src="跨域URL" integrity="..." crossorigin="anonymous"></script>
+\`\`\`
+
+- \`crossorigin="anonymous"\`：不带 Cookie/凭证发起 CORS 请求。
+- \`crossorigin="use-credentials"\`：带凭证（需要资源服务器 \`Access-Control-Allow-Credentials: true\`）。
+
+> 若缺少 \`crossorigin\`，即使写了 integrity，SRI 校验也会**直接跳过**不生效！
+
+### 降级与兜底（fallback）
+
+CDN 挂了或 SRI 校验失败怎么办？可以用 onerror 切自建源：
+
+\`\`\`html
+<script
+  src="https://cdn.example.com/vue@3.4.27/dist/vue.global.prod.js"
+  integrity="sha384-..."
+  crossorigin="anonymous"
+  onerror="this.onerror=null;this.src='/lib/vue.global.prod.js'"></script>
+\`\`\`
+
+---
+
+## 三、CSP + SRI 配合方案（生产推荐）
+
+\`\`\`
+# 响应头
+Content-Security-Policy:
+  default-src 'self';
+  script-src  'self' 'nonce-{RANDOM_NONCE}' https://cdn.example.com 'strict-dynamic';
+  style-src   'self' https://cdn.example.com 'unsafe-inline';
+  img-src     'self' data: https:;
+  connect-src 'self' https://api.example.com;
+  object-src  'none';
+  base-uri    'self';
+  frame-ancestors 'self';
+  upgrade-insecure-requests;
+  report-uri /csp-report;
+\`\`\`
+
+HTML 里引用 CDN 资源：
+
+\`\`\`html
+<script nonce="{RANDOM_NONCE}">
+  window.__INITIAL_STATE__ = {...};
+</script>
+
+<script
+  src="https://cdn.example.com/app.abc123.js"
+  integrity="sha384-xxxxxx"
+  crossorigin="anonymous"></script>
+\`\`\`
+
+### 层层防线总结
+
+| 层 | 手段 | 防什么 |
+| --- | --- | --- |
+| 1 | 输入转义 / 模板默认转义 | 基础 XSS |
+| 2 | CSP 白名单 + nonce | 即使注入了脚本，也因来源/nonce 不对无法执行 |
+| 3 | SRI 哈希校验 | CDN 脚本被篡改时拒绝执行 |
+| 4 | HttpOnly + Secure Cookie | XSS 后仍拿不到登录 Cookie |
+| 5 | Trusted Types（现代浏览器） | 字符串不能直接赋给 innerHTML，进一步减少注入面 |
+
+---
+
+## 四、额外相关：Trusted Types（实验）
+
+浏览器进一步把**可注入 HTML/脚本的"危险 sink"**（innerHTML、outerHTML、document.write、eval、setTimeout(string)、iframe srcdoc 等）保护起来：
+
+\`\`\`
+Content-Security-Policy: require-trusted-types-for 'script'; trusted-types myPolicy
+\`\`\`
+
+开启后直接写 \`el.innerHTML = userInput\` 会抛错，必须走自定义清洗策略：
+
+\`\`\`js
+const p = trustedTypes.createPolicy('myPolicy', {
+  createHTML: (s) => DOMPurify.sanitize(s)
+})
+el.innerHTML = p.createHTML(userInput)  // ✅ 合法
+\`\`\`
+
+---
+
+## 五、开发调试
+
+- Chrome DevTools → Console / Network 会用红色直接标 CSP/SRI 违规原因。
+- \`chrome://csp-internals\`（内部页面）查看当前页面解析后的 CSP 规则。
+- 先上 **Report-Only**，收集一两周日志把漏网的域名补齐，再切正式强制模式。
+- 正则、哈希、nonce 的正确格式建议用官方 W3C CSP 校验器或 Mozilla Observatory 在线打分。`
+  },
+  {
+    id: 'html-048',
+    category: 'html',
+    title: 'ARIA 无障碍进阶：role / aria-* / 键盘焦点管理与常见反模式？',
+    difficulty: '中等',
+    tags: ['ARIA', '无障碍', 'a11y', '键盘导航'],
+    answer: `## 再强调一次 ARIA 第一法则
+
+> **No ARIA is better than bad ARIA.**
+
+优先用**原生 HTML**。能用 \`<button>\` 就别写 \`<div role="button"> + tabindex + 键盘事件\`——后者需要手动补齐 10 多项原生默认行为，99% 的人写不全。
+
+---
+
+## 一、ARIA 三类属性再梳理
+
+### 1. role = "它是什么"
+
+告诉辅助技术这个元素是什么**角色**。
+
+#### 文档结构角色
+
+\`role="article"\`、\`role="complementary"\`、\`role="directory"\`、\`role="document"\`、\`role="feed"\`、\`role="figure"\`、\`role="group"\`、\`role="heading"\`、\`role="img"\`、\`role="list"\`、\`role="listitem"\`、\`role="math"\`、\`role="note"\`、\`role="presentation"\`、\`role="region"\`、\`role="row"\`、\`role="table"\`、\`role="term"\`、\`role="toolbar"\`。
+
+#### 组件角色（最常用，需配合键盘实现）
+
+| 组件 | 推荐 role 及子结构 |
+| --- | --- |
+| Tabs 标签页 | \`tablist\` > \`tab\` + \`tabpanel\`（aria-controls / aria-selected / aria-labelledby） |
+| 手风琴 | \`button aria-expanded + aria-controls\` + \`region\`（不是 role=accordion，原生无此 role） |
+| 对话框 | \`role="dialog" aria-modal="true"\` + aria-labelledby + 焦点陷阱 |
+| 菜单 | \`menubar / menu / menuitem\`（仅适用于"应用式菜单"，导航栏别用） |
+| 面包屑 | \`role="navigation" aria-label="面包屑"\` + \`aria-current="page"\` |
+| 状态徽章 | \`role="status"\`（自动播报）、\`role="alert"\`（中断式播报） |
+| 进度条 | \`role="progressbar" aria-valuenow aria-valuemin aria-valuemax\` |
+| 开关 | \`role="switch" aria-checked="true/false"\` |
+| 单选组 | \`role="radiogroup"\` + \`role="radio" aria-checked\` |
+
+### 2. aria-label / aria-labelledby / aria-describedby = "它的标签/描述"
+
+| 属性 | 用途 | 示例 |
+| --- | --- | --- |
+| \`aria-label\` | 直接给元素一个**字符串**标签（元素自身无可见文字，如图标按钮） | \`<button aria-label="关闭">×</button>\` |
+| \`aria-labelledby\` | 引用**其他元素的 ID**做标签（屏幕阅读器会读对应元素的文字） | \`<dialog aria-labelledby="dlg-title">\` + \`<h2 id="dlg-title">\` |
+| \`aria-describedby\` | 引用其他元素作为**补充描述**（读标签后再读描述） | 密码输入框下的"8-20 位，包含字母数字"说明 |
+
+\`\`\`html
+<!-- 关闭按钮：只有一个 ×，读屏用户不知道是什么 -->
+<button aria-label="关闭对话框" aria-describedby="close-desc">×</button>
+<span id="close-desc" hidden>关闭后未保存的更改将丢失</span>
+\`\`\`
+
+### 3. aria-* 状态 = "它现在怎么样"
+
+| 属性 | 作用域 | 说明 |
+| --- | --- | --- |
+| \`aria-expanded\` | 可展开控件 | true/false/undefined，菜单、手风琴、Details 切换 |
+| \`aria-current\` | 导航项 | \`page / step / location / date / time\`，指示当前位置（面包屑/步骤条） |
+| \`aria-hidden\` | 任意元素 | true 对辅助设备隐藏（**可见可聚焦元素绝不能加**） |
+| \`aria-disabled\` | 交互元素 | 逻辑禁用，可接收焦点（原生 disabled 更推荐，会彻底移除焦点） |
+| \`aria-selected\` | 选项卡/选项 | 当前被选中 |
+| \`aria-checked\` | 复选框、开关、radio | 三态（true / false / mixed） |
+| \`aria-invalid\` | 表单控件 | 校验错误，常配合 aria-describedby 指错误提示 |
+| \`aria-required\` | 表单控件 | 必填（优先用原生 required 属性） |
+| \`aria-live\` | 动态区域 | \`off / polite / assertive\`，内容变更时自动播报 |
+| \`aria-busy\` | 任意 | 正在加载，读屏暂停播报 |
+| \`aria-controls\` | 触发元素 | "我控制哪个 ID 元素"（如 Tab 控制 TabPanel） |
+| \`aria-owns\` | 父子不在同一 DOM 层级时 | 声明"视觉上我拥有这个子元素"（可访问性树重排） |
+| \`aria-modal\` | 对话框 | true 表示模态，读屏不访问背景内容 |
+
+---
+
+## 二、动态内容自动播报：aria-live 区域
+
+异步加载、toast、搜索结果数、购物车数量变化等**非用户直接操作引起的 UI 变更**，屏幕阅读器默认不知道。需要把变更放 live 区域：
+
+\`\`\`html
+<!-- polite：等用户空闲时再播报，默认首选 -->
+<div aria-live="polite" id="status">共找到 24 条结果</div>
+
+<!-- assertive：立即打断播报（仅紧急信息，如"表单提交失败"） -->
+<div role="alert">网络错误，请重试</div>  <!-- role=alert 等价于 assertive + atomic -->
+\`\`\`
+
+**关键点**：
+- **live 区域必须在 DOM 中预先存在**（哪怕空着）。动态新建 live 区域很多读屏不播报。
+- \`aria-atomic="true"\`：每次变更时读**整个区域**而非仅变更部分。
+- 内容是"追加"的：消息列表加一条新消息，读屏自动读新加的那条。
+- 不要滥用：满屏都是 live 会让读屏不停念，用户崩溃。
+
+---
+
+## 三、键盘可访问性（很多组件挂在这里）
+
+**规则：所有能点鼠标的交互元素，必须能用 Tab 到达、能用键盘触发。**
+
+### 1. Tab 顺序与可见焦点
+
+- 原生可交互元素（button / a / input / select / textarea）**默认**可 Tab 聚焦，不要破坏。
+- 自定义组件需 \`tabindex="0"\` 加入 Tab 序列；\`tabindex="-1"\` 只能编程聚焦（\`el.focus()\`），不进 Tab 序列。
+- **千万不要用 tabindex > 0**（强制 Tab 顺序），会和 DOM 顺序脱节——改 DOM 顺序而非 tabindex。
+- **必须有明显的焦点环样式**！不要为了好看写 \`:focus { outline: none }\` 又不补替代样式：
+
+\`\`\`css
+:focus-visible { /* 键盘聚焦才显示环，鼠标不显示 */
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+\`\`\`
+
+### 2. 常用组件键盘语义
+
+写自定义组件时，下面这些键位不实现就是"有 ARIA 但完全不可用"：
+
+#### Button (\`role="button"\`)
+- Enter / Space：触发点击
+- Tab：可聚焦
+
+#### Checkbox (\`role="checkbox"\`)
+- Tab：聚焦
+- Space：切换
+- ←/→ 有时也用于切换（单选组）
+
+#### Radio Group (\`role="radiogroup"\`)
+- Tab：进入组（聚焦当前选中项）
+- ←/↑/→/↓：在组内切换并自动选中
+- 组容器 \`aria-label / aria-labelledby\`
+
+#### Tabs (\`role="tablist"\`)
+- Tab：焦点从 tab 跳入 tabpanel（不是停在 tab 列表）
+- ←/→：上/下一个 tab
+- Home / End：首/末 tab
+- 当前 tab 要 \`aria-selected="true" tabindex="0"\`，其余为 \`tabindex="-1"\`（Roving Tabindex 模式）
+
+#### Dialog (Modal)
+- 打开时焦点移到对话框的第一个可聚焦元素 / 主按钮
+- **焦点陷阱**：Tab / Shift+Tab 不允许焦点跑出对话框（需 JS 实现）
+- Esc：关闭对话框
+- 关闭后焦点回到**触发它的按钮**
+- 背景内容加 \`inert\` 或 \`aria-hidden="true"\` 并移除 Tab 可达
+
+#### Menu / Dropdown
+- ↑/↓：切换项
+- Enter / Space：选中
+- Esc：关闭
+- Home / End：首/末项
+
+> 复杂组件建议直接用 **Headless UI**（Radix UI / Headless UI / React Aria），它们把 ARIA 和键盘行为都写对了，你只套样式即可。
+
+---
+
+## 四、Screen Reader 焦点 vs DOM 焦点
+
+屏幕阅读器有两种"光标"：
+
+1. **DOM 焦点（系统焦点）**：Tab 键移动，有焦点环，绑定事件，仅交互元素能获焦。
+2. **虚拟光标（浏览光标）**：读屏专用，方向键/快捷键移动，任何元素（标题、段落、图片）都能被读到。
+
+常见误区：
+- 纯文本信息（错误提示）不要 \`focus()\`——用 **aria-live** 区域播报，因为用户不在表单里操作。
+- SPA 路由切换后，应该把"页面主标题"（\`<h1>\`）设为 \`tabindex="-1"\` 再 \`focus()\`，让读屏告知"现在到了什么页面"。
+- Skip Link（跳到主内容链接）：页面顶部第一个链接，键盘用户按一次 Tab 就能看到，点了直接跳 \`<main>\`，避免每次都读导航。
+
+\`\`\`html
+<a href="#main" class="skip-link">跳到主内容</a>
+<main id="main" tabindex="-1">...</main>
+\`\`\`
+
+---
+
+## 五、典型 ARIA 反模式（面试常考点）
+
+### ❌ 反模式 1：用错 role 覆盖原生语义
+
+\`\`\`html
+<!-- 错误：h2 变成按钮，读屏不再认为是标题 -->
+<h2 role="button">点击展开</h2>
+
+<!-- 正确：按钮包住文字，保留 h2 语义 -->
+<h2><button>点击展开</button></h2>
+\`\`\`
+
+### ❌ 反模式 2：可见可聚焦元素加 aria-hidden
+
+\`\`\`html
+<!-- 错误：按钮还能 Tab 到，但读屏说"不存在"，精神分裂 -->
+<button aria-hidden="true">确定</button>
+\`\`\`
+
+**aria-hidden 只加给纯装饰 / 真正不想被读屏访问且不可聚焦的内容。**
+
+### ❌ 反模式 3：多余重复的标签
+
+\`\`\`html
+<!-- 错误：冗余，读屏念三遍"搜索 搜索 搜索" -->
+<button aria-label="搜索">
+  <svg role="img" aria-label="搜索">...</svg>
+  <span class="sr-only">搜索</span>
+</button>
+\`\`\`
+
+选择一种即可：
+- 图标按钮里放 sr-only 文字（最通用、SEO 友好）。
+- 或给 svg 加 \`aria-hidden="true"\` + 给 button 加 \`aria-label\`。
+
+### ❌ 反模式 4：占位符代替 label
+
+\`\`\`html
+<!-- 错误：placeholder 一点击就消失，读屏不读 placeholder 当 label -->
+<input placeholder="邮箱地址">
+
+<!-- 正确：用 label 关联，placeholder 仅提示格式 -->
+<label for="email">邮箱地址</label>
+<input id="email" placeholder="name@example.com">
+\`\`\`
+
+### ❌ 反模式 5：img alt 描述写"图片"二字
+
+\`\`\`html
+<!-- 错误：读屏会念"图像 公司 Logo 图片" -->
+<img alt="公司 Logo 图片">
+
+<!-- 正确：直接描述内容 -->
+<img alt="Acme 公司 Logo">
+\`\`\`
+
+### ❌ 反模式 6：纯装饰图漏写空 alt
+
+\`\`\`html
+<!-- 错误：读屏念"bg-divider-dashed.png"一串文件名 -->
+<img src="divider.png">
+
+<!-- 正确：装饰图明确 alt=""，读屏直接跳过 -->
+<img src="divider.png" alt="">
+\`\`\`
+
+### ❌ 反模式 7：用 role="presentation" 粗暴隐藏语义
+
+\`\`\`html
+<!-- 错误：table 变纯布局，读屏丢行列关系 -->
+<table role="presentation">
+  <tr><td>产品</td><td>价格</td></tr>
+</table>
+\`\`\`
+
+真要布局就用 CSS Grid / Flex，别糟蹋数据表格。
+
+### ❌ 反模式 8：颜色作为唯一信息传达
+
+表单错误把边框变红 + 只放一张红色感叹号图——色盲用户看不出。必须**加文字错误提示**（aria-describedby 关联到 input）。
+
+---
+
+## 六、验证工具链
+
+1. **Lighthouse（Chrome DevTools → 灯塔）**：一键审计 Accessibility 项，80% 的低级错误直接抓出。
+2. **axe DevTools / axe-core**：业界最强可访问性扫描器，集成到 CI 防止 PR 合入退化。
+3. **Screen Reader 实测**：
+   - Windows + NVDA + Firefox（最常见组合）。
+   - macOS + VoiceOver + Safari。
+   - 手机：iOS VoiceOver（侧滑读屏）/ Android TalkBack。
+4. **仅键盘走通一遍**：拔鼠标，Tab 过所有交互，Enter/Space 触发，Esc 关闭，列表能用方向键。
+5. **WCAG 2.1 AA 是合规基线**：4 大原则 POUR（可感知 / 可操作 / 可理解 / 健壮性）。
+
+**一句话总结**：ARIA 是"描述不是替代"。能用原生标签就别加 role；加了 role 必须把对应的键盘行为补齐；最终用读屏+键盘实际验证。`
+  },
+  {
+    id: 'html-049',
+    category: 'html',
+    title: 'iframe 的 sandbox 属性详解：如何安全地嵌入不受信任内容？',
+    difficulty: '中等',
+    tags: ['iframe', 'sandbox', '安全', '嵌入'],
+    answer: `## iframe sandbox 是什么
+
+\`sandbox\` 是 \`<iframe>\` 的属性，用于对嵌入的页面施加**额外安全限制**，把 iframe 放进一个"沙箱"里，即使嵌入页被攻破也难以危害父页面和访问者。沙箱**默认是全限制**（所有能力都关），通过空格分隔的 token 逐项开放。
+
+---
+
+## 基本用法
+
+\`\`\`html
+<!-- 最严格：完全沙箱化，无任何能力（连脚本都不能跑） -->
+<iframe src="untrusted.html" sandbox></iframe>
+
+<!-- 按需开能力 -->
+<iframe
+  src="https://third-party.com/widget.html"
+  sandbox="allow-scripts allow-same-origin allow-forms allow-popups">
+</iframe>
+\`\`\`
+
+> **安全原则**：给最小必要权限。宁可少开，不要为了省事全开。
+
+---
+
+## sandbox Token 完整清单与影响
+
+### 1. allow-same-origin（允许同源）
+
+- 不开时（默认）：iframe 内页面**强制独立源**（opaque origin），即使它和父页面同域名也被当成不同源。无法读取父页面 \`localStorage\`、无法访问父 DOM、cookie 被隔离。
+- 开了后：iframe 按**真实 URL 的源**算（和父同域就能互相访问）。
+
+⚠️ **危险组合**：\`allow-scripts\` + \`allow-same-origin\` 同时开启时，沙箱页面可以通过脚本取到 \`parent.location\`、读写 \`document.cookie\`、甚至 \`parent.postMessage\` 伪造消息，基本等于撤销了大部分沙箱保护。
+
+**建议**：第三方内容绝不要同时开这两个。如果要开 allow-scripts，就必须关掉 allow-same-origin（或者把第三方内容放到专门的不信任子域）。
+
+### 2. allow-scripts（允许脚本）
+
+- 默认：禁用 JS。\`<script>\`、\`onclick\`、\`javascript:\` 协议、定时器、XHR/fetch 大部分都失效。
+- 开了后：能跑脚本。
+
+注意：即使关了 allow-scripts，\`<a href="javascript:...">\` 仍可能在某些旧浏览器被触发，配合 target 漏洞；内容如果完全不信任，建议 HTTP 层再上 CSP \`script-src: none\` 双重保险。
+
+### 3. allow-forms（允许提交表单）
+
+默认禁止 \`<form>\` 提交（\`form.submit()\` / 按钮都被禁用）。只在你相信 iframe 内部表单不会向恶意站点 POST 时开启。
+
+### 4. allow-popups（允许弹窗 / window.open）
+
+- 默认：\`window.open\`、\`<a target="_blank">\`、\`showModalDialog\` 全部失效。
+- 开了后：允许弹窗。
+- **\`allow-popups-to-escape-sandbox\`**：弹窗出来的新窗口**不再继承沙箱**（新窗口按正常源对待）。适合"沙箱里点链接打开正常新标签"的场景。
+
+### 5. allow-modals（允许模态对话框）
+
+默认屏蔽 \`alert\`、\`confirm\`、\`prompt\`、\`print()\`、\`BeforeUnloadEvent\`（关页面前的"确定离开？"）。这些会阻塞用户，恶意 iframe 很爱弹不停。
+
+### 6. allow-top-navigation（允许跳顶层导航）
+
+默认：iframe 内的 \`location.href = 'evil'\` 或 \`<a target="_top">\` **不能改变父页面的 URL**。开了后允许。
+
+⚠️ **高危**：开了后嵌入页可把整个网站偷偷替换成钓鱼页面。只在绝对信任时开。
+
+变种：**\`allow-top-navigation-by-user-activation\`**——只在用户真实点击/按键后才能跳顶层（比 allow-top-navigation 安全）。
+
+### 7. allow-orientation-lock（允许锁定屏幕方向）
+
+允许全屏游戏/视频用 \`screen.orientation.lock()\` 强制横屏。移动端才相关。
+
+### 8. allow-pointer-lock（允许指针锁定）
+
+允许 \`element.requestPointerLock()\`（3D 游戏、沉浸式画布把鼠标锁在画面里）。
+
+### 9. allow-presentation（允许 Presentation API）
+
+允许用 \`navigator.presentation\` 投屏到第二屏幕（会议/演示类需求）。
+
+### 10. allow-downloads（允许下载）
+
+默认禁止：\`<a download>\`、JS 触发的 blob download、Content-Disposition: attachment 响应等都被挡。
+
+变种：**\`allow-downloads-without-user-activation\`**——不需要用户点击也能自动下载（更危险，谨慎用）。
+
+### 11. allow-storage-access-by-user-activation（允许存储访问请求）
+
+现代浏览器对第三方 iframe 的 cookie/storage 有双重隔离（ITP 等隐私保护），该 token 允许 iframe 调用 \`document.requestStorageAccess()\`，在用户点击后申请临时访问第一方存储权限（用于单点登录、支付 SDK 等场景）。
+
+### 12. allow-clipboard-read / allow-clipboard-write（允许剪贴板）
+
+允许 iframe 用 Async Clipboard API（\`navigator.clipboard.readText()\` / \`writeText()\`）。默认禁用避免读密码/写恶意内容。
+
+### 13. 许可令牌（Permission Policy，旧 Feature Policy）
+
+虽然不在 sandbox 属性里，但通常 iframe 会**配合 \`allow\` 属性**限制更现代的 API 访问：
+
+\`\`\`html
+<iframe
+  src="..."
+  sandbox="allow-scripts"
+  allow="camera 'none'; microphone 'none'; geolocation 'none'; fullscreen 'self'">
+</iframe>
+\`\`\`
+
+camera / microphone / geolocation / fullscreen / payment / usb / web-share 等几十种细粒度权限都可以单独控制。
+
+---
+
+## 常见场景推荐配置
+
+### 1. 嵌入广告 / 第三方营销代码（最不信任）
+
+\`\`\`html
+<iframe
+  srcdoc="..."
+  sandbox
+  loading="lazy"
+  referrerpolicy="no-referrer"
+  allow="camera 'none'; microphone 'none'; geolocation 'none'">
+</iframe>
+\`\`\`
+
+**不开任何 token**：广告不需要脚本（静态图）就别开；实在需要 JS 最多加 \`allow-scripts allow-popups\`。
+
+### 2. 嵌入用户投稿的 HTML（UGC 预览）
+
+\`\`\`html
+<iframe
+  srcdoc="\${userHTML}"
+  sandbox="allow-popups"
+  referrerpolicy="no-referrer"
+  csp="default-src 'self'; img-src data: https:;">
+</iframe>
+\`\`\`
+
+甚至连 allow-scripts 都不要开，富文本只保留静态渲染。如果必须开脚本：**托管到完全独立的无权限域名**（如 \`usercontent.yourcorp-nopriv.com\`，和主站 cookie/Session 完全不沾边）。
+
+### 3. 嵌入第三方支付 / SSO（需要跨域通信和跳转）
+
+\`\`\`html
+<iframe
+  src="https://pay.example.com/checkout"
+  sandbox="allow-scripts allow-forms allow-popups allow-same-origin allow-storage-access-by-user-activation"
+  allow="payment 'self'">
+</iframe>
+\`\`\`
+
+### 4. 嵌入自家微前端子应用（相对信任）
+
+\`\`\`html
+<iframe
+  src="https://sub.example.com"
+  sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-top-navigation-by-user-activation allow-downloads"
+  allow="fullscreen 'self'; clipboard-write 'self'">
+</iframe>
+\`\`\`
+
+自家应用也不要开 allow-top-navigation，用 by-user-activation 版本更稳。
+
+---
+
+## 多层防御（Don't Trust Sandbox Blindly）
+
+sandbox 是第一道门，**组合拳**才安全：
+
+| 层 | 技术 | 作用 |
+| --- | --- | --- |
+| 1 | sandbox | iframe 级能力限制 |
+| 2 | \`allow="camera 'none'; ..."\` | 细粒度 Permission Policy |
+| 3 | \`referrerpolicy="no-referrer"\` | 不把本站 URL/referrer 泄露给第三方 |
+| 4 | \`csp="..."\`（iframe CSP） | 对 iframe 内部再施一层内容安全策略（Chrome 支持） |
+| 5 | 独立不信任域名托管 | 即使 allow-same-origin 也危害不到主站 cookie |
+| 6 | CSP frame-ancestors（响应头） | **反过来限制**：iframe 内容方可以设置"只允许哪些域嵌我"，防点击劫持 |
+| 7 | X-Frame-Options（兼容旧浏览器） | SAMEORIGIN / DENY，frame-ancestors 的前任 |
+| 8 | \`permissions-policy\`（父页面响应头） | 父页面全站级默认权限关闭白名单 |
+
+---
+
+## 配合 postMessage 通信的安全守则
+
+沙箱 iframe 经常需要和父页面通信，**安全写 postMessage 是关键**：
+
+\`\`\`js
+// ❌ 错误：滥发滥收
+iframe.contentWindow.postMessage(data, '*')
+window.addEventListener('message', (e) => handle(e.data))
+
+// ✅ 正确：双向严格校验
+// 父发子
+iframe.contentWindow.postMessage(
+  { type: 'INIT', payload: cfg },
+  'https://trusted-child.example.com'  // 指定 targetOrigin，绝不写 *
+)
+
+// 子收父
+window.addEventListener('message', (e) => {
+  if (e.origin !== 'https://parent.example.com') return   // ✅ 校验来源
+  if (!e.data || typeof e.data !== 'object') return       // ✅ 校验结构
+  if (e.data.type !== 'INIT') return
+  // 不要把 e.data 直接赋 innerHTML / eval
+  handleTrusted(e.data.payload)
+})
+\`\`\`
+
+复杂通信场景建议用 **MessageChannel**：两端各持一个 port，收发自成通道，避免全局 message 广播。
+
+---
+
+## 点击劫持与 Frame 防护（被嵌入方视角）
+
+反过来，**你自己的网站**要防止被别人用 iframe 套一层来做点击劫持（透明浮层骗用户点转账）：
+
+1. 响应头加：
+   \`\`\`
+   Content-Security-Policy: frame-ancestors 'self' https://trusted.com;
+   X-Frame-Options: SAMEORIGIN;
+   \`\`\`
+   frame-ancestors 支持更细粒度白名单，优先用它；X-Frame-Options 兼容旧浏览器。
+
+2. 前端兜底（古老浏览器仍有用）：\`frame-busting\` 脚本——如果 \`top !== self\` 就把自己顶出去：
+   \`\`\`html
+   <style>html{display:none;}</style>
+   <script>
+     if (top === self) { document.documentElement.style.display = 'block'; }
+     else { top.location = self.location; }
+   </script>
+   \`\`\`
+   （注意：iframe 方可以用 \`sandbox="allow-top-navigation"\` 不开放的话，JS 也跳不出去，所以**以响应头为主**）
+
+---
+
+## 常见问答误区
+
+**Q：sandbox 加了是不是就绝对安全了？**
+A：不是。历史上 Chrome/Safari 都出过沙箱绕过的 0day（如通过特殊协议、file://、Blob URL、srcdoc 组合拳），只是攻击门槛大大提高。对真正敌意内容（黑客上传的完整 HTML），最好跑在独立域名 + 子进程级隔离的服务端渲染截图，不要直接 iframe。
+
+**Q：sandbox 空属性和完全无 sandbox 属性有什么区别？**
+A：天壤之别。写 \`sandbox=""\`（或仅 \`sandbox\`）是**全开限制**；不写 sandbox 属性是**完全无限制**，和普通页面一样所有权限都有。
+
+**Q：srcdoc 和 src 有什么安全差异？**
+A：\`srcdoc\` 直接把 HTML 写在属性里，**默认走 opaque origin**（即使开了 allow-same-origin 也不会和父同源），更适合嵌入完全不信任的 HTML。但是**记得 HTML 转义** srcdoc 的内容（不然 XSS 直接打进父页面）。
+
+**Q：移动端 WebView 里 sandbox 生效吗？**
+A：Android WebView 和 iOS WKWebView 大部分 token 是生效的（allow-scripts / allow-forms 等），但一些桌面端的新 token（storage-access、clipboard-read 等）在旧系统 WebView 上不生效，需要测试矩阵。`
+  },
+  {
+    id: 'html-050',
+    category: 'html',
+    title: 'fetchpriority 属性是什么？（配合 preload / lazy / async / 图片优先级详解）',
+    difficulty: '简单',
+    tags: ['fetchpriority', '性能优化', '资源加载', 'preload'],
+    answer: `## 浏览器的"资源加载优先级"机制
+
+浏览器在解析 HTML 时，会对不同资源自动赋予**加载优先级（Network Priority）**，通常分 5 档：Highest / High / Medium / Low / Lowest。
+
+默认的推断规则大致是：
+- **CSS**（在 head 中且无 media=print）：**Highest**。
+- **首屏字体 / preload 资源**：High。
+- **\`<script defer/async>\`**：Medium 或 Low。
+- **普通 \`<img>\`**（初始视口内）：Medium；视口外：Low。
+- **iframe / 预取（prefetch）**：Lowest。
+
+问题在于：**浏览器的默认推断并不总是符合业务的真实重要性**——比如：
+- 首屏 Hero Banner 图：浏览器把它当普通 Medium 优先级，但它是 LCP 核心元素，应该 Highest。
+- 首屏下方的视频预览图：默认 Medium，但我们想让它让路给关键字体。
+- 早期插入的第三方统计脚本：默认 High，但它不重要。
+- **\`<link rel="preload">\` 会把优先级硬拉到 High**，导致真正关键的 LCP 资源反而被抢带宽。
+
+\`fetchpriority\` 就是用来**显式告诉浏览器：这个资源的相对优先级我要手动调一下**。
+
+---
+
+## 基本语法
+
+\`\`\`html
+<img src="hero.jpg" fetchpriority="high" alt="首屏大图">
+<iframe src="video.html" fetchpriority="low"></iframe>
+<link rel="preload" as="image" href="banner.jpg" fetchpriority="high">
+<script src="non-critical.js" async fetchpriority="low"></script>
+\`\`\`
+
+可选值：
+| 值 | 含义 |
+| --- | --- |
+| \`high\` | 相对同级其他资源**提高**优先级 |
+| \`low\` | 相对同级其他资源**降低**优先级 |
+| \`auto\` | 默认，让浏览器自己决定 |
+
+\`fetchpriority\` **只影响"什么时候发请求"**，**不改变加载顺序的绝对语义**。它是相对的"调度建议"，不是硬指令。
+
+---
+
+## 支持的元素和属性
+
+\`fetchpriority\` 可用于以下元素（Chrome 102+、Edge 102+、Firefox 119+、Safari 17.4+；2024 年后基本可用）：
+
+| 元素 | 关联属性 | 说明 |
+| --- | --- | --- |
+| \`<img>\` | — | 图片，最常见用途 |
+| \`<link>\` | \`rel="preload"\` 或 \`rel="modulepreload"\` | 预加载资源的优先级 |
+| \`<script>\` | 传统/模块脚本 | 调 JS 优先级 |
+| \`<iframe>\` | — | iframe 内文档 |
+
+实验中：\`<audio>\`、\`<video>\`、\`<embed>\`、\`<object>\`。
+
+---
+
+## 实战优化场景
+
+### 场景 1：提升 LCP（最大内容绘制）元素优先级（最常用）
+
+LCP 元素通常是首屏大图/视频封面，浏览器默认把视口内图片放在 Medium，导致它和一堆普通 JS/CSS 抢并发。手动提升：
+
+\`\`\`html
+<link rel="preload" as="image" href="hero.jpg" fetchpriority="high">
+<img src="hero.jpg" alt="产品主视觉" fetchpriority="high" width="1200" height="600">
+\`\`\`
+
+配合 \`<link rel="preload">\` + \`fetchpriority="high"\` 可以让图片在 CSS/字体之前就早早发请求，极大提前 LCP 时间（尤其是弱网、HTTP/1.1 场景）。
+
+> ⚠️ **不要滥用 high**。一个页面只给 **LCP 元素 + 关键字体**这种真正影响首屏体验的 1-3 个资源标 high，太多等于没标。
+
+### 场景 2：降低非关键图片 / 轮播非首屏的优先级
+
+轮播图除了第一张，第 2、3 张虽然也在视口附近但不必首屏就加载；商品列表下方的推荐图不必在用户没滚动时就高并发请求：
+
+\`\`\`html
+<div class="carousel">
+  <img src="slide1.jpg" fetchpriority="high">
+  <img src="slide2.jpg" fetchpriority="low" loading="lazy">
+  <img src="slide3.jpg" fetchpriority="low" loading="lazy">
+</div>
+\`\`\`
+
+### 场景 3：调整异步脚本之间的相对优先级
+
+A/B 测试 / 统计 / 埋点脚本很多，想让"主业务 SDK 比第三方统计早拉到"：
+
+\`\`\`html
+<!-- 支付/登录 SDK，先下 -->
+<script src="https://sdk.example.com/client.js" async fetchpriority="high"></script>
+<!-- 第三方统计，不着急 -->
+<script src="https://track.analytics.cn/beacon.js" async fetchpriority="low"></script>
+\`\`\`
+
+### 场景 4：preload 过多？把非关键 preload 降档
+
+很多项目 preload 了 7-8 个资源，preload 默认是 High，挤爆了首屏带宽。把非关键的预加载降回 low：
+
+\`\`\`html
+<!-- 关键：首屏字体 high -->
+<link rel="preload" as="font" href="/fonts/main.woff2" type="font/woff2" crossorigin fetchpriority="high">
+
+<!-- 非关键：下一页路由的 JS，low 即可 -->
+<link rel="preload" as="script" href="/chunks/checkout.js" fetchpriority="low">
+\`\`\`
+
+### 场景 5：动态插入图片时控制优先级
+
+瀑布流首屏先加载头 20 条 high，剩下的延后 low：
+
+\`\`\`js
+items.forEach((item, i) => {
+  const img = new Image()
+  img.fetchpriority = i < 20 ? 'high' : 'low'
+  img.loading = i < 20 ? 'eager' : 'lazy'
+  img.src = item.pic
+})
+\`\`\`
+
+---
+
+## 和 loading / async / defer / preload / prefetch 的关系
+
+很多人混淆。一张表搞清：
+
+| 属性 | 做什么 | 何时生效 | 范围 |
+| --- | --- | --- | --- |
+| \`loading="lazy/eager"\` | **发不发请求**（是否等到进入视口） | 决定请求发起时机 | img / iframe |
+| \`fetchpriority\` | **发请求时在调度队列里排第几**（高/低） | 请求入队时排序 | 资源下载阶段 |
+| \`async / defer\` | 脚本**什么时候执行**（解析到立刻执行 / DOM 后） | 脚本已下载后执行 | 仅 script |
+| \`preload\` | **提前发起请求**（提前到解析到 link 立刻请求，不等实际用到） | 触发请求时间 | link |
+| \`prefetch\` | **空闲时**预取未来页面可能用的资源 | 浏览器空闲时间 | link |
+
+### 常见组合范式
+
+#### 图片（LCP）：preload + fetchpriority=high + 显式尺寸
+
+\`\`\`html
+<link rel="preload" as="image" href="hero.avif" fetchpriority="high">
+<img src="hero.avif" fetchpriority="high" width="1200" height="600" decoding="async" alt="">
+\`\`\`
+
+**目标**：请求能最早发、发了就抢在最前面、不触发布局抖动（CLS）。
+
+#### 非首屏次要图：loading=lazy + fetchpriority=low
+
+\`\`\`html
+<img src="rec-1.jpg" loading="lazy" fetchpriority="low" width="300" height="300" alt="">
+\`\`\`
+
+**目标**：既不提前发（等进入视口），发了也不抢首屏带宽。
+
+#### 关键业务脚本：defer + fetchpriority=high
+
+\`\`\`html
+<script src="app.js" defer fetchpriority="high"></script>
+\`\`\`
+
+#### 第三方统计脚本：async + fetchpriority=low
+
+\`\`\`html
+<script src="https://third-party.com/analytics.js" async fetchpriority="low"></script>
+\`\`\`
+
+**目标**：统计脚本永远别和主业务抢首屏关键时刻。
+
+#### 路由预取：prefetch（天然 Lowest，不用加）
+
+\`\`\`html
+<link rel="prefetch" href="/next-page.js">
+\`\`\`
+
+prefetch 默认最低优先级，一般不用再写 fetchpriority。
+
+---
+
+## 配合 Hints（推测加载）更精准
+
+Chrome 128+ 引入了 **Hints（推测式加载）**，让 \`<img>\` / \`<script>\` 延迟渲染但提前下资源：
+
+\`\`\`html
+<img blocking="render" src="hero.jpg">  <!-- 阻塞渲染，等图到位再画（LCP 更快） -->
+<script blocking="render" src="critical.js"></script>
+\`\`\`
+
+但这个非常激进，只有对"不到位就先别渲染"的极关键资源才考虑。
+
+---
+
+## 观察优先级是否生效（DevTools 验证）
+
+1. 打开 DevTools → Network。
+2. 刷新页面，表头右键勾选 **Priority** 列。
+3. 观察资源的 Priority 列，看是否和你的 fetchpriority 设置一致。
+
+HTTP/2 的 h2 列也可以看并发发送顺序：
+- fetchpriority=high 的图片应该和 CSS/首屏脚本一起在最早的一批请求里。
+- fetchpriority=low 的资源排在队列后段。
+
+Lighthouse 也开始在 Performance 诊断中提示：
+- 「LCP image was not preloaded with fetchpriority=high」——有这一条直接加就能加分。
+
+---
+
+## 常见误区
+
+### ❌ 误区 1：fetchpriority 能强制让资源先加载完
+
+它只是**调度优先级建议**。浏览器实际还要受连接数限制（HTTP/1.1 每域 6 连接）、拥塞窗口、TCP 慢启动影响。high 只是"谁先从队列里出队发 SYN"，不保证谁先收完字节。
+
+### ❌ 误区 2：给所有资源全标 high
+
+这就像全公司所有人都是 P0 紧急——等于没有优先级。首屏关键资源 1~3 个标 high 就够了，其他该 lazy lazy，该 low low。
+
+### ❌ 误区 3：用 fetchpriority 替代 preload
+
+preload 是**提前触发请求的时机**（例如字体藏在 CSS 里，默认要等 CSS 解析完才发现字体；preload 能提前），fetchpriority 是**排队先后**。两者作用于不同环节，关键资源应该两者都用。
+
+### ❌ 误区 4：fetchpriority 能省流量
+
+它只是调度顺序，**不减少任何字节**，总流量不变。优化目标是**关键字节先到**，缩短 LCP / INP，而不是降总带宽。
+
+### ❌ 误区 5：loading=lazy 和 fetchpriority=high 一起写在 LCP 上
+
+LCP 元素**绝不能 lazy**。lazy 会让它等进入视口才发请求，首屏延迟几百毫秒，得不偿失。LCP 元素应该是 eager（默认）+ fetchpriority=high + preload。
+
+---
+
+## 总结：一张"资源优先级清单"速查
+
+| 资源类型 | 建议 |
+| --- | --- |
+| 首屏关键 CSS | 内联 或 不加（默认 Highest 已足够） |
+| 首屏字体 | \`rel="preload" as="font" crossorigin fetchpriority="high"\` |
+| LCP 图 | \`<link rel="preload" as="image">\` + \`<img fetchpriority="high">\` |
+| 首屏业务 JS | \`defer fetchpriority="high"\` |
+| 第三方统计脚本 | \`async fetchpriority="low"\` |
+| 非首屏普通图 | \`loading="lazy" fetchpriority="low"\` |
+| 轮播图（非第一张） | \`loading="lazy" fetchpriority="low"\` |
+| iframe（第三方广告） | \`loading="lazy" fetchpriority="low"\` |
+| 下一页面路由 JS | \`rel="prefetch"\`（默认 Lowest） |
+| preload 过多时，次要 preload | \`rel="preload" fetchpriority="low"\` |
+
+\`fetchpriority\` 是**零成本、语义友好、收益直接**的性能优化点，在 2024 年后的浏览器支持已经非常好，值得在每个关注 LCP 的项目里加一下 LCP 资源的 high 和首屏下方资源的 low。`
   }
 ]

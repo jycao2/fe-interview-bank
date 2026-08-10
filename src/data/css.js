@@ -2947,5 +2947,1797 @@ CSS Modules / Vue scoped 已解决命名冲突，BEM 的"防冲突"价值降低�
 - SMACSS：Base/Layout/Module/State/Theme 五类组织。
 - 现代配合 CSS Modules/原子化/组件化，命名规范侧重"结构清晰"而非"防冲突"。
 - 状态类用 \`is-\`，JS 钩子用 \`js-\`，是通用的良好实践。`
+  },
+  {
+    id: 'css-037',
+    category: 'css',
+    title: 'CSS :has() 伪类有哪些高级用法？能替代哪些 JS 逻辑？',
+    difficulty: '中等',
+    tags: [':has', '伪类', '父选择器', '关系选择器'],
+    answer: `## 基本回顾
+
+\`:has()\` 称为"父选择器"或"关系选择器"，根据**后代/兄弟**元素的状态来选择当前元素。它是 CSS 最强大的新特性之一（2023 年主流浏览器支持）。
+
+\`\`\`css
+/* 含有 img 的 .card 加阴影 */
+.card:has(img) { box-shadow: 0 2px 12px #0001 }
+\`\`\`
+
+## 一、结构关系组合
+
+### 1. 父子 + 伪类状态联动
+
+\`\`\`css
+/* 表单有必填项未填时，提交按钮变灰 */
+.form:has(input:required:invalid) .submit-btn {
+  opacity: .5;
+  pointer-events: none;
+}
+
+/* 有一个 checkbox 被选中时，全选按钮打勾 */
+.table:has(input[type="checkbox"]:checked) .select-all {
+  background: #1890ff;
+}
+\`\`\`
+
+### 2. 相邻兄弟关系（+ 和 ~）
+
+\`\`\`css
+/* h1 后面紧跟 h2 时，缩小 h1 的下边距 */
+h1:has(+ h2) { margin-bottom: .25em }
+
+/* p 后面有 p 时，给当前 p 加分隔线 */
+p:has(~ p) { border-bottom: 1px solid #eee }
+\`\`\`
+
+### 3. 多层嵌套：has 里嵌 has
+
+\`\`\`css
+/* 卡片组中至少有一张卡片被选中（含 .selected），给组加激活边框 */
+.card-group:has(.card:has(.selected)) {
+  outline: 2px solid #1890ff;
+  outline-offset: 4px;
+}
+\`\`\`
+
+## 二、替代常见 JS 交互
+
+### 1. 纯 CSS 选项卡（Tab）
+
+\`\`\`html
+<div class="tabs">
+  <input type="radio" name="tab" id="t1" checked><label for="t1">首页</label>
+  <input type="radio" name="tab" id="t2"><label for="t2">文章</label>
+  <div class="panels">
+    <div class="panel p1">首页内容</div>
+    <div class="panel p2">文章内容</div>
+  </div>
+</div>
+\`\`\`
+
+\`\`\`css
+.tabs:has(#t1:checked) .p1 { display: block }
+.tabs:has(#t2:checked) .p2 { display: block }
+.panel { display: none }
+\`\`\`
+
+### 2. 纯 CSS 模态框 / 抽屉
+
+\`\`\`html
+<input type="checkbox" id="modal-toggle" hidden>
+<label for="modal-toggle">打开</label>
+<div class="modal">弹窗内容<label for="modal-toggle">X</label></div>
+\`\`\`
+
+\`\`\`css
+body:has(#modal-toggle:checked) .modal {
+  transform: translateY(0);
+  opacity: 1;
+}
+.modal { transition: all .3s; transform: translateY(100%); opacity: 0 }
+\`\`\`
+
+### 3. 主题切换（跟随复选框）
+
+\`\`\`css
+:root:has(#theme-dark:checked) {
+  --bg: #1a1a1a;
+  --text: #eee;
+}
+\`\`\`
+
+## 三、表单验证可视化
+
+\`\`\`css
+/* 每个输入框在有焦点或有效/无效时，给外层 label 不同颜色 */
+.field:has(input:focus) { border-color: #1890ff }
+.field:has(input:valid)   { border-color: #52c41a }
+.field:has(input:invalid:not(:placeholder-shown)) { border-color: #ff4d4f }
+\`\`\`
+
+## 四、与 :is / :not 组合
+
+\`\`\`css
+/* 卡片"不含按钮"时加底部内边距 */
+.card:not(:has(button)) { padding-bottom: 1rem }
+
+/* 任意标题含链接时，整段变色 */
+:is(h1, h2, h3):has(a) { color: #1890ff }
+\`\`\`
+
+## 五、 specificity（优先级）
+
+\`:has()\` 的优先级取**参数中选择器的最高值**，与 \`:is()\` / \`:not()\` 一致。
+
+\`\`\`css
+/* specificity = (0,1,1)：.card 的 (0,1,0) + :has(#x) 取 #x 的 (1,0,0) → 取最高 (1,0,0) 再加 .card → (1,1,0) */
+.card:has(#submit-btn) { ... }
+\`\`\`
+
+## 性能注意
+
+\`:has()\` 浏览器需要**从后向前**匹配：先找所有符合条件的后代，再回溯定位父元素。
+
+- 避免 \`:has(*)\` 或极宽泛选择器（如 \`:has(div)\`）。
+- 尽量缩小作用域，前缀加父容器。
+- 复杂页面 / 长列表频繁变化可能引起性能问题，必要时加 JS 兜底。
+
+## 兼容性
+
+- Chrome 105+、Safari 15.4+、Firefox 121+（2023 年底起主流支持）。
+- 降级：使用 \`@supports not selector(:has(*))\` 提供 JS fallback。
+
+\`\`\`css
+@supports not selector(:has(*)) {
+  /* 老浏览器用 JS 添加类名 */
+  .card-has-img { box-shadow: 0 2px 12px #0001 }
+}
+\`\`\`
+
+## 小结
+
+- \`:has()\` 让 CSS 具备"根据子/兄弟状态选父"的能力，解锁大量纯 CSS 交互。
+- 典型替代 JS：Tab、模态框、表单联动视觉、主题切换、多选状态。
+- 结合 \`:valid\` / \`:checked\` / \`:focus\` 可实现丰富的表单可视化。
+- 注意性能和兼容性，复杂场景仍需 JS 兜底。`
+  },
+  {
+    id: 'css-038',
+    category: 'css',
+    title: 'CSS @scope 和 color-mix() 怎么用？解决了什么问题？',
+    difficulty: '中等',
+    tags: ['@scope', 'color-mix', 'CSS新特性', '作用域', '颜色'],
+    answer: `## 一、@scope：样式作用域的原生解决方案
+
+### 解决的问题
+
+CSS 是全局作用域。为了解决冲突，人们用 BEM、CSS Modules、CSS-in-JS、Scoped CSS 等方案。\`@scope\` 提供**浏览器原生的样式隔离**，无需编译、无需 hash。
+
+### 基本语法
+
+\`\`\`css
+@scope (.card) {
+  /* 以下样式仅作用于 .card 内部 */
+  .title { font-size: 1.25rem; font-weight: 600 }
+  .body  { color: #555 }
+  button { padding: .5em 1em; border-radius: 4px }
+}
+\`\`\`
+
+等价于给内部每个选择器**自动加上祖先前缀**，但更优雅、语义化。
+
+### 与 scoped / CSS Modules 的区别
+
+| | @scope | Vue scoped | CSS Modules |
+| --- | --- | --- | --- |
+| 原理 | 原生 CSS，浏览器匹配 | 编译加 \`data-v-xxx\` 属性选择器 | 编译类名加 hash |
+| 是否编译 | 否 | 是 | 是 |
+| 运行时 | 原生支持 | 编译产物 | 编译产物 |
+| 深层穿透 | \`:scope\` 精细控制 | \`:deep()\` | \`:global()\` |
+
+### scoped 样式边界：@scope (起点) to (终点)
+
+可以指定"作用域从哪开始、到哪结束"，实现 Donut Scope（环形作用域）。
+
+\`\`\`css
+/* .card 内生效，但遇到 .nested-card 就停止（不穿透嵌套卡片） */
+@scope (.card) to (.nested-card) {
+  .title { color: blue }
+}
+\`\`\`
+
+\`\`\`html
+<div class="card">
+  <h3 class="title">我是蓝色</h3>
+  <div class="nested-card">
+    <h3 class="title">我不受影响（默认色）</h3>
+  </div>
+</div>
+\`\`\`
+
+这是 @scope 独有的能力，编译型方案很难优雅实现。
+
+### @scope 内的 :scope
+
+在 @scope 块内，\`:scope\` 指向作用域根：
+
+\`\`\`css
+@scope (.card) {
+  :scope { border: 1px solid #ddd; border-radius: 8px } /* .card 本身 */
+  :scope:hover { box-shadow: 0 4px 12px #0001 }
+  .title { ... }
+}
+\`\`\`
+
+### 优先级
+
+@scope 内的样式 specificity 正常计算，**不额外提升**。若与全局样式冲突，按源码顺序（后写赢）。
+
+### 兼容性
+
+Chrome 118+、Safari 17.4+、Firefox 132+（2024 年主流支持）。
+
+---
+
+## 二、color-mix()：颜色插值函数
+
+### 解决的问题
+
+以前要混合两种颜色（如主色 + 白变浅），必须用预处理器的 \`lighten()\` / \`mix()\` 或 JS。\`color-mix()\` 是**原生 CSS 颜色混合**。
+
+### 语法
+
+\`\`\`css
+color-mix(in <colorspace>, <color1> <p1>%, <color2> <p2>%)
+\`\`\`
+
+\`\`\`css
+/* 蓝色 + 白色 各 50% → 浅蓝 */
+background: color-mix(in srgb, #1890ff 50%, white);
+
+/* 主色 + 10% 黑 → 暗主色 */
+--primary-dark: color-mix(in oklch, var(--primary) 90%, black);
+\`\`\`
+
+### 色彩空间（colorspace）
+
+不同色彩空间的混合结果差异很大：
+
+| 空间 | 特点 |
+| --- | --- |
+| \`srgb\` | 标准 RGB，简单直接 |
+| \`srgb-linear\` | 线性 RGB，物理更准确 |
+| \`oklch\` | ✅ 推荐！感知均匀，混合自然，不会变灰 |
+| \`lab\` | 感知均匀 |
+| \`hsl\` | 以色相渐变，适合色相过渡 |
+
+**推荐使用 oklch**，混合结果更符合人眼感知：
+
+\`\`\`css
+/* srgb 混合红+蓝会变脏灰；oklch 会得到鲜艳的紫 */
+.good: color-mix(in oklch, red 50%, blue);
+.bad:  color-mix(in srgb,  red 50%, blue);
+\`\`\`
+
+### 实战场景
+
+#### 1. 主题色阶系统（替代预处理器函数）
+
+\`\`\`css
+:root {
+  --brand: #1890ff;
+  --brand-50:  color-mix(in oklch, var(--brand) 5%,  white);
+  --brand-100: color-mix(in oklch, var(--brand) 15%, white);
+  --brand-200: color-mix(in oklch, var(--brand) 30%, white);
+  --brand-400: color-mix(in oklch, var(--brand) 70%, white);
+  --brand-600: color-mix(in oklch, var(--brand) 85%, black);
+  --brand-900: color-mix(in oklch, var(--brand) 50%, black);
+}
+\`\`\`
+
+纯原生生成 Tailwind 风格色阶，无需 Sass。
+
+#### 2. Hover / Active 状态
+
+\`\`\`css
+.btn {
+  background: var(--primary);
+  transition: background .2s;
+}
+.btn:hover  { background: color-mix(in oklch, var(--primary) 85%, white) }
+.btn:active { background: color-mix(in oklch, var(--primary) 80%, black) }
+\`\`\`
+
+无需维护多个颜色变量。
+
+#### 3. 半透明背景（与 white 混合 vs opacity）
+
+\`\`\`css
+/* 与 white 混合：颜色变浅但不透明，背景不会透出 */
+.card { background: color-mix(in oklch, var(--brand) 10%, white) }
+
+/* opacity：元素整体透明，背后内容会透出 */
+.card { background: var(--brand); opacity: .1 }
+\`\`\`
+
+#### 4. 暗色模式适配
+
+\`\`\`css
+:root[data-theme="dark"] {
+  /* 暗色下品牌色与 20% 白混合，避免在深背景上太刺眼 */
+  --brand: color-mix(in oklch, #1890ff 80%, white);
+}
+\`\`\`
+
+### 与相对颜色语法（Relative Colors）配合
+
+\`\`\`css
+/* rgb(from ...) 语法也能实现颜色变换，但 color-mix 语义更直观 */
+--brand-dark: rgb(from var(--brand) calc(r * 0.8) calc(g * 0.8) calc(b * 0.8));
+\`\`\`
+
+### 兼容性
+
+Chrome 111+、Safari 16.2+、Firefox 113+（2023 年主流支持）。
+
+## 小结
+
+- **@scope**：原生 CSS 作用域，支持 to 边界（环形作用域），无需编译。
+- **color-mix()**：原生颜色混合，优先用 oklch 空间。
+- 两者结合：@scope 写组件局部样式 + color-mix 从主色派生色阶，接近摆脱预处理器。
+- 注意浏览器版本，渐进增强使用。`
+  },
+  {
+    id: 'css-039',
+    category: 'css',
+    title: 'CSS 容器查询 @container 有哪些进阶用法？与媒体查询如何配合？',
+    difficulty: '困难',
+    tags: ['@container', '容器查询', 'container-type', '响应式', '组件化'],
+    answer: `## 一、核心概念回顾
+
+**媒体查询 @media**：基于**视口**（浏览器窗口）响应。
+**容器查询 @container**：基于**父容器**的尺寸响应——同一组件在宽容器里横向排列、在窄容器里纵向排列，真正实现"组件级响应式"。
+
+\`\`\`css
+.card-wrapper {
+  container-type: inline-size;   /* 声明为查询容器：基于宽度查询 */
+  container-name: card;          /* 可选：命名，便于定向查询 */
+}
+@container card (min-width: 400px) {
+  .card { display: flex; gap: 1rem }
+  .card-cover { width: 40% }
+}
+\`\`\`
+
+---
+
+## 二、container-type 的三个值
+
+| 值 | 含义 |
+| --- | --- |
+| \`normal\`（默认） | 不是查询容器 |
+| \`inline-size\` | 基于**行内轴尺寸**（水平书写时 = 宽度）查询 ✅ 最常用 |
+| \`size\` | 基于**宽 + 高**双向查询。需要容器有明确高度，慎用 |
+
+为什么 \`inline-size\` 最常用？因为布局通常由宽度驱动，高度是内容自适应的；若设 \`size\`，容器必须有确定高度（否则高度为 0，查询永远不匹配）。
+
+---
+
+## 三、命名容器 container-name
+
+页面有多个嵌套容器时，通过命名让 \`@container\` 明确查询哪一层：
+
+\`\`\`css
+.page        { container-type: inline-size; container-name: page }
+.card-wrapper{ container-type: inline-size; container-name: card }
+
+/* 查询 card 容器，不是 page */
+@container card (min-width: 500px) {
+  .card-title { font-size: 1.5rem }
+}
+/* 查询 page 容器 */
+@container page (min-width: 1000px) {
+  .layout { display: grid; grid-template-columns: 300px 1fr }
+}
+\`\`\`
+
+---
+
+## 四、容器查询单位 cqw / cqh / cqi / cqb
+
+类似 vw/vh，但相对**查询容器**而非视口：
+
+| 单位 | 含义 |
+| --- | --- |
+| \`cqw\` | 容器宽度的 1% |
+| \`cqh\` | 容器高度的 1% |
+| \`cqi\` | 容器行内尺寸 1%（≈ cqw） |
+| \`cqb\` | 容器块尺寸 1%（≈ cqh） |
+| \`cqmin\` | min(cqw, cqh) |
+| \`cqmax\` | max(cqw, cqh) |
+
+组件内部字号、间距完全自包含：
+
+\`\`\`css
+@container card (min-width: 0) {
+  .card-title { font-size: clamp(1rem, 5cqi, 1.5rem) }
+  .card-body  { padding: calc(2cqi + 4px) }
+}
+\`\`\`
+
+组件无论被放进 200px 侧栏还是 800px 主区，字号间距都按容器宽度平滑缩放。
+
+---
+
+## 五、高阶布局模式
+
+### 1. 容器查询 + Grid auto-fit 组合（双自适应）
+
+\`\`\`css
+.card-grid {
+  container-type: inline-size;
+  container-name: grid;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+/* 容器自身变宽时，增大内部元素的最小宽度 */
+@container grid (min-width: 800px) {
+  .card-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)) }
+}
+\`\`\`
+
+外层容器变化 → 内层列数 + 最小宽度双重自适应。
+
+### 2. 组件内部布局方向切换
+
+\`\`\`css
+.stat-box { container-type: inline-size }
+
+/* 窄容器：上下结构 */
+@container (max-width: 249px) {
+  .stat { display: grid; grid-template-rows: auto auto }
+}
+/* 中等容器：左右结构 */
+@container (min-width: 250px) and (max-width: 499px) {
+  .stat { display: flex; align-items: center; gap: 1rem }
+}
+/* 宽容器：图标 + 标题 + 数值三列展开 */
+@container (min-width: 500px) {
+  .stat { display: grid; grid-template-columns: 48px 1fr auto; align-items: center }
+}
+\`\`\`
+
+### 3. 嵌套容器查询（多层组件）
+
+\`\`\`css
+/* 外层页面级 */
+.page   { container-type: inline-size; container-name: page }
+/* 内层卡片级 */
+.card-w { container-type: inline-size; container-name: card }
+
+/* 页面够宽时，卡片字体整体放大 */
+@container page (min-width: 1200px) {
+  .card-w { font-size: 18px }
+}
+/* 卡片容器自身宽度决定布局 */
+@container card (min-width: 400px) {
+  .card { display: flex }
+}
+\`\`\`
+
+每个组件独立响应，互不干扰。
+
+---
+
+## 六、@container 能查什么（查询条件）
+
+不只宽度，还支持：
+
+| 条件 | 示例 |
+| --- | --- |
+| 行内尺寸 | \`min-width: 400px\`、\`max-inline-size\` |
+| 块尺寸 | \`min-height: 300px\`（需 container-type: size） |
+| 纵横比 | \`aspect-ratio > 16/9\` |
+| 朝向 | \`orientation: landscape\`（基于容器） |
+| 逻辑运算 | \`and\` / 逗号（or） / \`not\` |
+
+\`\`\`css
+@container (min-width: 400px) and (aspect-ratio >= 2/1) {
+  /* 容器"又宽又扁"时启用 */
+}
+\`\`\`
+
+---
+
+## 七、常见坑
+
+### 1. 最近容器原则
+
+子元素查询的是**最近的、匹配 container-name 的容器祖先**。若没设 container-name，则找最近的任意查询容器。一定要显式命名避免嵌套错乱。
+
+### 2. 容器自身样式不会被 @container 修改
+
+\`\`\`css
+.card-wrapper {
+  container-type: inline-size;
+}
+/* ❌ 无效：@container 里改容器自身的样式不生效（只改容器内部项目） */
+@container (min-width: 400px) {
+  .card-wrapper { padding: 1rem }
+}
+/* ✅ 给容器再包一层，查询外层容器 */
+\`\`\`
+
+容器查询作用于**容器内部的后代**，而不是容器本身。
+
+### 3. container-type: size 导致高度坍塌
+
+设 \`size\` 后容器布局会"失去内容驱动高度的能力"，必须手动指定高度。绝大多数场景用 \`inline-size\` 即可。
+
+### 4. 与 display: contents 冲突
+
+父元素 \`display: contents\` 会跳过该元素作为容器，查询会继续向上找。
+
+---
+
+## 八、与媒体查询配合（最佳实践）
+
+\`\`\`css
+/* 1. 媒体查询：整页骨架 */
+@media (max-width: 768px) {
+  .layout { grid-template-columns: 1fr }   /* 侧栏改上方 */
+  .page { font-size: 15px }
+}
+/* 2. 容器查询：组件内部自适应（组件与放置位置解耦） */
+.sidebar-item { container-type: inline-size }
+@container (min-width: 240px) {
+  .sidebar-item { display: flex; gap: .75rem }
+}
+\`\`\`
+
+- 宏观布局骨架 → **媒体查询**
+- 组件内部样式（字号、方向、间距） → **容器查询**
+- 容器查询单位 + clamp() 实现平滑缩放 → 替代多套断点
+
+---
+
+## 九、兼容性与降级
+
+- Chrome 105+、Safari 16+、Firefox 110+（2023 年普遍支持）。
+- 降级：\`@supports not (container-type: inline-size)\` 里写媒体查询 fallback。
+
+\`\`\`css
+@supports not (container-type: inline-size) {
+  /* 没有容器查询时，退化为按视口宽度媒体查询 */
+  @media (min-width: 768px) {
+    .card { display: flex }
+  }
+}
+\`\`\`
+
+## 小结
+
+- \`container-type: inline-size\` 声明查询容器；\`container-name\` 命名避免嵌套混乱。
+- **cqw/cqi 等单位**实现组件内部尺寸完全自包含。
+- 组件级布局切换、嵌套层级独立响应、与 Grid auto-fit 双剑合璧。
+- 注意：@container 不改容器自身样式；最近容器原则；size 慎用。
+- **媒体查询管骨架，容器查询管组件**，组合效果最佳。`
+  },
+  {
+    id: 'css-040',
+    category: 'css',
+    title: 'CSS 遮罩 mask 与混合模式 mix-blend-mode / background-blend-mode 怎么用？',
+    difficulty: '中等',
+    tags: ['mask', 'mix-blend-mode', 'background-blend-mode', '遮罩', '混合模式', '合成'],
+    answer: `## 一、mask：基于透明度的可见度控制
+
+### 原理
+
+用另一张图像/渐变的**Alpha 通道（透明度）**控制元素的可见部分：
+- 遮罩的不透明区域 → 元素可见
+- 遮罩的透明区域 → 元素不可见
+- 遮罩的半透明区域 → 元素半可见
+
+### 基础用法
+
+\`\`\`css
+.box {
+  -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent);
+  mask-image: linear-gradient(to bottom, #000 60%, transparent);
+}
+\`\`\`
+
+> **必须加 \`-webkit-\` 前缀**，Safari 只认带前缀的属性。生产环境两套都写。
+
+### 完整属性
+
+\`\`\`css
+.element {
+  -webkit-mask-image: url(mask.png);              /* 遮罩图：图片 / 渐变 / SVG */
+  -webkit-mask-size: cover;                       /* 尺寸，同 background-size */
+  -webkit-mask-position: center;                  /* 位置 */
+  -webkit-mask-repeat: no-repeat;                 /* 平铺 */
+  -webkit-mask-origin: border-box;                /* 定位原点 */
+  -webkit-mask-clip: border-box;                  /* 裁剪区域 */
+  -webkit-mask-composite: source-over;            /* 多重遮罩混合方式 */
+  mask-mode: alpha;                               /* alpha / luminance / match-source */
+}
+\`\`\`
+
+### mask 常见应用
+
+#### 1. 底部渐隐（文字淡出）
+
+\`\`\`css
+.article-preview {
+  height: 200px;
+  overflow: hidden;
+  -webkit-mask: linear-gradient(to bottom, #000 70%, transparent);
+  mask: linear-gradient(to bottom, #000 70%, transparent);
+}
+\`\`\`
+
+#### 2. 图片裁剪为任意形状（支持半透明边缘）
+
+\`\`\`css
+/* 圆形边缘羽化 */
+.avatar {
+  -webkit-mask: radial-gradient(circle at 50% 50%, #000 60%, transparent 72%);
+  mask: radial-gradient(circle at 50% 50%, #000 60%, transparent 72%);
+}
+\`\`\`
+
+相比 \`clip-path\`（硬边界二值裁剪），\`mask\` 可以有羽化渐变边缘。
+
+#### 3. 多重 mask（逗号分隔，前叠后）
+
+\`\`\`css
+.torn-paper {
+  -webkit-mask:
+    linear-gradient(to bottom, #000 85%, transparent),   /* 底部撕边 */
+    linear-gradient(to right,  transparent 2%, #000 6%, #000 94%, transparent 98%); /* 左右撕边 */
+}
+\`\`\`
+
+---
+
+## 二、mix-blend-mode：元素与背后内容混合
+
+### 原理
+
+控制当前元素的像素与它**下方已渲染内容**的像素，按某种算法合成。类似 Photoshop 图层混合模式。
+
+### 语法
+
+\`\`\`css
+.element { mix-blend-mode: <mode> }
+\`\`\`
+
+### 常用混合模式
+
+| 类别 | 模式 | 效果 |
+| --- | --- | --- |
+| 基础 | \`normal\` | 默认，不混合 |
+| 变暗 | \`multiply\`（正片叠底） | 白不变、黑变黑，适合叠阴影/纹理 |
+| 变暗 | \`darken\` | 逐通道取更暗的 |
+| 变亮 | \`screen\`（滤色） | 黑不变、白变白，适合叠光效/光晕 |
+| 变亮 | \`lighten\` | 逐通道取更亮的 |
+| 对比 | \`overlay\` | 背景亮→更亮，背景暗→更暗 |
+| 对比 | \`soft-light\` / \`hard-light\` | 柔光 / 强光 |
+| 反色 | \`difference\`（差值） | 相同变黑、相反变白，可做反色 |
+| 反色 | \`exclusion\` | 差值的低对比版 |
+| 色彩 | \`hue\` / \`saturation\` / \`color\` / \`luminosity\` | 保留其中一个色彩维度 |
+
+### 经典应用
+
+#### 1. 文字自动反色（永远与背景对比清晰）
+
+\`\`\`css
+.hero-title {
+  color: #fff;
+  mix-blend-mode: difference;
+}
+/* 背景浅处文字自动变深，背景深处文字自动变浅 */
+\`\`\`
+
+#### 2. 图片叠染色调（复古滤镜）
+
+\`\`\`css
+.photo-wrap { position: relative }
+.photo-wrap::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+  mix-blend-mode: overlay;
+}
+\`\`\`
+
+#### 3. 镂空文字（用 difference 做）
+
+\`\`\`css
+.cutout-text {
+  background: url(texture.jpg);
+  background-clip: text;
+  color: #fff;
+}
+/* 或用 mix-blend-mode 做更复杂的叠字效果 */
+\`\`\`
+
+---
+
+## 三、background-blend-mode：同一元素内多层背景混合
+
+### 区别
+
+| 属性 | 混合对象 |
+| --- | --- |
+| \`mix-blend-mode\` | **元素**与**下方其他元素**（跨图层） |
+| \`background-blend-mode\` | **同一元素内部**的多个 background-image / background-color 之间（单图层内部） |
+
+### 语法
+
+\`\`\`css
+.banner {
+  background:
+    linear-gradient(45deg, #f00, #00f),   /* 层 1 */
+    url(photo.jpg);                        /* 层 2 */
+  background-blend-mode: overlay;          /* 层1 与 层2 叠加 */
+  background-color: #fff;                  /* backgroundColor 也参与混合 */
+}
+\`\`\`
+
+也可每个背景层单独指定模式（逗号分隔，对应每层）：
+
+\`\`\`css
+background-blend-mode: multiply, screen;
+\`\`\`
+
+### 典型应用：统一图片色调 + 文字可读
+
+\`\`\`css
+.hero {
+  background:
+    linear-gradient(rgba(0,0,0,.4), rgba(0,0,0,.4)),  /* 统一压暗遮罩 */
+    url(banner.jpg);
+  background-blend-mode: multiply;  /* 压暗同时保留细节 */
+  color: #fff;
+}
+\`\`\`
+
+相比直接给渐变层 \`opacity\`，\`multiply\` 能让阴影更有质感。
+
+---
+
+## 四、三者对比
+
+| | mask | mix-blend-mode | background-blend-mode |
+| --- | --- | --- | --- |
+| 控制维度 | **可见度**（透明度裁剪） | **颜色**（跨图层合成） | **颜色**（单层内多背景合成） |
+| 作用层级 | 单个元素 | 元素 vs 下方内容 | 同一元素的多背景 |
+| 典型结果 | 变透明 / 羽化边 | 变色 / 反色 / 叠加 | 染色 / 蒙层 |
+| 是否隔离 | - | 可用 \`isolation: isolate\` 创建独立组 | 天然作用在元素内 |
+
+---
+
+## 五、isolation: isolate —— 隔离混合组
+
+\`mix-blend-mode\` 默认**混合视口下所有可见内容**。如果只想让某个小组内部混合，不影响更外层，需要给组加：
+
+\`\`\`css
+.card-group { isolation: isolate }
+\`\`\`
+
+这会创建一个新的层叠上下文 + 合成组，混合模式被限制在该组内。
+
+---
+
+## 六、性能与兼容性
+
+### 性能
+
+- mask 和混合模式都会触发 **Paint 和 Composite**，且需要 GPU 做像素级合成。
+- 避免在长列表、滚动区域的每一项都大面积使用，尤其移动端。
+- 动画时优先放在独立合成层（\`will-change\` / \`transform: translateZ(0)\`）。
+
+### 兼容性
+
+| 属性 | 兼容情况 |
+| --- | --- |
+| mask | Safari 只认 \`-webkit-mask\`；Chrome/Firefox 两者都认。必须写前缀。 |
+| mix-blend-mode | 现代浏览器全支持；IE 不支持。 |
+| background-blend-mode | 现代浏览器支持；Safari 早期版本对多层支持有 bug。 |
+
+### 通用降级写法
+
+\`\`\`css
+/* mask 前缀 */
+.box {
+  -webkit-mask: linear-gradient(#000, transparent);
+          mask: linear-gradient(#000, transparent);
+}
+/* 混合模式降级：不支持时给纯色覆盖 */
+@supports not (mix-blend-mode: multiply) {
+  .photo-wrap::after { background: rgba(0,0,0,.4) }
+}
+\`\`\`
+
+---
+
+## 七、综合实战：质感卡片
+
+\`\`\`css
+.glass-card {
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.3), rgba(255,255,255,.05)),
+    url(texture.jpg);
+  background-blend-mode: overlay;
+  backdrop-filter: blur(10px);
+  -webkit-mask: linear-gradient(135deg, #000 85%, transparent 100%);
+          mask: linear-gradient(135deg, #000 85%, transparent 100%);
+  isolation: isolate;
+}
+.glass-card .tag {
+  mix-blend-mode: difference;
+  color: #fff;
+}
+\`\`\`
+
+## 小结
+
+- **mask**：用图像/渐变的透明度控制可见度（遮罩、渐隐、羽化裁剪）。
+- **mix-blend-mode**：元素与背后跨图层颜色合成（反色、叠加、滤色）。
+- **background-blend-mode**：同一元素内多背景之间混合（染色、统一压暗）。
+- **前缀**：mask 必加 \`-webkit-\`。
+- **隔离**：用 \`isolation: isolate\` 限制混合范围。
+- 组合使用可实现极具质感的视觉，但要注意性能与降级。`
+  },
+  {
+    id: 'css-041',
+    category: 'css',
+    title: 'CSS Grid 进阶：subgrid 与命名区域（grid-template-areas）怎么用？',
+    difficulty: '中等',
+    tags: ['Grid', 'subgrid', '命名区域', 'grid-template-areas', '布局'],
+    answer: `## 一、命名区域（grid-template-areas）
+
+### 定义
+
+用**字符串矩阵**给 Grid 划分"语义化区域"，并让项目通过 \`grid-area\` 直接放入对应区域。比数字网格线更直观。
+
+### 基本用法
+
+\`\`\`css
+.layout {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  grid-template-rows: 60px 1fr 40px;
+  grid-template-areas:
+    "header  header"
+    "sidebar main"
+    "footer  footer";
+  gap: 1rem;
+}
+.header  { grid-area: header }
+.sidebar { grid-area: sidebar }
+.main    { grid-area: main }
+.footer  { grid-area: footer }
+\`\`\`
+
+矩阵规则：
+- 每行字符串代表一行轨道，字符串中空格分隔的每个名字代表一列。
+- 同名区域**必须组成矩形**（不能 L 形）。
+- 想留空位置用 \`.\`（一个或多个点都行）。
+
+\`\`\`css
+grid-template-areas:
+  "header header header"
+  "left   .      right"   /* 中间一列留空 */
+  "footer footer footer";
+\`\`\`
+
+### 优点
+
+1. **语义清晰**：看 \`grid-template-areas\` 一眼就能想象布局形状。
+2. **响应式重构简单**：媒体查询里重写矩阵即可。
+3. **顺序解耦**：视觉位置与 DOM 顺序无关。
+
+### 响应式下重排
+
+\`\`\`css
+.layout { grid-template-areas:
+  "header"
+  "main"
+  "sidebar"
+  "footer" }
+@media (min-width: 768px) {
+  .layout {
+    grid-template-columns: 200px 1fr;
+    grid-template-areas:
+      "header  header"
+      "sidebar main"
+      "footer  footer";
+  }
+}
+\`\`\`
+
+### 命名区域的隐式网格线
+
+命名区域会自动生成对应的网格线（\`-start\` / \`-end\` 后缀），可混用：
+
+\`\`\`css
+/* header 区域自动生成两条线：header-start / header-end */
+.special { grid-row: header-start / footer-end } /* 跨到 header 顶到 footer 底 */
+\`\`\`
+
+---
+
+## 二、subgrid：继承父级轨道的嵌套 Grid
+
+### 痛点：嵌套 Grid 轨道对齐难
+
+传统 Grid 中，子 Grid 与父 Grid 是两套独立的轨道系统，**无法自动对齐**：
+
+\`\`\`html
+<div class="grid-parent">      <!-- 三列：[A][B][C] -->
+  <div class="card">           <!-- 想让卡片内部 3 列也跟父级对齐 → 传统做不到 -->
+    <div class="card-inner-grid"></div>
+  </div>
+</div>
+\`\`\`
+
+### subgrid 语法
+
+让子 Grid 的行/列**直接使用父 Grid 的轨道定义**，完美对齐：
+
+\`\`\`css
+.grid-parent {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: repeat(3, auto);
+  gap: 1rem;
+}
+.card {
+  grid-column: span 2;          /* 卡片占父级两列 */
+  grid-row: span 2;             /* 占两行 */
+  display: grid;
+  grid-template-columns: subgrid;  /* ✅ 这两列直接继承父级的轨道 */
+  grid-template-rows: subgrid;     /* ✅ 这两行也继承 */
+  gap: inherit;                    /* 继承间距 */
+}
+.card .thumb  { grid-column: 1; grid-row: 1 / 3 }
+.card .title  { grid-column: 2 }
+.card .desc   { grid-column: 2 }
+\`\`\`
+
+卡片内部的"列 1 / 列 2"就是父 Grid 的那两列——所以所有卡片内部元素都在**同一条竖直线上**，哪怕每张卡片自身跨的列数不同。
+
+### subgrid 行与列可分开指定
+
+\`\`\`css
+.nested {
+  display: grid;
+  grid-template-columns: subgrid;   /* 列继承父 */
+  grid-template-rows: repeat(3, 1fr); /* 行自己定义 */
+}
+\`\`\`
+
+### 典型应用 1：卡片内容统一对齐
+
+\`\`\`css
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+.card {
+  display: grid;
+  grid-template-rows: subgrid;   /* 行与父网格共享，所有卡片头/体/尾对齐 */
+  grid-row: span 3;              /* 每张卡占 3 行（头+体+尾） */
+}
+.card-header { /* ... */ }
+.card-body   { /* ... */ }
+.card-footer { /* ... */ }
+\`\`\`
+
+痛点：之前卡片高度不等时，每张卡片内部标题/内容/按钮位置参差不齐。用 **subgrid + span N** 后，所有卡片的标题行高度一致、正文行高度一致、底部按钮行高度一致——完美横平竖直。
+
+### 典型应用 2：复杂仪表盘 / 表格布局
+
+\`\`\`css
+.dashboard {
+  display: grid;
+  grid-template-columns: 80px repeat(6, 1fr);
+  grid-template-rows: repeat(12, minmax(2rem, auto));
+}
+.panel {
+  grid-column: 2 / 6;
+  grid-row: 2 / 8;
+  display: grid;
+  grid-template-columns: subgrid;   /* 继承父级 4 列（2-5） */
+  grid-template-rows: subgrid;      /* 继承父级 6 行（2-7） */
+}
+/* panel 内部可以精确对齐父级的列和行 */
+\`\`\`
+
+### subgrid 的关键点
+
+1. **必须声明跨度**：子项先在父级 \`grid-column: span N\` / \`grid-row: span M\` 占好空间，再 subgrid 继承这 N 列 / M 行。
+2. **gap 继承**：subgrid 不自动继承 gap，需要显式 \`gap: inherit\` 或重新指定。
+3. **命名区域传递**：父级的命名区域和命名线，subgrid 里可以直接用。
+4. **多层 subgrid**：可以层层嵌套 subgrid，所有层级共用根级轨道。
+5. **不支持 auto-fit / auto-fill**：subgrid 只能继承**明确的轨道数量**。
+
+---
+
+## 三、命名区域 + subgrid 组合实战
+
+\`\`\`css
+/* 1. 根级：命名区域 + 明确轨道 */
+.page {
+  display: grid;
+  grid-template-columns: 240px repeat(4, 1fr);
+  grid-template-rows: 64px auto 48px;
+  grid-template-areas:
+    "side head head head head head"
+    "side main main main main main"
+    "side foot foot foot foot foot";
+  gap: 1rem;
+}
+.aside { grid-area: side }
+.header{ grid-area: head }
+.main  { grid-area: main }
+.footer{ grid-area: foot }
+
+/* 2. main 区域做 subgrid，精确切分 */
+.main {
+  display: grid;
+  grid-template-columns: subgrid;   /* 继承 main 所在的 4 列 */
+  grid-template-rows: repeat(2, 200px);
+}
+.article  { grid-column: 1 / 4 }  /* main 里的列 1-3 = 页面的第 2-4 列 */
+.sidebar2 { grid-column: 4 }      /* main 里的列 4   = 页面的第 5 列 */
+\`\`\`
+
+---
+
+## 四、命名区域 vs 数字网格线 vs 命名网格线
+
+| 方式 | 适用 | 优点 | 缺点 |
+| --- | --- | --- | --- |
+| 数字线 \`1 / 3\` | 简单跨格 | 简短 | 语义弱 |
+| 命名线 \`col-a / col-c\` | 语义 + 精细控制 | 精确 | 定义繁琐 |
+| **命名区域** | 页面骨架/整体布局 | 可读性极强，一眼懂 | 必须矩形 |
+| **subgrid** | 嵌套层级对齐 | 跨层级像素级对齐 | 需浏览器支持 |
+
+最佳实践：**整体结构用命名区域 + 内部嵌套用 subgrid + 微调用数字线**。
+
+---
+
+## 五、兼容性
+
+| 特性 | 支持情况 |
+| --- | --- |
+| grid-template-areas | 全现代浏览器（2017+），非常稳 |
+| subgrid | Firefox 71+（2019）、Safari 16+（2022）、Chrome 117+（2023 年底）。主流齐了。 |
+
+### subgrid 降级
+
+\`\`\`css
+.card {
+  display: grid;
+  grid-template-rows: auto 1fr auto;   /* fallback：自定义三行 */
+}
+@supports (grid-template-rows: subgrid) {
+  .card { grid-template-rows: subgrid } /* 支持就启用 */
+}
+\`\`\`
+
+## 小结
+
+- **命名区域**：\`grid-template-areas\` 矩阵语义化布局骨架，媒体查询里重写矩阵即可重排。
+- **subgrid**：嵌套 Grid 的行/列继承父 Grid 轨道，解决卡片内容不齐、嵌套对不齐的老难题。
+- 组合：顶层 \`grid-template-areas\` 画骨架，内部大组件 subgrid 对齐，细节用网格线 span。
+- subgrid 是 Grid 布局的"最后一块拼图"，让多层 Grid 真正成为一个二维系统。`
+  },
+  {
+    id: 'css-042',
+    category: 'css',
+    title: 'CSS 滚动捕捉 scroll-snap 怎么用？实现轮播、全屏滑页、相册浏览',
+    difficulty: '简单',
+    tags: ['scroll-snap', '滚动捕捉', '轮播', '全屏滑动'],
+    answer: `## 原理
+
+scroll-snap 让容器在滚动结束时**自动吸附**到某个子元素的边缘/中心，避免滚动停在"半中间"的尴尬位置。纯 CSS 实现轮播、全屏滑页、相册浏览等滚动对齐交互。
+
+---
+
+## 核心属性（容器）
+
+\`\`\`css
+.scroll-container {
+  /* 1. 滚动方向上启用捕捉 */
+  scroll-snap-type: x mandatory;
+  /* 取值：x / y / both  +  mandatory / proximity / none */
+}
+\`\`\`
+
+### scroll-snap-type 的两个关键字
+
+**轴（x / y / both）**：
+- \`x\`：横向捕捉（轮播）
+- \`y\`：纵向捕捉（全屏滑页）
+- \`both\`：双轴（相册网格）
+
+**严格度（mandatory / proximity）**：
+| 模式 | 含义 |
+| --- | --- |
+| \`mandatory\`（强制） | 滚动一停就**必须**吸附到最近的捕捉点。稳定，轮播滑页推荐。 |
+| \`proximity\`（邻近） | 离捕捉点够近才吸附，否则随便停。适合长正文的章节间对齐。 |
+
+> \`mandatory\` 的坑：内容很高、跨屏幕时，中途刷新或动态插入元素可能导致强制跳到某个位置，跳屏。长列表慎用。
+
+---
+
+## 核心属性（子项）
+
+\`\`\`css
+.scroll-item {
+  /* 2. 子项声明捕捉位置 */
+  scroll-snap-align: center;
+  /* 取值：none / start / center / end */
+}
+\`\`\`
+
+| 值 | 含义 |
+| --- | --- |
+| \`start\` | 子项**起始边**与容器可视区起始边对齐 |
+| \`center\` | 子项**中心**与容器可视区中心对齐 ✅ 卡片轮播最常用 |
+| \`end\` | 子项**终止边**对齐 |
+
+---
+
+## 辅助属性
+
+### scroll-padding（容器） / scroll-margin（子项）
+
+吸附时给容器或子项加"偏移缓冲"，避免被固定头部遮挡或留出视觉边距：
+
+\`\`\`css
+/* 容器：顶部留出 80px 给吸顶头，不吸附到最顶端 */
+.page {
+  scroll-snap-type: y mandatory;
+  scroll-padding-top: 80px;
+}
+/* 子项：每个 section 顶部分界线比真实 start 高 20px（留白） */
+.section { scroll-margin-top: 20px }
+\`\`\`
+
+### scroll-snap-stop
+
+\`\`\`css
+.item { scroll-snap-stop: always }
+\`\`\`
+
+- \`normal\`（默认）：快速滑动可**一次跳过多个**捕捉点（像轮播猛滑滑过好几张）。
+- \`always\`：**每个捕捉点都必须停一次**，一次滑动最多过一个点。相册/全屏滑页推荐，不会滑过头。
+
+---
+
+## 实战 1：横向卡片轮播
+
+\`\`\`html
+<div class="carousel">
+  <div class="slide"><img src="1.jpg"></div>
+  <div class="slide"><img src="2.jpg"></div>
+  <div class="slide"><img src="3.jpg"></div>
+</div>
+\`\`\`
+
+\`\`\`css
+.carousel {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-padding: 0 1rem;     /* 左右留边距，首尾卡也能贴边对齐 */
+  scrollbar-width: none;     /* 隐藏滚动条 Firefox */
+}
+.carousel::-webkit-scrollbar { display: none }  /* Chrome/Safari */
+.carousel .slide {
+  flex: 0 0 80%;                       /* 每张卡占 80% 宽 */
+  scroll-snap-align: center;           /* 居中对齐 */
+  scroll-snap-stop: always;            /* 每次滑动只过一张 */
+  border-radius: 8px;
+  overflow: hidden;
+}
+.carousel .slide img { width: 100%; display: block }
+\`\`\`
+
+不需要 JS 就实现了"居中对齐 + 一次一张"的轮播效果。
+
+### 进阶：加指示点（JS 可选）
+
+\`\`\`js
+// 监听滚动位置，高亮当前对应 dot
+carousel.addEventListener('scroll', () => {
+  const i = Math.round(carousel.scrollLeft / carousel.clientWidth)
+  dots.forEach((d, idx) => d.classList.toggle('active', idx === i))
+})
+\`\`\`
+
+---
+
+## 实战 2：全屏竖滑页（H5 引导页 / App 介绍）
+
+\`\`\`css
+html, body { height: 100%; margin: 0 }
+.slides {
+  height: 100vh;
+  overflow-y: scroll;
+  scroll-snap-type: y mandatory;
+}
+.slides section {
+  height: 100vh;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  display: grid;
+  place-items: center;
+  font-size: 3rem;
+}
+\`\`\`
+
+每滑一次停在整屏边界。
+
+---
+
+## 实战 3：双轴相册浏览
+
+\`\`\`css
+.gallery {
+  height: 100vh;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(3, 100%);
+  grid-auto-rows: 100vh;
+  scroll-snap-type: both mandatory;
+}
+.gallery img {
+  width: 100%; height: 100%; object-fit: cover;
+  scroll-snap-align: center;
+}
+\`\`\`
+
+横滑和竖滑都能精确吸附到每张图。
+
+---
+
+## 实战 4：长文章节吸附（proximity）
+
+\`\`\`css
+article {
+  scroll-snap-type: y proximity;   /* 靠近才吸附，不强制 */
+}
+article h2 {
+  scroll-snap-align: start;
+  scroll-margin-top: 80px;         /* 避开 sticky header */
+}
+\`\`\`
+
+用户滚动停在章节标题附近时自动对齐，方便阅读；中途停留不会被硬拉走。
+
+---
+
+## 与其他滚动特性组合
+
+### + scroll-behavior: smooth
+
+\`\`\`css
+html { scroll-behavior: smooth }
+/* 点击锚点跳转时，吸附过程是平滑滚动，体验更好 */
+\`\`\`
+
+### + overscroll-behavior
+
+\`\`\`css
+.carousel { overscroll-behavior-x: contain }
+/* 横向滑到尽头时，不要触发浏览器的前进/后退手势 */
+\`\`\`
+
+---
+
+## 常见坑
+
+### 1. 捕捉失效：子项高度/宽度没设好
+
+子项如果完全靠内容撑、尺寸差异大，吸附位置会飘忽。建议统一尺寸或给容器明确视口宽高。
+
+### 2. mandatory 跳屏
+
+动态添加内容或切换页面时，mandatory 可能导致强制跳回之前的捕捉点。解决：动态列表用 \`proximity\`，或先改 \`snap-type: none\` 更新后再改回。
+
+### 3. 固定头部遮挡
+
+Sticky header + scroll-snap 时，start 对齐会被头盖住——必须配 \`scroll-padding-top: headerH\` 或 \`scroll-margin-top\`。
+
+### 4. 移动端手势冲突
+
+与 \`touch-action\` 配合避免缩放、双指手势干扰：
+
+\`\`\`css
+.carousel { touch-action: pan-y pinch-zoom }  /* 允许横向滑动的同时保留纵向页面滚动和缩放 */
+\`\`\`
+
+---
+
+## 兼容性
+
+- 现代浏览器（2020+）普遍支持。
+- Safari 早期版本对 \`scroll-snap-stop: always\` 支持有坑，iOS 上可跳过多个点。
+- 早期语法差异较大（\`scroll-snap-coordinate\` 等老属性），新项目直接用新版。
+
+### 降级
+
+不支持时回退为普通滚动——用户只是停在中间位置，功能仍可用，体验渐进增强即可。
+
+## 小结
+
+- 容器：\`scroll-snap-type: [x|y|both] [mandatory|proximity]\`。
+- 子项：\`scroll-snap-align: [start|center|end]\` + 可选 \`scroll-snap-stop: always\`。
+- 对齐偏移：容器 \`scroll-padding\` / 子项 \`scroll-margin\`。
+- 典型场景：轮播（x center + always）、全屏页（y start + always）、相册（both）、章节标题（y proximity）。
+- 纯 CSS 替代大量 JS 轮播库代码，但要注意 mandatory 的跳屏坑和 sticky header 遮挡。`
+  },
+  {
+    id: 'css-043',
+    category: 'css',
+    title: 'CSS 计数器 counter-reset / counter-increment 怎么用？纯 CSS 序号、目录、章节编号',
+    difficulty: '简单',
+    tags: ['counter-reset', 'counter-increment', 'CSS计数器', 'counters'],
+    answer: `## 原理
+
+CSS 计数器是一组"在样式里维护的变量"，可以根据元素在文档中的层级和顺序自动增减，再通过 \`counter()\` / \`counters()\` 函数把数值显示出来。纯 CSS 实现多级编号、目录、榜单排名等。
+
+---
+
+## 三步使用流程
+
+\`\`\`css
+/* 1. 在父元素上声明（重置）计数器 */
+.todo-list {
+  counter-reset: task;  /* 声明计数器 task，初始值 0 */
+  /* counter-reset: task 10  也可指定起始值 */
+  /* counter-reset: a 0 b 5  可一次声明多个 */
+}
+/* 2. 在子元素上递增 */
+.todo-list li {
+  counter-increment: task;   /* 每出现一个 li，task +1 */
+  /* counter-increment: task 2   可自定义步长 */
+  /* counter-increment: task -1  可递减 */
+}
+/* 3. 在伪元素里显示 */
+.todo-list li::before {
+  content: counter(task) '. ';  /* 输出：1. / 2. / 3. ... */
+}
+\`\`\`
+
+\`\`\`html
+<ol class="todo-list">
+  <li>起床</li>    <!-- 1. 起床 -->
+  <li>吃饭</li>    <!-- 2. 吃饭 -->
+  <li>写代码</li>  <!-- 3. 写代码 -->
+</ol>
+\`\`\`
+
+> 计数器通常配合 \`::before\` / \`::after\` 的 \`content\` 显示，但也可配合 \`target-counter\` 等用于引用页码。
+
+---
+
+## counter() 的编号样式
+
+\`counter(name, style)\` 第二个参数指定数字风格，同 \`list-style-type\`：
+
+\`\`\`css
+/* 中文数字：一、二、三…… */
+li::before { content: counter(task, cjk-ideographic) '、' }
+
+/* 罗马数字：I / II / III */
+li::before { content: 'Part ' counter(task, upper-roman) ': ' }
+
+/* 小写字母：a / b / c */
+li::before { content: counter(task, lower-latin) ') ' }
+\`\`\`
+
+常见 style：\`decimal\`（默认 1,2,3）、\`lower-alpha\` / \`upper-alpha\`、\`lower-roman\` / \`upper-roman\`、\`cjk-ideographic\`（中文）、\`simp-chinese-formal\`（大写中文壹贰叁）、\`hiragana\`、\`katakana\`、\`disc\` 等。
+
+---
+
+## 嵌套编号（多级目录）：counters()
+
+**目录层级**要输出 \`1.1\`、\`2.3.1\` 这种复合编号，用 \`counters()\`（注意复数，带 s）。
+
+\`\`\`css
+/* 父级重置 */
+.toc, .toc ul {
+  counter-reset: chapter;   /* 每一层 ul 都重置自己的 chapter 计数器 */
+  list-style: none;
+  padding-left: 1.5em;
+}
+.toc li {
+  counter-increment: chapter;
+}
+.toc li::marker {   /* 或 ::before */
+  content: counters(chapter, '.') '  ';  /* 把所有层级的 chapter 用点连起来 */
+  font-weight: 600;
+}
+\`\`\`
+
+\`\`\`html
+<ul class="toc">
+  <li>入门
+    <ul>
+      <li>环境搭建</li>      <!-- 1.1  环境搭建 -->
+      <li>Hello World</li>   <!-- 1.2  Hello World -->
+    </ul>
+  </li>
+  <li>进阶
+    <ul>
+      <li>路由
+        <ul>
+          <li>动态路由</li>  <!-- 2.1.1  动态路由 -->
+        </ul>
+      </li>
+      <li>状态管理</li>      <!-- 2.2  状态管理 -->
+    </ul>
+  </li>
+</ul>
+\`\`\`
+
+**原理**：每个嵌套的 \`ul\` 都会创建一个新的 \`chapter\` 作用域。\`counters(chapter, '.')\` 会把"从外到内所有同名计数器当前值"用分隔符拼接。
+
+\`counters(name, separator, style)\` 也支持第三个参数编号样式。
+
+---
+
+## 组合多个计数器
+
+可以同时维护多个独立计数器：
+
+\`\`\`css
+.article {
+  counter-reset: h2-counter h3-counter fig-counter;
+}
+.article h2 {
+  counter-increment: h2-counter;
+  counter-reset: h3-counter 0;  /* h2 一出现，h3 归零重新计 */
+}
+.article h2::before { content: '第 ' counter(h2-counter) ' 章 ' }
+.article h3 {
+  counter-increment: h3-counter;
+}
+.article h3::before { content: counter(h2-counter) '.' counter(h3-counter) '  ' }
+.article figure {
+  counter-increment: fig-counter;
+}
+.article figcaption::before { content: '图 ' counter(h2-counter) '-' counter(fig-counter) '：' }
+/* 输出：图 2-3：xxx */
+\`\`\`
+
+---
+
+## 非 \`content\` 场景（实验性）
+
+新标准支持在除 \`content\` 外的属性中使用计数器，通过 \`counter-set\` 直接赋值：
+
+\`\`\`css
+.item {
+  counter-increment: rank;
+  /* 用 attr 或自定义属性引用 */
+  --rank: counter(rank);  /* 目前兼容性有限 */
+}
+\`\`\`
+
+主流还是 \`::before/::after + content\` 的组合。
+
+---
+
+## 实战：带括号的榜单 + 末尾总计
+
+\`\`\`css
+.rank-list {
+  list-style: none;
+  counter-reset: rank total 0;
+}
+.rank-list li {
+  counter-increment: rank total;   /* 同时递增两个 */
+  padding: .25em 0;
+}
+.rank-list li::before {
+  content: 'TOP ' counter(rank, decimal-leading-zero);
+  /* decimal-leading-zero 补零：01 / 02 … */
+  display: inline-block;
+  width: 4em;
+  color: #1890ff;
+  font-weight: 600;
+}
+.rank-list::after {
+  content: '— 共 ' counter(total) ' 名获奖者 —';
+  display: block;
+  margin-top: 1rem;
+  text-align: center;
+  color: #999;
+}
+\`\`\`
+
+\`counter(total)\` 会在最后读取到等于列表长度的值，**无需 JS 就显示总数**。
+
+---
+
+## 与 display: none / visibility 的关系
+
+| 元素状态 | counter 是否计数 |
+| --- | --- |
+| 正常显示 | ✅ 计数 |
+| \`display: none\` | ❌ **不计数**（完全从渲染树移除） |
+| \`visibility: hidden\` | ✅ 计数（仍占位置） |
+| \`opacity: 0\` | ✅ 计数 |
+| \`content-visibility: hidden\` | ✅ 计数（保留布局） |
+
+利用这点："只显示前 N，其余 display: none"时，计数器会自动跳过隐藏项，序号不会断层。
+
+---
+
+## 与 ol 原生编号对比
+
+| | ol > li 原生编号 | CSS 计数器 |
+| --- | --- | --- |
+| 单级 | ✅ 方便 | 稍繁琐 |
+| 多级 | ❌ 需 type 属性嵌套 + 自定义麻烦 | ✅ 灵活（1.1 / 1.1.1 / 中文混合） |
+| 跨章节跳号 | ❌ 不易 | ✅ counter-reset 精准控制 |
+| 与样式联动 | ❌ 难 | ✅ 可按条件 increment |
+| 显示总数 | ❌ | ✅ 末尾 counter(total) |
+
+结论：简单单级 → 原生 ol；复杂多级 / 跨章节 / 要显示总数 / 定制编号内容 → CSS 计数器。
+
+---
+
+## 常见坑
+
+### 1. counter-reset 的作用域
+
+计数器跟随**最近的声明它的祖先**。若把 counter-reset 写在 \`body\`，整页只有一个计数器，每个 li 都会累加跨多个 ul 的编号——通常我们想每个 ul 独立，所以 reset 一定写在**直接父级容器**。
+
+### 2. 递增位置要在"显示之前"
+
+\`counter-increment\` 要写在**同一个元素或其子元素的 counter() 引用之前**。浏览器按源码顺序：先 reset（父） → 再 increment（当前 li） → 再 counter() 显示（当前 li::before）。若顺序反会显示错误值。
+
+### 3. 步长为 0 的 increment 无效
+
+\`counter-increment: x 0\` 等于没写，不会"重置"。重置要用 \`counter-reset\` 或新标准 \`counter-set\`。
+
+---
+
+## 兼容性
+
+- \`counter-reset\` / \`counter-increment\` / \`counter()\` / \`counters()\`：**IE8+ 全支持**，非常稳。
+- \`counter-set\`（直接赋值，不常用）：Chrome 85+ / Safari 16+ / Firefox 68+。
+
+## 小结
+
+- **三步**：父级 \`counter-reset\` → 子级 \`counter-increment\` → \`::before\` 里 \`counter()\` 显示。
+- **多级目录**：每层容器都 reset 同名计数器，显示用 \`counters(name, '.')\` 字符串拼接。
+- **编号样式**：counter 第二参数传 \`cjk-ideographic\` / \`upper-roman\` 等。
+- **跨章节**：h2 里重置 h3 子计数，实现"第 N 章 → N.M 节"效果。
+- 极稳的老特性（IE8+），纯 CSS 解决编号、目录、榜单，无任何 JS 开销。`
+  },
+  {
+    id: 'css-044',
+    category: 'css',
+    title: '深入层叠上下文（Stacking Context）：形成条件、层叠顺序、常见 z-index 陷阱',
+    difficulty: '困难',
+    tags: ['层叠上下文', 'z-index', '堆叠顺序', 'isolation'],
+    answer: `## 一、什么是层叠上下文
+
+把页面想象成叠起来的透明胶片：每张胶片是一个"层叠上下文"，胶片里的元素按顺序排；不同胶片之间按"胶片优先级"叠。\`z-index\` 只在**同一张胶片里比较**才有意义——跨胶片无论多大值都没用。
+
+> 根元素 \`<html>\` 默认就是一张最底层的胶片（根层叠上下文）。
+
+---
+
+## 二、形成层叠上下文的全部条件（2025 版）
+
+满足**任意一条**就会创建独立层叠上下文：
+
+### 1. 经典定位 + z-index
+- \`position: relative / absolute\` 且 \`z-index\` 不为 \`auto\`
+- \`position: fixed / sticky\`（**无论 z-index 是否 auto 都会创建**，许多人踩坑）
+
+### 2. Flex / Grid 项 + z-index
+- Flex / Grid 的直接子元素，且 \`z-index\` 不为 \`auto\`
+
+### 3. 特殊属性值（不依赖 position！）
+- \`opacity < 1\`（哪怕 0.999）
+- \`transform\` 不为 \`none\`
+- \`filter\` 不为 \`none\`
+- \`perspective\` 不为 \`none\`
+- \`backdrop-filter\` 不为 \`none\`（毛玻璃必创建）
+- \`mix-blend-mode\` 不为 \`normal\`
+- \`clip-path\` 不为 \`none\`
+- \`mask\` / \`mask-image\` 不为 \`none\`
+
+### 4. will-change
+- \`will-change\` 设了任意会创建层叠上下文的属性值（如 \`will-change: transform, opacity\`）
+
+### 5. 隔离与布局
+- \`isolation: isolate\`（**最干净的手动创建方式，无副作用**）
+- \`contain: layout / paint / strict / content\`
+- \`content-visibility: auto\`
+
+### 6. 容器（新）
+- \`container-type: size\` 或 \`inline-size\`（容器查询容器）
+
+### 7. 特定元素
+- \`<video>\`、\`<canvas>\`、WebGL、\`<iframe>\` 等替换元素
+
+> 加粗记忆：**定位+z、fixed/sticky、flex/grid 子+z、opacity<1、transform、filter、mix-blend、clip-path、mask、backdrop-filter、will-change、isolation、contain、container-type**。
+
+---
+
+## 三、同一层叠上下文内的层叠顺序（从下→上）
+
+理解顺序才能解释"为什么 \`z-index: 999\` 反而在下面"：
+
+| 层级 | 元素类别 | 说明 |
+| --- | --- | --- |
+| 1 最底 | 背景与边框 | 层叠上下文根元素自身的背景和边框 |
+| 2 | 负 z-index 子项 | \`z-index: -1\` |
+| 3 | 块级元素（正常流） | 没有定位的 block |
+| 4 | float 元素 | 浮动元素（仍在正常流之上） |
+| 5 | inline / inline-block 元素 | 行内文字 |
+| 6 | \`z-index: auto / z-index: 0\` 的定位项 | 及其他创建了层叠上下文但 z-index 未设置的 |
+| 7 最顶 | 正 z-index 定位项（值越大越上） | \`z-index: 1 / 2 / 999\` |
+
+**核心口诀**：负→块→浮→行→auto→正。inline 比 float 高，所以浮动能被文字环绕（文字在上层能盖过浮动块）。
+
+---
+
+## 四、3 个经典 z-index 陷阱
+
+### 陷阱 1：父层叠上下文低，子 z-index 再大也白搭
+
+\`\`\`html
+<div class="A" style="position: relative; z-index: 1">
+  <div class="A-child" style="position: absolute; z-index: 999">我是 A 儿子</div>
+</div>
+<div class="B" style="position: relative; z-index: 2">我是 B</div>
+\`\`\`
+
+**结果**：A-child(999) **永远被 B 盖住**，不管 z-index 多大。
+
+**原因**：
+- A 创建了层叠上下文（z=1），B 也创建（z=2）。
+- A-child 的 z-index **只在 A 内部比较**。
+- A 整体 vs B 整体比较：A(1) < B(2) → B 在上。
+- 所以 A 的所有子元素（包括 999 那个）都整整齐齐待在 B 下方。
+
+**解决**：把 A 的 z-index 提到 ≥ B 的 z-index，或重新组织 DOM 让需要在上的元素出现在后。
+
+### 陷阱 2：opacity / transform 隐式创建了上下文（最常见）
+
+\`\`\`html
+<div class="modal-mask" style="opacity: .9">
+  <div class="modal" style="position: absolute; z-index: 999">弹窗</div>
+</div>
+<div class="nav" style="position: fixed; z-index: 100">导航</div>
+\`\`\`
+
+期望：modal(999) 盖住 nav(100)。
+**结果**：nav 反而盖住了 modal！
+
+**原因**：
+- \`.modal-mask\` 有 \`opacity: .9 < 1\` → 隐式创建层叠上下文，它自身的 z-index 是 **auto（= 0）**。
+- \`.nav\` 是 fixed + z=100 → 独立层叠上下文。
+- 根层叠上下文里比较：modal-mask(0) vs nav(100) → nav(100) 在上。
+- modal 的 z=999 **被关在 mask 那层里**，没法跳出来和 nav 比。
+
+**解决**：
+- 给 \`.modal-mask\` 显式设足够大的 z-index：\`position: relative; z-index: 1000\`（让整个 mask 组在上）。
+- 或避免 mask 和 modal 嵌套：两个元素同级，各自独立 z-index。
+
+### 陷阱 3：isolation: isolate 意外"封印"内部 z-index
+
+\`\`\`css
+.card-group { isolation: isolate }  /* 本意是隔离混合模式渲染 */
+.card .tag { position: absolute; z-index: 999 }   /* 期望盖在组外的 tooltip 上 */
+.tooltip-outside { z-index: 500 }
+\`\`\`
+
+结果：tag(999) 盖不住 tooltip(500)。
+
+**原因**：\`isolation: isolate\` 本来是给 \`mix-blend-mode\` 做渲染隔离的，但副作用是**创建独立层叠上下文**。card-group 整体 z 为 auto(0)，内部 999 出不来。
+
+**解决**：理解 isolation 会创建层叠上下文，合理设置容器整体 z-index，或将 tooltip 移入同组。
+
+---
+
+## 五、调试方法
+
+Chrome DevTools → Layers 面板（或 More tools → Layers）：
+- 查看所有合成层，按三维 z 方向堆叠展示。
+- 鼠标悬停高亮页面对应元素。
+- Memory 栏查看每层的显存占用。
+
+Elements → Styles → 右侧点 "Layers" 图标（新版本），可直接看当前元素所在层叠上下文的祖先链。
+
+---
+
+## 六、管理 z-index 的最佳实践
+
+### 1. 分层命名 + 集中定义
+
+不要散落魔术数字，统一在一处声明：
+
+\`\`\`css
+:root {
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-drawer: 500;
+  --z-modal-mask: 900;
+  --z-modal: 1000;
+  --z-message: 1500;
+  --z-tooltip: 2000;
+}
+.dropdown { z-index: var(--z-dropdown) }
+.modal-mask { position: fixed; z-index: var(--z-modal-mask) }
+.modal      { position: fixed; z-index: var(--z-modal) }
+\`\`\`
+
+### 2. 层级扁平化，避免嵌套过深
+
+模态框、抽屉、消息等**挂到 body 根级**（Portal / Teleport），不要包在有 z-index 的组件内。
+
+### 3. 用 isolation: isolate 手动隔离（最干净）
+
+需要"内部 z-index 不泄漏、也不受外部干扰"时，给容器加：
+
+\`\`\`css
+/* 这一层所有 z 都独立，相当于新建一张干净的胶片 */
+.card-slider { isolation: isolate }
+\`\`\`
+
+相比 \`transform/opacity/filter\` 的隐式创建，\`isolation: isolate\` 没有渲染副作用，是**最纯粹、语义最明确**的创建方式。
+
+### 4. 不要用巨型 z-index（99999）
+
+一旦有一个 99999，后面的人只能用 999999，最后全是 6 个 9。集中定义分层常量就不会走到这一步。
+
+### 5. 需要置顶时排查"隐式创建祖先"
+
+元素设了 z-index 仍不上来 → 往上检查每一层祖先：
+1. 是否 \`position: fixed/sticky\`
+2. 是否 \`opacity < 1\`
+3. 是否 \`transform\` / \`filter\` / \`backdrop-filter\` / \`mix-blend-mode\`
+4. 是否 \`isolation\` / \`contain\` / \`container-type\`
+5. Flex/Grid 子且设了 z-index
+
+**找到第一个创建层叠上下文的祖先，给它提升 z-index，或把需要置顶的元素移到那个祖先之外。**
+
+---
+
+## 七、快速解题模板（面试题"为什么 z-index 不生效"）
+
+1. **z-index 没生效**：检查元素是不是定位元素 / flex-grid 子 → z-index 只对它们有效。
+2. **z-index 大反而在下面**：八成是**父层叠上下文的 z 更低**，或祖先被 \`opacity/transform/backdrop-filter\` 隐式创建了低 z 上下文。
+3. **z-index 小反而在上面**：检查 DOM 顺序，同层级 z-index 相同时后写的在上。或它的父级是不同层叠上下文、父级 z 更高。
+
+---
+
+## 小结
+
+- 层叠上下文 = 一张"独立 z 胶片"，\`z-index\` 只在同一张内有效。
+- 触发条件远远不止"定位 + z-index"，尤其是 **opacity/transform/filter/backdrop-filter/fixed/sticky/isolation/container-type** 这些"静默创建"最容易踩坑。
+- 内部层叠顺序：负 z → 块 → 浮 → 行 → auto/0 → 正 z。
+- 三大经典陷阱：父上下文 z 低、隐式上下文关住子 z、isolation 意外封层。
+- 治理：集中 z-index 变量、扁平化 DOM（Portal/Teleport）、用 \`isolation: isolate\` 显式隔离。
+- 调试：Chrome DevTools Layers 面板。`
   }
 ]

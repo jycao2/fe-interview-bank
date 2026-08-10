@@ -6232,6 +6232,2402 @@ export default {
 ## 一句话
 
 \`defineProps/defineEmits/defineExpose/defineOptions/defineSlots/defineModel\` 是 \`<script setup>\` 专用编译器宏，编译期转为 Options；无需 import、只能在顶层用，TS 项目优先用类型声明形式。`
+  },
+  {
+    id: 'vue-067',
+    category: 'vue',
+    title: 'Vue 3.4+ 核心新特性：defineModel、响应式 defineProps 解构、useId 怎么用？',
+    difficulty: '中等',
+    tags: ['Vue 3.4', 'defineModel', 'defineProps解构', 'useId'],
+    answer: `## Vue 3.4 "Salzburg" 的三大体验级升级
+
+Vue 3.4 把三个之前"需要插件 / 繁琐写法"的能力做成了内建，SFC 代码进一步变瘦。
+
+---
+
+## 一、defineModel（3.4 稳定版）
+
+以前组件实现双向绑定（v-model）要写 **defineProps + defineEmits + watch + computed** 四段样板；\`defineModel\` 把它们合成一行。
+
+### 基本用法
+
+\`\`\`vue
+<!-- 以前（老写法，4~8 行） -->
+<script setup lang="ts">
+const props = defineProps<{ modelValue: string }>()
+const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
+
+const value = computed({
+  get: () => props.modelValue,
+  set: (v) => emit('update:modelValue', v)
+})
+</script>
+
+<!-- 现在（defineModel，1 行搞定） -->
+<script setup lang="ts">
+const value = defineModel<string>()  // 读写一体
+</script>
+
+<template>
+  <input v-model="value" />
+</template>
+\`\`\`
+
+父组件用法完全一样：
+\`\`\`vue
+<Child v-model="text" />
+\`\`\`
+
+### 具名 v-model（多 v-model）
+
+\`\`\`vue
+<script setup>
+const title = defineModel<string>('title')          // 对应 v-model:title
+const open = defineModel<boolean>('open', {          // 还能写默认值 / 类型 / required
+  default: false,
+  required: false
+})
+</script>
+\`\`\`
+
+### 修饰符 + 自定义 set 转换（3.4 新写法）
+
+\`\`\`vue
+<script setup lang="ts">
+const [model, modifiers] = defineModel<string, 'trim' | 'capitalize'>({
+  set(val) {
+    if (modifiers.trim) val = val.trim()
+    if (modifiers.capitalize) val = val.charAt(0).toUpperCase() + val.slice(1)
+    return val
+  }
+})
+</script>
+
+<!-- 父组件 -->
+<MyInput v-model.trim.capitalize="name" />
+\`\`\`
+
+### 编译后本质
+
+defineModel 返回的是一个**特殊的 Writable Computed Ref**：
+- get：读 props 里的 modelValue。
+- set：自动 \`emit('update:modelValue', v)\`。
+- 不产生多余的中间状态，也不会丢失响应式。
+
+> 注意：defineModel 定义的 ref 你**不能再赋值为另一个对象**（只能改 \`.value\`），因为它本质是对 props + emit 的计算属性封装。
+
+---
+
+## 二、响应式 defineProps 解构（3.5 稳定，3.4 实验）
+
+以前的大坑：解构 defineProps 的返回值会**直接丢失响应式**，新手几乎必踩：
+
+\`\`\`vue
+<!-- 以前 ❌ 解构后 msg 变成常量，父组件更新不触发重渲染 -->
+<script setup>
+const { msg } = defineProps<{ msg: string }>()
+watch(msg, () => { /* 永远不触发 */ })
+</script>
+\`\`\`
+
+解决办法以前是 \`toRefs(props)\` 或不用解构直接 \`props.msg\`。
+
+**3.5+ 正式支持响应式解构**（编译器自动转换），你只管写：
+
+\`\`\`vue
+<script setup lang="ts">
+const { msg, count = 0, user: { name } = {} } = defineProps<{
+  msg: string
+  count?: number
+  user?: { name: string }
+}>()
+
+watch(msg, (newVal) => {
+  console.log('msg 更新了', newVal)  // ✅ 现在会触发！
+})
+</script>
+
+<template>
+  <p>{{ msg }} - {{ count }} - {{ name }}</p>  <!-- ✅ 都响应式 -->
+</template>
+\`\`\`
+
+### 默认值写法（无需 withDefaults 了）
+
+TS 场景解构时直接写默认值：
+\`\`\`ts
+const { size = 'md', disabled = false } = defineProps<{
+  size?: 'sm' | 'md' | 'lg'
+  disabled?: boolean
+}>()
+\`\`\`
+
+但复杂/函数默认值仍推荐 **withDefaults**：
+\`\`\`ts
+const props = withDefaults(defineProps<{
+  data?: string[]
+  onChange?: () => void
+}>(), {
+  data: () => ['a', 'b']
+})
+\`\`\`
+
+### 编译期转换原理
+
+编译器把解构语句**重写成一连串 toRef**：
+
+\`\`\`ts
+// 你写的
+const { msg, count = 0 } = defineProps<{...}>()
+
+// 编译后（伪代码）
+const __props = defineProps<{...}>()
+const msg = toRef(__props, 'msg')
+const count = toRef(__props, 'count', 0)
+\`\`\`
+
+所以解构出来的变量其实是**Ref**（在 \`<template>\` 中 Vue 会自动解包；JS 中访问需要 \`.value\`，这是 3.5 以前用 toRefs 遗留下来的心智，现在仍保持一致）。
+
+> 坑：JS 里用解构值时，记得 **\`msg.value\`**（不是直接 msg），模板里才自动解包。
+
+---
+
+## 三、useId（3.5 新增）
+
+SPA 做 SSR / 同构时，客户端 hydration 前后生成的 ID 经常不一致（用 \`Math.random\` 或自增），导致 hydration mismatch 报错。\`useId\` 就是**给元素生成稳定、SSR 安全、跨组件树不冲突的唯一 ID**。
+
+### 基础用例：关联 label 与 input
+
+\`\`\`vue
+<script setup>
+import { useId } from 'vue'
+const id = useId()
+</script>
+
+<template>
+  <label :for="id">用户名</label>
+  <input :id="id" type="text" />
+</template>
+\`\`\`
+
+渲染结果：
+\`\`\`html
+<label for="v-0">用户名</label>
+<input id="v-0" type="text">
+\`\`\`
+
+### 需要多个 ID 时拼接后缀
+
+\`\`\`vue
+<script setup>
+import { useId } from 'vue'
+const id = useId()
+const inputId = id + '-input'
+const descId = id + '-desc'
+</script>
+
+<template>
+  <label :for="inputId">密码</label>
+  <input :id="inputId" type="password" aria-describedby="descId" />
+  <p :id="descId">8-20 位字母数字组合</p>
+</template>
+\`\`\`
+
+### SSR 中的稳定性
+
+useId 基于**组件在 VNode 树中的层级位置**生成 ID，所以 SSR 和 CSR 产物必然一致。同时它还：
+
+- 同一组件里多次调用 useId，返回同一个值（自己拼后缀）。
+- 多 Vue 实例共存时用 prefix 区分（3.5 提供 \`app.config.idPrefix = 'my'\` 自定义前缀）。
+- 与 **VueUse 的 useId** 不是一回事，Vue 3.5 起**内建**到 \`vue\` 包，直接 import。
+
+---
+
+## 四、其他 3.4 / 3.5 值得关注的小特性速记
+
+### 4.1 defineOptions（3.3 开始）
+
+在 \`<script setup>\` 里直接写 options（组件 name、inheritAttrs 等），不用开单独 script：
+
+\`\`\`vue
+<script setup>
+defineOptions({
+  name: 'MyButton',          // 组件名（devtools / keep-alive include 要用）
+  inheritAttrs: false,       // 不让根元素自动继承 attrs
+  customOptions: { ... }     // 自定义元信息
+})
+</script>
+\`\`\`
+
+### 4.2 同名简写（v-bind 同名简写，3.4）
+
+属性名和绑定变量同名时省一半：
+
+\`\`\`vue
+<!-- 以前 -->
+<img :id="id" :class="class" :src="src">
+
+<!-- 3.4+ -->
+<img :id :class :src>
+\`\`\`
+
+### 4.3 Same-name slots 简写（v-slot:default="{ item }" 简写成 #default="{item}"，早就有了，不算新）
+
+### 4.4 v-bind 的 .prop / .attr 修饰符（3.4）
+
+有些自定义 Web Component 要把值绑定到 **DOM property**（非 HTML attribute），用 .prop 强制：
+
+\`\`\`vue
+<my-element :config.prop="bigObject" />  <!-- el.config = bigObject，而不是 setAttribute -->
+<input :data-index.attr="i" />            <!-- 强制写 HTML attribute（一般默认行为已正确） -->
+\`\`\`
+
+### 4.5 水合（Hydration）错误提示优化（3.4+）
+
+Mismatch 现在能告诉你**具体是哪个节点的哪个属性不一致**，不再是以前模糊的一行错误。
+
+---
+
+## 总结：一张速查表
+
+| 特性 | 版本 | 解决的痛点 |
+| --- | --- | --- |
+| defineModel | 3.4 | 写 v-model 组件样板代码太多，一行替代 Props+Emits+Computed |
+| 响应式 Props 解构 | 3.5 | 解构 defineProps 丢响应式，新手必踩 |
+| useId | 3.5 | SSR/无障碍生成稳定唯一 ID，防 hydration 错 |
+| defineOptions | 3.3 | \`<script setup>\` 里写组件 name / inheritAttrs 不用双 script |
+| 同名 v-bind 简写 | 3.4 | \`:msg="msg"\` → \`:msg\` |
+| .prop / .attr 修饰符 | 3.4 | 和 Web Components 互通时绑定属性 vs 特性 |
+
+3.x 的每个小版本都在"把常见繁琐场景内建化"，3.4+ 升级建议必做，体验提升非常直接。`
+  },
+  {
+    id: 'vue-068',
+    category: 'vue',
+    title: 'Pinia vs Vuex 深度对比：架构、API、TS、迁移与选型建议？',
+    difficulty: '中等',
+    tags: ['Pinia', 'Vuex', '状态管理', '对比'],
+    answer: `## 两者定位
+
+- **Vuex 3/4**：Vue 官方状态管理（VCA 时代产物），Vuex 4 兼容 Vue 3 但 API 基本没变；2021 起官方已宣布 Pinia 是精神继任者。
+- **Pinia**：Vuex 团队成员设计的下一代 store，从一开始就为 Composition API + TS 打造，Vue 3 文档和脚手架默认集成。
+
+简单说：**新项目 100% 用 Pinia；老项目（Vue2 + Vuex）渐进迁到 Pinia；Vuex 只维护不修新功能。**
+
+---
+
+## 一、API 风格对比
+
+### Vuex 4（经典 Options Store）
+
+\`\`\`ts
+// store/index.ts
+import { createStore } from 'vuex'
+export default createStore({
+  modules: {
+    user: {
+      namespaced: true,
+      state: () => ({ name: '', token: '' }),
+      getters: {
+        isLogin: (s) => !!s.token
+      },
+      mutations: {
+        SET_TOKEN(s, v) { s.token = v }
+      },
+      actions: {
+        async login({ commit }, payload) {
+          const { token } = await api.login(payload)
+          commit('SET_TOKEN', token)
+        }
+      }
+    }
+  }
+})
+
+// 组件里用
+import { useStore } from 'vuex'
+const store = useStore()
+store.state.user.name
+store.getters['user/isLogin']
+store.dispatch('user/login', form)
+\`\`\`
+
+Vuex 的设计：state 只读 → **必须**通过 mutation 修改 → 异步放 action → commit 调 mutation。
+
+### Pinia（Setup Store 写法，推荐）
+
+\`\`\`ts
+// stores/user.ts
+import { defineStore } from 'pinia'
+
+export const useUserStore = defineStore('user', () => {
+  // state
+  const name = ref('')
+  const token = ref(localStorage.getItem('token') || '')
+
+  // getters
+  const isLogin = computed(() => !!token.value)
+
+  // actions（同步异步都是函数，不用 mutations！）
+  async function login(payload: LoginDTO) {
+    const { token: t } = await api.login(payload)
+    token.value = t
+    localStorage.setItem('token', t)
   }
 
+  function logout() {
+    token.value = ''
+    localStorage.removeItem('token')
+  }
+
+  return { name, token, isLogin, login, logout }
+})
+
+// 组件里用
+const user = useUserStore()
+user.name          // ✅ 直接访问 state
+user.isLogin       // ✅ 直接访问 getter
+await user.login(form)  // ✅ 直接调用 action
+user.token = 'xxx'     // ✅ 甚至直接赋值（不推荐，但允许，没那么多繁文缛节）
+\`\`\`
+
+Pinia 允许直接改 state（\`user.name = 'a'\`）、也允许用 action 包一层；同时仍保留 DevTools 可追踪。
+
+### Pinia 也支持 Options 写法（老项目迁移友好）
+
+\`\`\`ts
+export const useCounter = defineStore('counter', {
+  state: () => ({ count: 0 }),
+  getters: { double: s => s.count * 2 },
+  actions: { inc() { this.count++ } }
+})
+\`\`\`
+
+---
+
+## 二、十二项硬核能力对比表
+
+| 维度 | Vuex 4 | Pinia 2 |
+| --- | --- | --- |
+| 官方推荐 | 维护模式，不再加新功能 | ✅ 现在 & 未来的官方推荐 |
+| Vue 版本 | Vue 3（Vuex 3 配 Vue 2） | Vue 2.7+ / Vue 3+，一库两用 |
+| TS 支持 | 极差，声明 $store 类型很繁琐，modules 要手写 namespace 类型 | ✅ 开箱即用，100% 自动推导，无样板声明 |
+| Mutations | 必须有，只能通过 commit 改 state | ❌ 移除，直接改或 action 里改 |
+| 模块化 | 嵌套 modules + namespaced | ✅ 扁平化独立 store；store 间自由 import 互相调用 |
+| 动态注册 store | 需要 registerModule/unregisterModule | defineStore 函数首次调用自动注册，天然懒加载 |
+| 体积 | ~10KB | ✅ ~1KB（API 极简 + tree-shakable） |
+| Composition API | 能用但要绕一层（useStore） | ✅ 原生，就是 composable 风格 |
+| HMR | 页面全刷（多数配置下） | ✅ 热更新支持好，改 store 不丢状态 |
+| DevTools | 时间旅行、快照 | ✅ 时间旅行、按 store 分组、更清晰的 action 记录 |
+| SSR 场景 | context 注入比较麻烦 | ✅ 更简单，提供 useSSRContext 集成，Nuxt 默认 |
+| 插件生态 | 官方 logger/persisted 有，生态老 | ✅ 新且丰富（pinia-plugin-persistedstate / pinia-plugin-undo 等） |
+| 组合式写法 | Options 主导，Composition 很别扭 | ✅ Setup Store 完全 composable，可以用任意自定义 Hook |
+
+---
+
+## 三、Pinia 的一些细节亮点（面试加分点）
+
+### 1. $patch / $reset / $subscribe
+
+\`\`\`ts
+const store = useUserStore()
+
+// 批量修改（减少 DevTools 记录条数，类似 Vuex 的 mutation）
+store.$patch({ name: 'Tom', token: 'abc' })
+
+// 或者函数式，适合数组修改等场景
+store.$patch((s) => {
+  s.list.push(newItem)
+  s.count++
+})
+
+// 重置到初始 state（Setup Store 也能用，自动记录初始值快照）
+store.$reset()
+
+// 订阅 state 变化（自定义持久化/日志插件的基础）
+store.$subscribe((mutation, state) => {
+  console.log(mutation.type, mutation.events)
+  localStorage.setItem('user', JSON.stringify(state))
+}, { detached: true })
+\`\`\`
+
+### 2. Store 互相调用
+
+自由 import 就行，不需要像 Vuex 那样 rootState / rootGetters 跨模块传：
+
+\`\`\`ts
+import { useUserStore } from './user'
+import { useCartStore } from './cart'
+
+export const useOrderStore = defineStore('order', () => {
+  const user = useUserStore()
+  const cart = useCartStore()
+
+  async function submit() {
+    if (!user.isLogin) throw new Error('先登录')
+    await api.submitOrder({ items: cart.items, userId: user.id })
+    cart.$reset()
+  }
+  return { submit }
+})
+\`\`\`
+
+### 3. action 的订阅 onAction
+
+DevTools 能记录每个 action，还能手动订阅：
+
+\`\`\`ts
+store.$onAction(({ name, args, after, onError }) => {
+  console.log(\`action \${name} called with \${args}\`)
+  after((res) => console.log(\`action \${name} returned \${res}\`))
+  onError((err) => console.error(\`action \${name} error:\`, err))
+})
+\`\`\`
+
+比 Vuex 的 action 订阅强：可以在 before/after/error 三个阶段挂钩，适合做性能分析、错误上报。
+
+### 4. 无需 namespaced
+
+每个 store 独立定义（\`defineStore('user', ...)\` 给个 ID 就行），没有 Vuex modules 里"忘了开 namespaced 就所有 getter 混全局冲突"的大坑。
+
+---
+
+## 四、Vuex → Pinia 迁移路线（老项目必问）
+
+### Step 1：先让两者共存
+
+Pinia 和 Vuex 可以在一个项目里**同时跑**，互不影响，方便渐进迁移。
+
+\`\`\`ts
+// main.ts
+import { createStore } from 'vuex'
+import { createPinia } from 'pinia'
+app.use(createStore({ /* 旧 Vuex store */ }))
+app.use(createPinia())
+\`\`\`
+
+### Step 2：逐个 module 转 Pinia Setup Store
+
+每次迁一个 module，把对应组件中 useVuex().dispatch/getters 的调用改到 useXxxStore()。路由级逐步替换影响最小。
+
+### Step 3：迁移后移除 Vuex，改全局 TS 类型声明
+
+\`\`\`ts
+// 旧（Vuex）：component.$store 的类型
+declare module 'vue/types/vue' {
+  interface Vue { $store: Store<RootState> }
+}
+
+// 新（Pinia）：不用写任何全局类型！每个 useXxxStore() 自带返回类型
+\`\`\`
+
+---
+
+## 五、误区澄清
+
+### 误区 1：Pinia 不能严格修改，容易乱
+
+很多 Vuex 老用户怀念"只能 mutation 改 state 的严格约束"。其实 Pinia 有 **strict mode**：
+
+\`\`\`ts
+createPinia().use(({ store }) => {
+  store.$patch = () => { throw new Error('只能通过 action 修改') }
+})
+// 或者直接用官方提供的开发时 strict（新版默认开 strict 警告）
+\`\`\`
+
+再配 ESLint 规则限制直接改 state 即可。**约束可以加，但没必要作为框架默认强制项。**
+
+### 误区 2：Pinia 没有 mutations 就没法追踪了
+
+DevTools 里 Pinia 把**每次直接赋值 / $patch / action 调用**都记成一条独立记录，时间旅行仍然好用；实际信息粒度比 Vuex 更高（action 入参/返回值都有）。
+
+### 误区 3：大型复杂项目还是得 Vuex
+
+恰恰相反，Pinia 的**扁平多 store + TS 推导 + Setup Store** 更适合大型项目——每个领域一个 store 文件，组合自由，类型友好；Vuex 嵌套 modules + namespaced 在大型代码库里维护成本反而更高（改个模块路径要改三处 type）。
+
+---
+
+## 六、选型建议（一句话）
+
+| 场景 | 选什么 |
+| --- | --- |
+| 新项目 Vue 3 | ✅ Pinia，脚手架默认 |
+| 新项目 Vue 2.7 | ✅ Pinia（兼容性好，TS 友好） |
+| Vue 老项目 Vuex 2/3 稳定运行中 | ✅ 保持现状，没必要动，除非要上 Vue 3 |
+| 老项目迁 Vue 3 | ✅ 先双跑，再逐步把 modules 迁 Pinia Setup Store |
+| 需要极强 TS 类型 | ✅ Pinia（Vuex 4 的类型永远是痛点） |
+| 需要轻量、HMR、体积敏感 | ✅ Pinia（1KB vs 10KB） |
+
+**官方态度**：Pinia 是 Vue 官方当前推荐的状态管理库，Vuex 已进入仅维护模式，未来不再做大版本更新。`
+  },
+  {
+    id: 'vue-069',
+    category: 'vue',
+    title: 'Vue SSR / SSG 的实现原理？（hydration、流式 SSR、Nuxt / VitePress 对比）',
+    difficulty: '困难',
+    tags: ['SSR', 'SSG', 'Hydration', 'Nuxt', 'VitePress'],
+    answer: `## 为什么需要 SSR / SSG
+
+传统 SPA（客户端渲染）问题：
+1. **首屏慢**：要先下载一个大 JS 包 → 执行 → 发 API → 渲染，用户白屏久。
+2. **SEO 差**：爬虫（部分）不跑 JS，看到的是空壳 \`<div id="app">\`。
+
+**SSR（Server Side Rendering）**：首屏请求到服务端，服务端**执行 Vue 组件生成 HTML 字符串**返回；浏览器拿到 HTML 直接能看到内容，再下载 JS 做"水合"（hydration）把静态 HTML 变成响应式 Vue app。
+
+**SSG（Static Site Generation）**：**构建时**就把所有路由的 HTML 预先渲染好，部署到 CDN。适合内容不经常变的站点（文档、博客、营销页）。
+
+---
+
+## 一、SSR 完整请求链路（带时序）
+
+\`\`\`
+浏览器                        服务端                          数据库/API
+  │                             │                                 │
+  │ 1. GET /article/42         │                                 │
+  │────────────────────────────▶│                                 │
+  │                             │ 2. 创建 Vue app + router 实例    │
+  │                             │    + 跳到 /article/42           │
+  │                             │────┐                            │
+  │                             │    │ 3. async setup 里发请求     │
+  │                             │    │────────────────────────────▶│
+  │                             │    │ 4. 返回数据                 │
+  │                             │◀───┘                             │
+  │                             │ 5. renderToString(vnode)        │
+  │                             │    → 得到一段完整 HTML 字符串    │
+  │ 6. 200 + HTML（含<script>） │                                 │
+  │◀────────────────────────────│                                 │
+  │                             │                                 │
+  │ 7. 浏览器展示 HTML（有内容了，不白屏）                         │
+  │ 8. 下载 <script> 里的客户端 JS bundle                        │
+  │ 9. Hydration：Vue 用 JS 对照已存在 DOM，建立响应式 + 事件绑定  │
+  │ 10. 用户交互（点按钮）→ 客户端路由接管，变成 SPA             │
+\`\`\`
+
+**关键点**：首屏 HTML 已经有完整内容 → 爬虫/用户直接看到 → 然后 JS 才跑起来让它"活"。
+
+---
+
+## 二、SSR 的服务端代码长什么样（极简版）
+
+你不需要懂 Nuxt 才能懂 SSR，下面就是最朴素的 Node SSR 实现，用 Vue 的 **\`vue/server-renderer\`**：
+
+\`\`\`ts
+// server.ts
+import express from 'express'
+import { createSSRApp } from 'vue'
+import { renderToString } from 'vue/server-renderer'
+import App from './App.vue'
+import { createRouter } from './router'
+import { createPinia } from 'pinia'
+
+const app = express()
+
+app.get('*', async (req, res) => {
+  const vueApp = createSSRApp(App)
+  const router = createRouter('server')   // 服务端 router
+  const pinia = createPinia()
+  vueApp.use(router).use(pinia)
+
+  // 1. 跳到请求的路径
+  await router.push(req.url)
+  await router.isReady()
+
+  // 2. 预取数据（每个页面自己 expose onServerPrefetch）
+  //    Nuxt 会把 useAsyncData 结果塞上下文
+  await Promise.all(router.currentRoute.value.matched.map(r =>
+    (r.components.default as any).__asyncData?.()
+  ))
+
+  // 3. 渲染 HTML
+  const html = await renderToString(vueApp)
+
+  // 4. 把 state 序列化后用 window.__PINIA__ 注入给客户端 hydrate
+  const state = JSON.stringify(pinia.state.value)
+
+  res.send(\`
+    <!DOCTYPE html>
+    <html>
+      <head><title>SSR Demo</title></head>
+      <body>
+        <div id="app">\${html}</div>
+        <script>window.__PINIA__ = \${state}</script>
+        <script type="module" src="/dist/entry-client.js"></script>
+      </body>
+    </html>
+  \`)
+})
+
+app.listen(3000)
+\`\`\`
+
+对应的 entry-client.js（客户端入口，做水合）：
+\`\`\`ts
+import { createSSRApp } from 'vue'
+import App from './App.vue'
+import { createRouter } from './router'
+import { createPinia } from 'pinia'
+
+const app = createSSRApp(App)
+const router = createRouter('client')
+const pinia = createPinia()
+// ✅ 把 SSR 时生成的 state 填回来——hydration 后前端数据一致
+pinia.state.value = (window as any).__PINIA__
+
+app.use(router).use(pinia)
+
+// Hydrate：不是 createApp().mount，而是 hydrate！
+router.isReady().then(() => app.mount('#app', true))
+\`\`\`
+
+---
+
+## 三、Hydration（水合）到底在做什么？
+
+SSR 后浏览器里的 DOM 是**静态字符串画出来的**，没有 Vue 的响应式、没有组件实例、没有事件监听。Hydration 就是：
+
+1. **创建客户端 VNode 树**（跟服务端 renderToString 时一棵同样的树）。
+2. **拿客户端 vnode 和服务端输出的真实 DOM 一一对上**（Fiber/VNode 树挂到已有 DOM 上，**不会重建 DOM**，否则白 SSR 了）。
+3. **给 DOM 元素绑定事件**（onClick 等）。
+4. **建立响应式**：把 state（从 window.__PINIA__ 反序列化来的）代理起来。
+
+### Hydration Mismatch（水合不一致）
+
+如果服务端和客户端渲染的 VNode 不一样（例如某组件服务端读的是 100，客户端 hydrate 时读的是 200），Vue 会警告：**Hydration mismatch**，并会**放弃复用那段 DOM，整段重新渲染**，性能就退化成 CSR。
+
+常见导致 mismatch 的坑：
+| 原因 | 修复 |
+| --- | --- |
+| \`Math.random()\` / \`Date.now()\` 在服务端 / 客户端各跑一次结果不同 | SSR 时确定值，序列化注入，客户端读注入值 |
+| SSR 时没数据，客户端 onMounted 才取，内容不同 | 用 onServerPrefetch / useAsyncData 在服务端就取好 |
+| 用浏览器专属 API（window / document）在 setup / render 时访问 | 包到 \`onMounted\` 里；或 \`import.meta.client\` 判断 |
+| 自增 id / 不稳定 key | 用 useId（3.5+）生成 SSR 安全的 id |
+
+---
+
+## 四、Streaming SSR（流式 SSR，Vue 3 核心升级）
+
+传统 renderToString 要等**整页** HTML 字符串生成完才一次性吐出浏览器，用户要等很久才能看到第一字节（TTFB 长）。
+
+流式用 **\`renderToNodeStream\` / \`renderToSimpleStream\` / \`renderToPipeableStream\`**：
+
+\`\`\`ts
+import { renderToPipeableStream } from 'vue/server-renderer'
+
+app.get('*', (req, res) => {
+  res.write('<!DOCTYPE html><html><head>...</head><body><div id="app">')
+  const { pipe } = renderToPipeableStream(createSSRApp(App), {
+    onAllReady() {
+      pipe(res)                          // 边渲染边写 socket
+        .on('end', () => {
+          res.write('</div><script src="entry-client.js"></script></body></html>')
+          res.end()
+        })
+    }
+  })
+})
+\`\`\`
+
+和 **Suspense** 配合：页面被 Suspense 切分成 chunk，头部先发送（首屏骨架/导航先让用户看到），后面异步组件渲染好再追加写 socket。TTI 提前很多，LCP 也更好。
+
+### 额外 1：Selective Hydration（选择性水合）
+
+Nuxt 3 + Vue 3 的黑魔法：SSR 回来的页面不一定要一次性 hydrate 完。
+- 用户点击了还没 hydrate 的区域 → 优先 hydrate 这一块。
+- 视口里的组件 → 先 hydrate。
+- 页脚 / 侧栏非关键区 → 空闲再 hydrate。
+
+所以即使 JS 体积大，用户交互也不会卡。
+
+---
+
+## 五、SSG（静态站点生成）的原理
+
+SSG 是 SSR 的**构建时版本**：不是用户请求时渲染，而是在 \`npm run build\` 时，遍历所有路由（或动态路由生成静态列表），每个路由都 renderToString 一次输出成 .html 文件。
+
+以 VitePress 简化版为例：
+
+\`\`\`ts
+// 构建时的 node 脚本
+import fs from 'node:fs'
+import { createSSRApp } from 'vue'
+import { renderToString } from 'vue/server-renderer'
+import { routes } from '.vitepress/theme'
+
+for (const route of routes) {
+  const app = createSSRApp(route.component)
+  const html = await renderToString(app)
+  const full = \`<!DOCTYPE html><html>...<div id="app">\${html}</div>...</html>\`
+  fs.writeFileSync(\`dist\${route.path}/index.html\`, full)
+}
+\`\`\`
+
+然后把 dist/ 丢到 CDN / Nginx，用户访问直接拿静态 HTML，速度飞起，服务器成本极低。
+
+**SSG 的数据时效问题**：内容经常变（新闻、电商）不能 SSG，要用 SSR / ISR（Incremental Static Regeneration，Next/Nuxt 叫 ISR：发布后按路由 TTL 在后台重新生成 HTML，静态 + 动态的折中）。
+
+---
+
+## 六、SSR vs SSG vs CSR vs ISR
+
+| 模式 | 生成时机 | 首屏性能 | SEO | 数据时效 | 成本 |
+| --- | --- | --- | --- | --- | --- |
+| **CSR**（SPA） | 运行时浏览器 JS 渲染 | 😢 慢，白屏久 | 😢 差 | ✅ 实时，不刷新随时变 | 低，静态文件托管 |
+| **SSR** | 运行时，用户请求到服务器才渲染 | 😊 快，HTML 直出 | ✅ 好 | ✅ 实时 | 高，要 Node 服务器扛 QPS |
+| **SSG** | 构建时，build 一次渲染全部 | 🥳 最快，CDN 直出 | ✅ 好 | 😢 构建时内容，更新要 rebuild | 低，CDN 成本 |
+| **ISR** | 首次构建后 + 按 TTL 后台重生成 | 🥳 接近 SSG | ✅ 好 | 🙂 近实时（TTL 窗口延迟） | 中 |
+
+---
+
+## 七、Nuxt（Vue SSR/SSG 框架）在其中做了什么
+
+你自己手写 SSR 会遇到：路由数据预取、区分服务端/客户端、代码分割、静态资源路径、cookie 透传、缓存策略、错误页面、hydration 注入、SSR Context、生产部署……一堆问题。Nuxt 封装好所有这一切：
+
+| Nuxt 能力 | 你手写 SSR 等价操作 |
+| --- | --- |
+| \`useAsyncData()\` | 服务端预取数据 + 序列化注入给 client hydrate |
+| \`useFetch('/api/...')\` | fetch + dedupe + payload 序列化 |
+| \`<ClientOnly>\` 组件 | 包装仅 CSR 渲染的组件，避免 mismatch |
+| \`useHead()\` | 服务端渲染 title / meta / OG 标签（SEO 需要 SSR 写进 HTML） |
+| Nitro 服务器 | 路由注册、h3 适配、server/api/\* 目录自动生成 API |
+| generate 命令 | 遍历路由做 SSG |
+| Hybrid（per-route 规则） | 同一个站有的路由 SSR、有的 SSG、有的 ISR |
+| 自动 Code Splitting / Layout / Middleware | 你全要自己写 |
+
+---
+
+## 八、面试常见坑点
+
+### 坑 1：为什么不能直接用 createApp，要用 createSSRApp？
+
+两者大部分行为相同，只是 createSSRApp 会**跳过部分客户端专属的初始化**，并且服务端 renderer 识别它才能正确做事件/指令等处理。
+
+### 坑 2：setup 里用 window/document 报错
+
+SSR 是 Node 环境，没有 DOM API。需要 DOM 的代码请：
+- 放 \`onMounted()\`（仅客户端执行）。
+- 或包 \`if (typeof window !== 'undefined')\`。
+- 或用 VueUse 的 \`useWindowScroll\` 等（它们内部做了判断）。
+
+### 坑 3：Pinia state 怎么同步？
+
+服务端把 store 渲染成 HTML 后，必须把 state 序列化到 HTML 里的一个 script 标签（一般挂 \`window.__APP__\`），客户端 hydrate 前把这个 state 塞回新的 Pinia 实例。Nuxt 内部自动做，自己手写 SSR 不要忘！
+
+### 坑 4：onServerPrefetch
+
+组件里要在服务端就异步取数据，用这个生命周期（组件被渲染前 await 执行）：
+
+\`\`\`ts
+const data = ref<Article[] | null>(null)
+onServerPrefetch(async () => {
+  data.value = await api.getArticles()
+})
+\`\`\`
+
+Nuxt 的 useAsyncData 就是对这个 + 客户端 hydrate 注入的封装。
+
+---
+
+## 一句话总结选型
+
+- **文档 / 博客 / 营销页（内容少变） → SSG（VitePress / Nuxt generate）**
+- **内容频繁变 + 看重 SEO（电商、新闻） → SSR 或 ISR（Nuxt 3）**
+- **管理后台 / 登录后系统（SEO 不重要，都登录后才能用）→ 纯 CSR（Vite + Vue）**
+
+核心区别一句话：**SSR/SSG 让"首屏 HTML 先有内容再让它交互"，CSR 是"先交付空壳，JS 再填内容与交互"。**`
+  },
+  {
+    id: 'vue-070',
+    category: 'vue',
+    title: 'Vite 与 Vue 如何配合工作？（HMR、SFC 编译、依赖预打包、插件机制）',
+    difficulty: '中等',
+    tags: ['Vite', 'SFC 编译', 'HMR', '依赖预打包', 'esbuild'],
+    answer: `## Vite 是什么
+
+Vite 是 Vue 作者尤雨溪做的下一代前端构建工具，分两部分：
+1. **开发时**：基于 **原生 ESM + esbuild** 启动一个 Dev Server，**几乎零冷启动**，按需编译（你请求哪个 .vue 文件才编译哪个），配合浏览器原生 ES Module import 机制，跳过 Webpack 那种启动时打包全项目的步骤。
+2. **生产构建**：用 **Rollup** 打包（不是 esbuild，生态更成熟、插件更全），输出优化后的静态资源。
+
+Vue 3 + Vite 是官方推荐的项目脚手架组合（\`npm create vue@latest\` 就是 Vite）。
+
+---
+
+## 一、开发时 Dev Server 的启动链路
+
+\`\`\`
+你运行 npm run dev
+    │
+    ▼
+Vite CLI 启动 HTTP 服务器（Koa 风格的 connect 中间件栈）
+    │
+    ├─ 1. 扫描 package.json → 依赖预打包（optimizeDeps，用 esbuild）
+    │      node_modules/.vite/deps/vue.js、vue-router.js...
+    │      └  commonjs → esm；合并多 entry；缓存，没变更就跳过
+    │
+    ├─ 2. 内置 Vue 插件（@vitejs/plugin-vue）注册，接管 .vue 解析
+    │
+    ├─ 3. 浏览器请求 index.html：Vite 做 HTML transform（注入 /@vite/client HMR 脚本）
+    │
+    ▼
+浏览器里 main.js 里写的 import { createApp } from 'vue'
+→ 浏览器原生 GET /node_modules/.vite/deps/vue.js（预打包产物）
+→ import './App.vue' → 浏览器 GET /src/App.vue
+    │
+    ▼
+@vitejs/plugin-vue 接管 .vue 请求 → 做 SFC 编译
+    │ 输出 3 段 JS（template / script / styles）
+    │ style 部分再走 HMR 热更，不会重载整页
+    ▼
+继续递归 import 下去……请求哪个编译哪个，没请求的不编译
+\`\`\`
+
+### 和 Webpack 的本质区别
+
+| 模式 | 冷启动时 | 变更时 |
+| --- | --- | --- |
+| Webpack | **先全量打包**所有模块 → 启动 dev server，项目大启动要几十秒到几分钟 | 重新打包变更模块+依赖树 |
+| Vite | **直接启动 server**，不做打包；预打包仅第三方依赖（几百个 ms），业务代码完全按需 | 编译变更的单文件 + 精确 HMR 通知 |
+
+项目越大，Vite 的**按需处理**优势越明显。
+
+---
+
+## 二、@vitejs/plugin-vue：SFC 是怎么编译的
+
+Vite 本身只是"中间件 + Dev Server + 打包器"，真正把 \`.vue\` 文件拆开的是 \`@vuejs/plugin-vue\`。大致步骤：
+
+### Step 1：parse（@vue/compiler-sfc）
+
+一个 .vue SFC 实际是 3 段独立内容 + 描述块的组合：
+
+\`\`\`vue
+<template>
+  <h1>{{ msg }}</h1>
+</template>
+
+<script setup lang="ts">
+const msg = 'Hello Vue'
+</script>
+
+<style scoped>
+h1 { color: #42b883; }
+</style>
+\`\`\`
+
+插件用 \`@vue/compiler-sfc.parse()\` 得到 descriptor：
+\`\`\`ts
+descriptor.template = { content: '<h1>{{ msg }}</h1>', lang: 'html' }
+descriptor.scriptSetup = { content: 'const msg = ...', lang: 'ts' }
+descriptor.styles[0] = { content: 'h1{...}', scoped: true, lang: 'css' }
+descriptor.customBlocks = []  // i18n / docs / md 等
+\`\`\`
+
+### Step 2：compileScript（宏展开 + TS 去型）
+
+\`<script setup>\` 中的 defineProps / defineEmits / defineModel / defineOptions 都是**编译期宏**，plugin-vue 调用 \`compileScript()\`：
+
+- 把 TS 的类型声明 **→** 生成 runtime 的 props 校验对象。
+- defineModel **→** 展开成 props[modelValue] + emit[update:modelValue] + writable computed。
+- defineOptions **→** 贴到组件对象上。
+- \`<script setup>\` 的顶层 import / 变量 **→** 自动作为 expose 或 template 可用变量。
+- 过程中同步做 **withDefaults 默认值**、响应式解构转 toRefs（3.5+）等。
+
+产物是一段纯 JS（TS 类型信息被 esbuild/rollup-plugin-esbuild 脱掉，不再保留）。
+
+### Step 3：compileTemplate（模板 → render 函数）
+
+\`<template>\` 里的 HTML 不是真 DOM，Vue 编译器把它转为 render 函数代码字符串，附带：
+- **PatchFlags**（动态节点标记哪些属性/文本会变，Diff 只比动态部分）。
+- **HoistStatic**（静态节点提升到 render 外，避免每次重建）。
+- **Block Tree**（v-if / v-for 做 block 边界，收集 dynamicChildren，跳过静态子树）。
+- **SSR 友好模式**（如果是 SSR 构建，生成服务端 render 函数）。
+
+### Step 4：compileStyle（CSS scoped / CSS Modules / CSS Vars Injection）
+
+scoped style 会做：
+- 给选择器追加 \`[data-v-hash]\` 属性选择器（仅作用于本组件 DOM）。
+- 深度选择器 \`:deep(.foo)\` / \`:slotted(.bar)\` / \`:global(.reset)\` 编译成正确的属性位置。
+- v-bind in CSS：\`color: v-bind(themeColor)\` → 把值写到组件内联 CSS 变量上，模板编译时同步注入。
+
+### Step 5：组装最终的 JS 响应
+
+最终 App.vue 请求返回的是一段 ESM JS：
+
+\`\`\`js
+// 简化的 HTTP 响应内容
+import '/src/App.vue?vue&type=style&index=0&lang.css'   // style 部分
+import { render as __render__ } from '/src/App.vue?vue&type=template'
+
+const __sfc__ = {
+  __name: 'App',
+  setup() {
+    const msg = 'Hello Vue'
+    return { msg }
+  },
+  render: __render__
+}
+export default __sfc__
+\`\`\`
+
+所以浏览器原生 import App.vue 拿到的其实是 Vue 组件对象，完全符合 ESM 规范——Vite 的魔法就是"把非 JS 文件按需翻译成合法 ESM"。
+
+---
+
+## 三、HMR（热模块替换）为什么比 Webpack 快？
+
+HMR 是"你改了一个 .vue 文件，浏览器里这个组件**替换掉自己但不刷新页面、不丢其他组件 state**"的能力。
+
+### Vue SFC 的 HMR 粒度
+
+Vue 插件为每个 .vue 维护独立的 HMR 边界：
+
+| 改了哪块 | HMR 行为 | 是否丢状态 |
+| --- | --- | --- |
+| \`<template>\` | **rerender 受影响的组件实例**（重新跑编译好的新 render） | ✅ 不丢（setup 没重跑） |
+| \`<style scoped>\` | **替换 <style> 标签**，连组件都不用 rerender | ✅ 完全不丢 |
+| \`<script setup>\` 里的逻辑 | **销毁并重建受影响的组件实例** | 😢 会丢本地 ref 状态；全局 Pinia 状态保留（组件外） |
+| \`<script setup>\` 仅改类型（TS） | 无行为变化，HMR 空转 | ✅ 不丢 |
+
+### 实现原理（@vitejs/plugin-vue 配合 vite core）
+
+1. Vite Server 用 Chokidar watch 文件系统，App.vue 被修改。
+2. plugin-vue 读取 descriptor 判断改的是 template / style / script 哪一类。
+3. 服务器发 **WebSocket 消息**给浏览器里的 \`/@vite/client\`：
+   \`\`\`json
+   { "type": "update", "updates": [{ "type": "js-update", "path": "/src/App.vue", "acceptedPath": "/src/App.vue" }] }
+   \`\`\`
+4. 浏览器接收后，用 **import()** 动态 import 新版 App.vue，拿到新组件对象。
+5. 调用 **\`__VUE_HMR_RUNTIME__.rerender(id, newComp)\` 或 \`reload(id, newComp)\`**：
+   - 只有 template 变 → 找到对应实例，替换 render，然后 \`instance.update()\`。
+   - style 变 → 移除旧 <style data-vite-dev-id>，插新 <style>。
+   - script 变 → 遍历组件实例，unmount → 重新创建，所以本地 state 会重置。
+
+### 为什么快
+
+- Webpack 的 HMR 是**打包器级**的，改一个文件还要重新走 module graph + 打包。
+- Vite 的 HMR 是**文件级 + Vue 插件专属**的，只编译那个文件（甚至只编译 template/script/style 一小段），通过 esbuild 直接把 ESM 返回浏览器，用 WS 通知精确 rerender。**毫秒级**。
+
+---
+
+## 四、依赖预打包（Dependency Pre-Bundling / optimizeDeps）
+
+> 为什么 Vite 启动时会显示"Pre-bundling dependencies: vue, vue-router, pinia..."？
+
+因为两大问题：
+
+1. **很多 node_modules 发布的是 CommonJS**（不是 ESM），浏览器原生 ES Module 没法直接 import 一个 CJS 模块。
+2. **第三方库的 import 数量爆炸**：lodash-es 有几百个单独文件，浏览器一口气请求会慢（HTTP2 也有拥塞问题）。
+
+Vite 在第一次启动时用 **esbuild** 把这些第三方依赖：
+- 统一**打成 .vite/deps 下的 ESM 单个文件（或合理拆分的 chunk）**。
+- CommonJS 的依赖用 esbuild 转成 ESM。
+- 把重复导入 / deep import 拍平，避免请求爆炸。
+- 计算**缓存 hash**：依赖清单没变 + optimizeDeps 配置没变时，下次启动跳过预打包直接复用缓存（秒启）。
+
+可以在 vite.config 里自定义：
+
+\`\`\`ts
+export default defineConfig({
+  optimizeDeps: {
+    include: ['vue', 'vue-router', 'pinia', '@vueuse/core', 'ant-design-vue/es/locale/zh_CN'],
+    exclude: ['my-esm-only-lib'],
+    esbuildOptions: { target: 'es2020' }
+  }
+})
+\`\`\`
+
+**常见坑**：某个包你动态 import 了但不在 include 里，Vite 第一次 import 到才去预打包，触发"页面中途 reload"，显式 include 掉就不会有刷新了。
+
+---
+
+## 五、Vite 插件机制 & Vue 生态常用插件
+
+Vite 插件基于 Rollup 插件体系 + 扩展的 Dev Server 钩子（transform / resolveId / configureServer / handleHotUpdate）。
+
+常用 Vue 全家桶插件：
+
+| 插件 | 能力 |
+| --- | --- |
+| \`@vitejs/plugin-vue\` | .vue SFC 编译（必需） |
+| \`@vitejs/plugin-vue-jsx\` | 写 Vue3 JSX / TSX（h 函数语法糖） |
+| \`@vitejs/plugin-legacy\` | 给老浏览器（< Chrome 80 / iOS 14）做 legacy bundle + polyfill |
+| \`vite-plugin-pages\` | 按 src/pages/ 目录自动生成路由（类似 Nuxt） |
+| \`unplugin-auto-import\` | 自动 import ref / computed / useRouter 等 Vue API，不用手写成天上百条 |
+| \`unplugin-vue-components\` | 按需自动注册组件（写 <ElButton /> 自动 import Element Plus 组件） |
+| \`vite-plugin-pwa\` | Vite + PWA，生成 SW + manifest |
+| \`vite-plugin-vue-devtools\` | Vue 官方开发工具（组件树、状态、路由、性能面板），浏览器内建页 |
+| \`vite-plugin-checker\` | 在 Vite HMR 中并行跑 tsc / eslint / vue-tsc，DevTools 直接显示类型错误 |
+
+**示例：unplugin-auto-import**（极大减少样板代码）
+
+\`\`\`ts
+import AutoImport from 'unplugin-auto-import/vite'
+plugins: [
+  vue(),
+  AutoImport({ imports: ['vue', 'vue-router', 'pinia'] })
+]
+\`\`\`
+
+之后不用写 import：
+\`\`\`vue
+<script setup>
+// ✅ 自动导入 ref、computed、onMounted、useRoute
+const count = ref(0)
+const route = useRoute()
+onMounted(() => { /* ... */ })
+</script>
+\`\`\`
+
+---
+
+## 六、生产构建为什么用 Rollup 不用 esbuild？
+
+Vue SFC 编译链路里 template / script / style 每一步都可能需要丰富的插件参与（PostCSS、Terser、gzip/brotli、动态 import 拆分、manifest、visualizer）。esbuild 的插件和产物优化能力还不够成熟，Rollup 生态是目前最成熟的打包器生态。
+
+但 Rollup 慢的部分（TS 去型）仍然用 esbuild 走：
+
+\`\`\`ts
+// vite.config 里常见
+import vue from '@vitejs/plugin-vue'
+import esbuild from 'rollup-plugin-esbuild'
+
+plugins: [vue(), { ...esbuild({ target: 'es2020' }), enforce: 'pre' }]
+\`\`\`
+
+---
+
+## 七、面试加分的冷知识
+
+1. **为什么 <script setup> 变量不用 return 就能在模板用？**  
+   编译 template 时 Vue 的 compiler 会把模板里访问到的变量都记录下来，plugin-vue 在 setup 函数末尾**自动生成 return { ... }**，模板编译出的 render 函数通过 ctx 访问。
+
+2. **CSS v-bind 怎么做到响应式？**  
+   scoped style 里的 \`v-bind(x)\` 编译成：
+   - CSS 里写 \`color: var(--xxxx)\`。
+   - 组件挂载时把 \`x\` 的值写到组件根 DOM 的 style \`--xxxx: xxx\`。
+   - x 变 → watcher 改 style.setProperty，CSS 变量变就更新颜色，**不 rerender**。
+
+3. **为什么 dev 模式下 .vue 文件 import.meta.glob 是懒加载？**  
+   Vite 的 glob 是编译时扫描目录，生产构建会做 code-split，dev 模式下保持 ESM 动态 import 语义。
+
+---
+
+## 一句话总结 Vite + Vue 的配合关系
+
+Vite 是**"按需编译的 Dev Server + Rollup 构建器外壳"**，真正把 .vue 变成浏览器能吃的 ESM 模块 + 精准 HMR 的是它的 Vue 插件 \`@vitejs/plugin-vue\`，插件内部调用 Vue 官方编译器三件套：**@vue/compiler-sfc / compiler-dom / compiler-ssr**。两者配合带来了"秒级启动 + 毫秒 HMR + 现代 TS/SCSS/SFC 全支持"的开发体验。`
+  },
+  {
+    id: 'vue-071',
+    category: 'vue',
+    title: 'Vue 3 自定义渲染器（Custom Renderer）原理？如何渲染到 Canvas / 小程序？',
+    difficulty: '困难',
+    tags: ['自定义渲染器', 'createRenderer', 'Canvas', '小程序', '跨平台'],
+    answer: `## Vue 的渲染分层架构
+
+Vue 3 的响应式系统（reactive / ref / effect / computed）与组件系统（defineComponent / setup / 生命周期 / VNode）其实是**平台无关**的。真正和 DOM 强耦合的只有 \`@vue/runtime-dom\` 这一层——它实现了一组"把 VNode 画到真实 DOM 上"的节点操作函数（createElement / insert / remove / patchProp / setText 等）。
+
+因此只要**换一套节点操作实现**（例如改写到 Canvas API / 微信小程序 WXML / Three.js / 终端字符串），Vue 的 Composition API、响应式、computed、watch、组件、v-if、v-for 等全部能力都可以原封不动地跑到任何目标平台上。这就是 Vue 3 "自定义渲染器"的设计。
+
+---
+
+## 一、自定义渲染器 API：createRenderer
+
+来自 \`vue\` 顶层（或单独包 \`@vue/runtime-core\`）：
+
+\`\`\`ts
+import { createRenderer, createAppAPI } from '@vue/runtime-core'
+
+const { createApp, render } = createRenderer<Node, Element>({
+  // 下面一整组"渲染器必须实现的节点操作函数"
+  patchProp(el, key, prevValue, nextValue, isSVG) { ... },
+  insert(el, parent, anchor) { ... },
+  remove(el) { ... },
+  createElement(type, isSVG, props) { ... },
+  createText(text) { ... },
+  createComment(text) { ... },
+  setText(node, text) { ... },
+  setElementText(el, text) { ... },
+  parentNode(node) { ... },
+  nextSibling(node) { ... },
+  createStaticContent(content) { ... },  // Vue 3 静态节点提升
+  // 可选：cloneNode / insertStaticContent / forcePatchProp
+})
+\`\`\`
+
+返回的 \`createApp\` 用法和 \`vue\` 默认 DOM 版完全一样：
+\`\`\`ts
+createApp(App, { props: 'hello' }).mount('#app')
+\`\`\`
+
+只是它在 mount 后调用的 patch 函数，走的是你刚才实现的 insert / createElement 等方法。
+
+---
+
+## 二、把 Vue 渲染到 Canvas：一个完整可跑例子
+
+目标：写一个极简 Canvas 渲染器，能在 <canvas> 上画出 \`<box>\`、\`<circle>\` 等"伪元素"，同时它们的 x/y/radius 支持响应式数据驱动（v-for、v-if、响应式 ref 都能用）。
+
+### Step 1：定义你的"节点"类型（不需要是 DOM）
+
+Canvas 没有 DOM 节点，我们自己定义一棵场景树：
+
+\`\`\`ts
+// types.ts
+export type CNode =
+  | { type: 'box'; x: number; y: number; w: number; h: number; color: string; children: CNode[]; parent?: CGroup }
+  | { type: 'circle'; x: number; y: number; r: number; color: string; parent?: CGroup }
+  | { type: 'text'; x: number; y: number; text: string; color: string; parent?: CGroup }
+  | CGroup
+
+export interface CGroup {
+  type: 'group'
+  x: number
+  y: number
+  children: CNode[]
+  parent?: CGroup
+}
+\`\`\`
+
+### Step 2：实现自定义渲染器（核心 10 个函数）
+
+\`\`\`ts
+// renderer.ts
+import { createRenderer } from '@vue/runtime-core'
+import type { CNode } from './types'
+
+// 根节点：<canvas> 的上下文 + 根 group
+export interface CanvasRoot {
+  ctx: CanvasRenderingContext2D
+  root: CNode
+  canvas: HTMLCanvasElement
+}
+
+function drawNode(ctx: CanvasRenderingContext2D, n: CNode) {
+  switch (n.type) {
+    case 'group':
+      ctx.save()
+      ctx.translate(n.x, n.y)
+      for (const c of n.children) drawNode(ctx, c)
+      ctx.restore()
+      break
+    case 'box':
+      ctx.fillStyle = n.color
+      ctx.fillRect(n.x, n.y, n.w, n.h)
+      for (const c of n.children) drawNode(ctx, c)
+      break
+    case 'circle':
+      ctx.fillStyle = n.color
+      ctx.beginPath()
+      ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2)
+      ctx.fill()
+      break
+    case 'text':
+      ctx.fillStyle = n.color
+      ctx.fillText(n.text, n.x, n.y)
+      break
+  }
+}
+
+function rerender(root: CanvasRoot) {
+  const { ctx, canvas, root: node } = root
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  drawNode(ctx, node)
+}
+
+const renderer = createRenderer<CNode, CanvasRoot>({
+  createElement(type) {
+    // Vue 组件 template 里写 <box> → 这里会收到 type='box'
+    switch (type) {
+      case 'box':    return { type: 'box', x: 0, y: 0, w: 50, h: 50, color: '#42b883', children: [] } as any
+      case 'circle': return { type: 'circle', x: 0, y: 0, r: 30, color: '#35495e' } as any
+      case 'text':   return { type: 'text', x: 0, y: 0, text: '', color: '#000' } as any
+      case 'group':
+      default:       return { type: 'group', x: 0, y: 0, children: [] } as any
+    }
+  },
+
+  patchProp(el, key, _prev, next) {
+    // 处理 <box :x="100" :color="colorRef"> 这类属性更新
+    ;(el as any)[key] = next
+    // 每次属性变立刻重绘 canvas（生产可以做 nextFrame 合并）
+    requestAnimationFrame(() => rerender(currentRoot!))
+  },
+
+  insert(child, parent, anchor) {
+    // CanvasRoot 是根，其他 parent 是有 children 的节点
+    if ('ctx' in (parent as any)) {
+      (parent as CanvasRoot).root.children.push(child as CNode)
+      child.parent = (parent as CanvasRoot).root as any
+    } else {
+      const list = (parent as any).children
+      const i = anchor ? list.indexOf(anchor) : list.length
+      list.splice(i, 0, child)
+      child.parent = parent as any
+    }
+    rerender(currentRoot!)
+  },
+
+  remove(child) {
+    const p = child.parent
+    if (!p) return
+    const list = (p as any).children
+    const i = list.indexOf(child)
+    if (i > -1) list.splice(i, 1)
+    child.parent = undefined
+    rerender(currentRoot!)
+  },
+
+  createText(text) {
+    return { type: 'text', x: 0, y: 0, text, color: '#000' } as any
+  },
+  createComment() { return { type: 'group', x: 0, y: 0, children: [] } as any },
+  setText(node, text) { (node as any).text = text; rerender(currentRoot!) },
+  setElementText(el, text) { (el as any).text = text; rerender(currentRoot!) },
+  parentNode(n) { return (n as any).parent ?? currentRoot?.root },
+  nextSibling(n) {
+    const sibs = (n as any).parent?.children
+    return sibs?.[sibs.indexOf(n) + 1] ?? null
+  },
+  createStaticContent() { return null as any }
+})
+
+let currentRoot: CanvasRoot | null = null
+export const createCanvasApp = (rootComponent: any, rootProps?: any) => {
+  const app = renderer.createApp(rootComponent, rootProps)
+  const originalMount = app.mount
+  app.mount = (canvas: HTMLCanvasElement) => {
+    // 把 canvas 包装成自定义渲染器能识别的"根容器"
+    const ctx = canvas.getContext('2d')!
+    const rootContainer: CanvasRoot = { ctx, canvas, root: { type: 'group', x: 0, y: 0, children: [] } }
+    currentRoot = rootContainer
+    return originalMount(rootContainer as any)
+  }
+  return app
+}
+\`\`\`
+
+### Step 3：写普通 Vue 组件（跟 DOM 版完全一样！）
+
+\`\`\`vue
+<!-- App.vue -->
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+const boxes = ref([
+  { id: 1, x: 40, y: 40, color: '#42b883' },
+  { id: 2, x: 140, y: 40, color: '#35495e' }
+])
+const radius = ref(20)
+onMounted(() => {
+  setInterval(() => radius.value = 10 + Math.random() * 60, 500)
+})
+function add() {
+  boxes.value.push({ id: Date.now(), x: Math.random() * 300, y: Math.random() * 200, color: '#' + Math.floor(Math.random() * 0xffffff).toString(16) })
+}
+</script>
+
+<template>
+  <!-- 这不是 DOM！这是我们自定义的 canvas 元素 -->
+  <group>
+    <box
+      v-for="b in boxes"
+      :key="b.id"
+      :x="b.x" :y="b.y"
+      :w="50" :h="50"
+      :color="b.color" />
+    <circle x="260" y="140" :r="radius" color="#ff6b6b" />
+    <text x="20" y="20" text="Vue on Canvas!" />
+  </group>
+  <button @click="add">+ Add box</button>  <!-- 注意：button 是真 DOM -->
+</template>
+\`\`\`
+
+### Step 4：启动 App（挂载到 canvas）
+
+\`\`\`ts
+import { createCanvasApp } from './renderer'
+import App from './App.vue'
+
+const canvas = document.getElementById('cv') as HTMLCanvasElement
+createCanvasApp(App).mount(canvas)
+\`\`\`
+
+**Magic**：Vue 的 v-for / key / ref 响应式 / 事件 / 组件全部正常工作，但渲染结果到了 canvas 上而不是 DOM！每次 ref 变化都会触发 patchProp → 我们实现的 rerender 重绘画面。
+
+---
+
+## 三、这个架构的一些核心概念（面试考点）
+
+### 1. 为什么 patchProp 是关键？
+
+因为 Vue 的 vdom 只会在 diff 到"属性变更"时调用 patchProp。响应式 ref 变化 → 触发组件 rerender → 生成新的 vnode props → patchProp。所以你只要**在 patchProp 里把对应属性写到你的自定义节点上，然后触发一次画面刷新**，数据驱动就全通了。
+
+### 2. v-if / v-for / 组件 是怎么工作的？
+
+它们完全在 **runtime-core 层**做 vdom diff，最后还是调用你的 insert / remove / patchProp。所以你不用写 for / if 的逻辑，Vue 全部帮你处理，你只需要实现"单个节点的 CRUD + 属性更新"。
+
+### 3. 那 <button @click> 呢？事件怎么处理？
+
+Vue 的事件也走 patchProp：属性名是 \`onClick\`、\`onInput\` 等 \`on+\` 大写字母开头。patchProp 里判断 key.startsWith('on') 时，你把回调函数保存到节点上，然后在自己的渲染循环里根据点击命中节点触发回调。
+
+对 canvas 来说，就是监听 canvas 的 click 事件，计算 (x, y) 命中了哪个 box/circle 节点，然后调用节点上的 onClick。
+
+---
+
+## 四、真实项目：Vue 3 自定义渲染器生态里的实际用法
+
+### 1. 小程序：Taro 4 / UniApp 对 Vue 3 的支持
+
+\`\`\`
+小程序运行时没有 DOM → Taro 团队实现了一套自定义渲染器
+  createElement → 生成小程序 WXML 结构描述对象
+  patchProp   → setData 小程序对应节点属性
+  insert/remove → splice() 长列表、更新 data
+v-if / v-for / setup() 全复用 Vue runtime-core
+\`\`\`
+
+过去 Taro 3 用的是模拟 DOM + Vue runtime-dom，体积大且 setData 慢；切自定义渲染器后，跳过 DOM 模拟，直接把 Vue 的 diff 映射成小程序数据变更，首屏包更小、性能更好。
+
+### 2. Three.js 3D 渲染：Vue Three / TresJS / Pellucid
+
+TresJS 提供了 <TresCanvas> 容器，内部走自定义渲染器：
+\`\`\`vue
+<TresCanvas>
+  <TresPerspectiveCamera :position="[0,0,5]" />
+  <TresMesh :rotation-y="rot">
+    <TresBoxGeometry :args="[1,1,1]" />
+    <TresMeshStandardMaterial color="#42b883" />
+  </TresMesh>
+</TresCanvas>
+\`\`\`
+
+写起来完全像 Vue 模板，但节点是 Three.js 的 Object3D（Mesh / Camera / Material），响应式驱动 mesh.rotation.y 变化。
+
+### 3. 终端 Terminal 渲染：ink-vue
+
+类比 React 的 Ink，把 Vue 组件渲染成 ANSI 彩色字符输出到终端（CLI 工具）。createElement 构建一棵带 fg/bg/文字样式的节点树，flush 到 stdout。
+
+### 4. PDF 渲染：vue-pdf-renderer
+
+自定义渲染器把组件渲染成 PDFKit 的对象（Text / Rect / Image），输出 PDF 文件——同样 v-for / 组件 / 响应式照常写。
+
+### 5. 测试：@vue/runtime-core + JSDOM 的空壳渲染器
+
+单测里不关心真实 DOM，做一个空的自定义渲染器把节点存成 JS 对象，速度飞快 + 不依赖 DOM API。
+
+---
+
+## 五、和 runtime-dom 的关系：Vue 本身分 5 层包
+
+你 import 'vue' 得到的其实是几层包的重新导出：
+
+| 包 | 职责 | 平台 |
+| --- | --- | --- |
+| \`@vue/reactivity\` | ref / reactive / effect / computed | 无平台 |
+| \`@vue/runtime-core\` | VNode / 组件实例 / 生命周期 / createRenderer | 无平台 |
+| \`@vue/runtime-dom\` | 实现 DOM 版的节点操作函数（createRenderer(...) 产物） | 浏览器 DOM |
+| \`@vue/compiler-dom\` | 把 <template> 编译成浏览器 render | 构建时 |
+| \`vue\` | 把上面 4 个组合起来，对外默认导出 | 浏览器 |
+
+所以自定义渲染器的开发者一般直接用 \`@vue/runtime-core\`（不要拖 runtime-dom 进来），然后自己写对应平台的 patchProp/insert/...。
+
+---
+
+## 六、手写自定义渲染器的一些坑（面试容易追问）
+
+### 坑 1：setElementText vs createText
+
+- \`createText(text)\`：创建一个纯文本节点（用于 \`Hello {{ name }}\` 中间的字符串片段）。
+- \`setElementText(el, text)\`：给一个元素设置"只有一个文本子节点"的内容（常见于 <p>Hello</p>）。
+两者要分清楚，否则 v-if 切文本会报错。
+
+### 坑 2：anchor 参数（insert 的第三个参数）
+
+insert(child, parent, anchor) 的语义是**把 child 插到 parent 的 children 中，位置在 anchor 之前**（anchor=null 插尾部）。Vue 的 v-for 列表 diff 严重依赖 anchor 做原地复用，如果你忽略 anchor 而总是 push 到尾部，列表会渲染错乱且性能极差。**anchor 一定要实现**。
+
+### 坑 3：批量刷新 / 去抖动 rerender
+
+响应式数据一批可能变很多属性（一个组件里改了 x / y / color 3 个 prop），如果你每个 patchProp 都立刻画 canvas，一帧会画 3 次。生产代码要把重绘包到 **\`nextTick\` 或 \`requestAnimationFrame\`** 里合并：
+
+\`\`\`ts
+let pending = false
+function scheduleRerender() {
+  if (pending) return
+  pending = true
+  requestAnimationFrame(() => {
+    pending = false
+    rerender(currentRoot!)
+  })
+}
+// patchProp / insert / remove 里都调用 scheduleRerender() 而非直接 rerender
+\`\`\`
+
+### 坑 4：组件卸载后清理资源
+
+3D 场景的 texture / GL context、WebSocket、定时器这些不是节点，要用 onBeforeUnmount 清理；自定义渲染器要正确在 remove / 组件卸载时走对应的 unmount 钩子，不然 GC 不掉造成内存泄漏。
+
+---
+
+## 一句话总结
+
+自定义渲染器的核心是：**把 Vue 已经做好的"vnode diff → 应该对节点做哪些操作（增删改属性/文本/子节点）"的结果，映射到你目标平台的 API 上**。Vue 替你做了响应式 + 组件 + 算法，你只需要写一份 10 个函数左右的"画布驱动层"，就能把 Vue 的强大能力带到 DOM 以外的任何渲染目标上。`
+  },
+  {
+    id: 'vue-072',
+    category: 'vue',
+    title: 'Vue 自定义指令进阶：钩子、binding、与 Teleport/SSR/组件根节点的关系？',
+    difficulty: '中等',
+    tags: ['自定义指令', 'Directive', '钩子', 'SSR'],
+    answer: `## 回顾：自定义指令 vs 组件 vs composable（什么时候用哪个？）
+
+| 方案 | 能力 | 适用场景 |
+| --- | --- | --- |
+| **组件** | 状态 + UI + 交互的完整封装（输出 DOM） | 按钮、对话框、表格 |
+| **composable** | 复用状态逻辑（不操作 DOM） | useMouse、useRequest |
+| **自定义指令** | **直接操作单个 DOM 元素的复用行为**（纯副作用） | 自动聚焦、点击外部关闭、懒加载、防抖点击、权限隐藏、tooltip |
+
+> 原则：能不用指令就不用——组件 / composable 更易调试与测试。只有当逻辑本质是"给某个元素重复加某种 DOM 行为"时，指令才是最合适的。
+
+---
+
+## 一、完整钩子签名（Vue 3 vs Vue 2）
+
+Vue 3 指令钩子与组件生命周期对齐（老 Vue 2 的 bind/inserted/update/componentUpdated/unbind 已废弃）：
+
+\`\`\`ts
+import type { Directive, DirectiveBinding } from 'vue'
+
+const vDemo: Directive<HTMLElement, any> = {
+  // 以下所有钩子的参数都是 (el, binding, vnode, prevVnode)
+
+  created(el, binding, vnode) {
+    // 元素创建，但还没插入 DOM 树
+    // - 可以存一些信息到 el 上（WeakMap 更推荐）
+    // - 不要访问 el.parentNode（还没有）
+  },
+
+  beforeMount(el, binding) {
+    // 即将挂载，DOM 插入前
+  },
+
+  mounted(el, binding) {
+    // ✅ 最常用：已插入真实 DOM，可以测量尺寸 / 绑事件 / 初始化第三方库
+    el.focus()
+    MutationObserver / IntersectionObserver / ResizeObserver 可以在这里 new
+  },
+
+  beforeUpdate(el, binding, vnode, prevVnode) {
+    // 组件本身要更新了，但子元素还没更新
+    // 注意：和 updated 的区别类似 beforeMount vs mounted
+  },
+
+  updated(el, binding, vnode, prevVnode) {
+    // 第二常用：组件 + 子 DOM 都更新了
+    // binding.oldValue 可用
+  },
+
+  beforeUnmount(el, binding) {
+    // 组件卸载前
+  },
+
+  unmounted(el) {
+    // ✅ 第二常用：一定要在这里清定时器、断 Observer、removeEventListener
+    el._io?.disconnect()
+  },
+
+  // SSR 专用
+  getSSRProps(binding, vnode) {
+    // 服务端渲染时可以返回一组属性会被序列化进 SSR 的 HTML 标签（例如 v-highlight 加 class）
+    return { class: 'highlight' }
+  }
+}
+\`\`\`
+
+**仅需要 mounted + updated 的指令可以简写成函数**：
+
+\`\`\`ts
+const vColor: Directive<HTMLElement, string> = (el, binding) => {
+  el.style.color = binding.value
+}
+// 等价于同时注册 mounted 与 updated 回调为同一函数
+\`\`\`
+
+---
+
+## 二、深度理解 binding 对象
+
+binding 是指令与调用方通信的桥梁，字段最全解析：
+
+\`\`\`
+v-permission:action.a.b.c="['admin']"
+│          │      │       │
+│          │      │       └ value        = ['admin']
+│          │      └ modifiers         = { a: true, b: true, c: true }
+│          └ arg（参数）               = 'action'
+└指令名
+\`\`\`
+
+完整字段：
+
+| 字段 | 含义 | 示例 |
+| --- | --- | --- |
+| \`binding.value\` | 绑定的**新值**（v-xxx="expr" 里的 expr 计算结果） | user.role |
+| \`binding.oldValue\` | **更新前的值**（只有 updated / beforeUpdate 里有） | 旧 role |
+| \`binding.arg\` | **参数**（v-xxx:arg），动态参数支持 v-xxx:[varName] | 'click'、'focus' |
+| \`binding.modifiers\` | **修饰符对象**（v-xxx.mod1.mod2），多个为 true | { stop: true, prevent: true } |
+| \`binding.instance\` | 使用该指令的**组件实例**（即 this / setup 的代理） | — |
+| \`binding.dir\` | **指令对象本身**（可以读指令的私有配置字段） | — |
+
+### 常见组合模式
+
+#### 模式 1：arg 决定行为（多合一指令）
+
+\`\`\`vue
+<template>
+  <input v-focus:blur="onBlur">    <!-- arg='blur' → 失焦回调 -->
+  <input v-focus:key.enter="go">   <!-- arg='key' + modifier.enter → 回车回调 -->
+</template>
+
+<script setup lang="ts">
+const vFocus = {
+  mounted(el: HTMLElement, binding: DirectiveBinding) {
+    if (binding.arg === 'blur') el.addEventListener('blur', binding.value)
+    if (binding.arg === 'key') {
+      el.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (binding.modifiers.enter && e.key === 'Enter') binding.value()
+      })
+    }
+  }
+}
+</script>
+\`\`\`
+
+#### 模式 2：修饰符控制策略（v-debounce.300ms.immediate）
+
+\`\`\`ts
+const vDebounce: Directive<HTMLElement, () => void> = {
+  mounted(el, binding) {
+    const ms = Number(Object.keys(binding.modifiers)[0] ?? 300) ?? 300
+    const immediate = binding.modifiers.immediate
+    let timer: any
+    el.addEventListener('click', (e) => {
+      clearTimeout(timer)
+      if (immediate && !timer) binding.value.call(binding.instance, e)
+      timer = setTimeout(() => !immediate && binding.value.call(binding.instance, e), ms)
+    })
+    // 存到 el 上以便 unmounted 清理
+    ;(el as any)._debounceCleanup = () => clearTimeout(timer)
+  },
+  unmounted(el) { (el as any)._debounceCleanup?.() }
+}
+\`\`\`
+
+> ⚠️ 存**私有字段**到 el 上虽然常见，但**更推荐用 WeakMap 存**避免污染 DOM 元素 + 内存泄漏：
+> \`\`\`ts
+> const W = new WeakMap<Element, { timer: any }>()
+> // mounted: W.set(el, { timer })
+> // unmounted: const { timer } = W.get(el)!; clearTimeout(timer); W.delete(el)
+> \`\`
+
+#### 模式 3：动态参数 v-xxx:[arg] 配合响应式
+
+\`\`\`vue
+<template>
+  <!-- 绑定的 arg 可以是响应式 ref，指令会重新 updated -->
+  <button v-on:[ev]="handler">Hi</button>
+  <input v-model="ev" />
+</template>
+<script setup>
+const ev = ref('click')  // 用户可以改成 'dblclick' / 'mouseenter'
+const handler = () => alert('触发了')
+</script>
+\`\`\`
+
+arg 变 → beforeUpdate/updated 钩子再跑一次，你要在里面解绑旧的 listener、绑新的。
+
+---
+
+## 三、5 个进阶场景实战（面试常考）
+
+### 1. 图片懒加载 v-lazy（IntersectionObserver）
+
+\`\`\`ts
+const io = new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    if (e.isIntersecting) {
+      const img = e.target as HTMLImageElement
+      const src = img.dataset.src!
+      img.src = src
+      io.unobserve(img)
+    }
+  }
+}, { rootMargin: '100px' })
+
+export const vLazy: Directive<HTMLImageElement, string> = {
+  mounted(el, binding) {
+    el.dataset.src = binding.value
+    io.observe(el)
+  },
+  updated(el, binding) {
+    // value 可能更新（切换商品），重新观察
+    el.dataset.src = binding.value
+  },
+  unmounted(el) { io.unobserve(el) }
+}
+\`\`\`
+
+> 注意：现代浏览器原生 \`<img loading="lazy">\` 已经支持得非常好，生产环境优先用原生；自定义懒加载主要为了兼容旧浏览器、加骨架屏 / loading 占位 / 淡入动画。
+
+### 2. 点击外部关闭 v-click-outside
+
+\`\`\`ts
+type Handler = (e: MouseEvent) => void
+const W = new WeakMap<Element, { handler: Handler; listener: (e: any) => void }>()
+
+export const vClickOutside: Directive<HTMLElement, Handler> = {
+  mounted(el, binding) {
+    const listener = (e: MouseEvent) => {
+      if (!(el === e.target || el.contains(e.target as Node))) binding.value(e)
+    }
+    document.addEventListener('click', listener, true)  // capture 阶段，避免子组件 stopPropagation
+    W.set(el, { handler: binding.value, listener })
+  },
+  updated(el, binding) {
+    const ctx = W.get(el)!
+    ctx.handler = binding.value
+  },
+  unmounted(el) {
+    const ctx = W.get(el)!
+    document.removeEventListener('click', ctx.listener, true)
+    W.delete(el)
+  }
+}
+\`\`\`
+
+### 3. 权限控制 v-permission（两种策略：移除 vs 禁用）
+
+\`\`\`ts
+import { useUserStore } from '@/stores/user'
+
+export const vPermission: Directive<HTMLElement, string | string[]> = {
+  // ✅ SSR 友好：服务端渲染阶段把 class 塞进去，客户端 hydrated 后也能再处理一次
+  getSSRProps(binding) {
+    const has = useUserStore().hasPermission(binding.value)
+    return has ? {} : { style: 'display:none', 'aria-hidden': 'true' }
+  },
+  mounted(el, binding) {
+    const has = useUserStore().hasPermission(binding.value)
+    const strategy = binding.modifiers.disable ? 'disable' : 'remove'
+    if (!has) {
+      if (strategy === 'disable') {
+        ;(el as HTMLButtonElement).disabled = true
+        el.classList.add('is-disabled')
+        el.setAttribute('aria-disabled', 'true')
+        el.addEventListener('click', (e) => e.stopImmediatePropagation(), true)
+      } else {
+        el.remove()  // 注意：remove() 会把 el 从 DOM 移除，beforeUnmount 依然会触发
+      }
+    }
+  }
+}
+\`\`\`
+
+### 4. Tooltip 浮层：指令 + Teleport / Popover API 的坑
+
+很多人尝试直接用指令创建 tooltip DOM：
+
+\`\`\`ts
+mounted(el, binding) {
+  const tip = document.createElement('div')
+  tip.textContent = binding.value
+  tip.style.position = 'absolute'
+  document.body.appendChild(tip)  // ❌ 祖先如果有 overflow:hidden + transform: translateZ(0)，会被裁切
+  // 并且 z-index 被父组件的堆叠上下文锁住
+}
+\`\`\`
+
+**正确做法**：
+- 用原生 **Popover API**（2024+）：\`tip.popover = 'auto'\`，渲染在 top-layer，不被任何 z-index 挡住。
+- 或者手动把 tip 放进 **Teleport to='body'**（但指令本身不能直接 return Teleport 组件）。
+- 实际上：复杂 tooltip 应该用组件实现，指令适合极简的纯 CSS ::before 气泡。
+
+### 5. 拖拽 v-draggable（Pointer Events + 数据属性）
+
+\`\`\`ts
+export const vDraggable: Directive<HTMLElement, { onDrop?: (data: any) => void }> = {
+  mounted(el, binding) {
+    el.draggable = true
+    el.addEventListener('dragstart', (e) => {
+      e.dataTransfer!.effectAllowed = 'move'
+      e.dataTransfer!.setData('text/plain', JSON.stringify(binding.instance))
+    })
+    if (binding.value?.onDrop) {
+      el.addEventListener('dragover', e => e.preventDefault())
+      el.addEventListener('drop', (e) => {
+        e.preventDefault()
+        binding.value!.onDrop!(JSON.parse(e.dataTransfer!.getData('text/plain')))
+      })
+    }
+  }
+}
+\`\`\`
+
+---
+
+## 四、关键边界行为（面试陷阱题）
+
+### 1. 指令用在组件上（作用在哪个 DOM？）
+
+Vue 3 中，**指令默认作用于组件的** \`$el\`**（单根组件），如果是多根组件（Fragment）会警告且失效（因为找不到"哪个根要应用指令"）。
+
+\`\`\`vue
+<!-- 单根组件 → 指令应用到 MyInput 内部真实的根 DOM -->
+<MyInput v-model="x" v-focus />
+
+<!-- 多根 Fragment 组件 → 警告，指令不知道作用哪个根，不要用 -->
+\`\`\`
+
+Vue 2 中是作用在组件根 DOM，且可以在 bind 钩子拿 vnode.componentInstance 操作实例。
+
+### 2. v-if 切换时指令会经历什么？
+
+- \`v-if='true'\` 时：created → beforeMount → mounted。
+- \`v-if='false'\` 时：beforeUnmount → unmounted（所以清理逻辑写在 unmounted 是靠谱的）。
+- **v-show**：只会 updated，不会卸载——所以只靠 mounted/unmounted 做绑定/解绑的指令，在 v-show 切换时如果要做特殊处理（如暂停定时器），要在 updated 里判断 el.style.display。
+
+### 3. 指令和 Teleport 组合的副作用
+
+元素被 Teleport 移到 body 后，它的指令仍然属于原组件。问题场景：
+- 你在 mounted 里用 document.addEventListener('click', ...) 绑定全局点击 → 正常能触发，因为事件是全局的。
+- 你如果用 el.parentNode 做相对定位计算 → parentNode 是 Teleport 目标（body），不再是原来写在模板里的父元素，定位错乱。
+解：指令里用 getBoundingClientRect 做视口级坐标，不要依赖 parentNode。
+
+### 4. SSR 时指令的行为
+
+- SSR **只有 getSSRProps 钩子会执行**，created/mounted 等都不跑（服务端没有 DOM）。
+- 所以指令如果只改 DOM 样式（v-highlight），一定要写 getSSRProps 返回属性，否则客户端 hydration 前的 HTML 没有该 class，会出现闪烁。
+- 需要 DOM 的指令（拖拽、Observer）在服务端完全不会生效——这是对的，但你要保证 hydrated 后在 mounted 里能初始化到同一状态。
+
+### 5. 指令在自定义渲染器（Canvas / 小程序）中有用吗？
+
+默认的 Vue runtime-dom 指令钩子是绑定 DOM 的，自定义渲染器平台（Canvas）没有 HTMLElement。**自定义渲染器可以自己定义指令含义**（通过 renderOptions 里的 patchProp 自己处理 onXXX / vXXX），但一般跨平台库（Taro、TresJS）不会直接把 DOM 指令搬过去，会提供平台专属的版本。
+
+---
+
+## 五、最佳实践 Checklist
+
+✅ **命名**：\`v\` 开头驼峰（\`vLazy\`），模板里写 kebab-case（\`v-lazy\`）。  
+✅ **注册**：\`<script setup>\` 里 v 开头的变量自动作为指令（Vue 3.3+）。  
+✅ **SSR 友好**：写 getSSRProps 让服务端先画一个接近最终状态的 HTML。  
+✅ **清理**：所有 mounted 中分配的资源（Observer、监听、定时器）都在 unmounted 清掉，用 WeakMap 存私有数据。  
+✅ **不要动响应式数据**：指令里不要修改组件的 state（可能触发更新循环，指令自己 updated 又改，死循环）。  
+✅ **不要滥用**：复杂 UI + 状态用组件，跨组件共享状态用 Pinia/composable，指令只负责"单个 DOM 元素的副作用"。
+
+---
+
+## 一句话总结
+
+自定义指令是 Vue 提供的"**给单个元素附加可复用 DOM 副作用**"的钩子系统。钩子名与生命周期对齐，binding 对象承载参数/修饰符/值/旧值；写指令时处理好创建→更新→卸载三个阶段的资源与状态，配合 WeakMap 做私有数据存储、getSSRProps 处理 SSR 渲染、v-show 与 Teleport 等边界场景，基本能应对 99% 的指令需求。`
+  },
+  {
+    id: 'vue-073',
+    category: 'vue',
+    title: 'VueUse 常用工具速览：useFetch / useDark / useStorage 等，与自定义 composable 的关系？',
+    difficulty: '简单',
+    tags: ['VueUse', 'composable', '工具库', 'useFetch'],
+    answer: `## VueUse 是什么
+
+\`@vueuse/core\` 是 Vue 社区维护的**一套 Composition API 工具函数集合**（类似 Lodash 但专为 Vue 的响应式设计），由 Vue 核心团队成员 Anthony Fu 发起维护，官方文档级别推荐（Vue 文档"生态系统"里直接链接）。可以理解为：**日常写 composable 会重复写的那 300 多个样板，VueUse 帮你写好了。**
+
+安装：
+\`\`\`bash
+npm i @vueuse/core @vueuse/components   # components 是可选的，封装为组件用法
+# Nuxt：@vueuse/nuxt 模块（自动注册 + auto imports）
+\`\`\`
+
+---
+
+## 一、VueUse 设计哲学（面试加分点）
+
+1. **100% Tree-shakable**：每个函数一个独立导出，只用 useDark 不会把 useFullscreen 打进包。
+2. **SSR 友好**：每个 composable 内部都判断 typeof window，服务端渲染不会崩。
+3. **零配置默认，深度可定制**：useFetch 一行能发请求，但 options 可以覆盖请求库、拦截器、retries 全部。
+4. **纯 composable**：不依赖第三方、不耦合 Vue 版本（Vue 2.7 / Vue 3 共用同一套 API，走 vue-demi 桥接）。
+5. **ref 优先**：输入输出大多是 ref，直接丢模板就能响应式工作。
+6. **支持组件形式**：@vueuse/components 把 composable 包成 Renderless 组件（<UseFetch>、<UseDark>），给模板党用。
+
+---
+
+## 二、20 个常用 composable 分类速记
+
+### A. 浏览器 API 封装（最常用，省掉 addEventListener + cleanup）
+
+| 函数 | 作用 | 示例 |
+| --- | --- | --- |
+| \`useWindowScroll()\` | 响应式 window 滚动 x/y | \`const { x, y } = useWindowScroll(); y > 100 显示"回到顶部" |
+| \`useWindowSize()\` | 响应式窗口大小 | \`const { width, height } = useWindowSize()\` |
+| \`useMouse()\` | 响应式鼠标位置 x/y，含 sourceType（touch/mouse） | 跟随鼠标的 3D 倾斜卡片 |
+| \`useEventListener\` | 自动注册并 onUnmounted 解绑任意事件 | 不用写 useEffect + return removeEventListener 了 |
+| \`useClickOutside(target, handler)\` | 点外部触发（做菜单、下拉、Tooltip） | 比 v-click-outside 指令更灵活，可配置 ignore |
+| \`useKeyModifier\` / \`useMagicKeys\` | 响应式修饰键状态 & 任意键按下 | \`const { shift, ctrl_a } = useMagicKeys()\` |
+| \`useIntersectionObserver(target, cb)\` | 进入视口触发，配合懒加载 / 埋点曝光 | 比自己 new IntersectionObserver 写得少很多 |
+| \`useResizeObserver(target, cb)\` | 监听元素尺寸变化 | 瀑布流重排、自适应 ECharts |
+| \`useFullscreen(target)\` | 全屏 API 封装，isFullscreen + enter/exit/toggle |  |
+| \`useClipboard()\` | 复制到剪贴板，自动降级 execCommand | 不用兼容 Chrome/FF/Safari 差异了 |
+
+\`\`\`ts
+// useEventListener 示例：再也不会忘 cleanup
+useEventListener(document, 'keydown', (e) => {
+  if (e.key === 'Escape') closeDialog()
+})
+// 只在 target 元素存在时才绑（接受 ref / getter / HTMLElement）
+useEventListener(targetEl, 'scroll', onScroll, { passive: true })
+\`\`\`
+
+### B. 存储与持久化
+
+| 函数 | 作用 |
+| --- | --- |
+| \`useStorage('user', {name:''})\` | 响应式 localStorage，自动双向同步（JSON 自动序列化） |
+| \`useLocalStorage / useSessionStorage / useCookieStorage\` | useStorage 的三种存储快捷方式 |
+| \`useAsyncState\` | 异步数据 promise → ref，自带 loading/error |
+
+\`\`\`ts
+// ✅ 改变 user.value 会自动写回 localStorage（JSON 序列化），刷新自动读回
+const user = useLocalStorage('app:user', { name: 'Tom', age: 18 }, {
+  mergeDefaults: true,          // 升级版本后加字段，合并默认值，不会把老用户的字段清掉
+  writeDefaults: true
+})
+user.value.age = 19              // 自动持久化
+\`\`\`
+
+### C. 状态派生与防抖节流
+
+| 函数 | 作用 |
+| --- | --- |
+| \`useDebouncedRef(value, 300)\` | 防抖 ref（输入框 → 搜索框） |
+| \`useThrottledRef(value, 1000)\` | 节流 ref（滚动监听） |
+| \`useDebounceFn / useThrottleFn\` | 防抖 / 节流函数 |
+| \`useRefHistory(ref)\` | 撤销 / 重做，undo/redo 栈 |
+| \`useClamp(score, 0, 100)\` | 夹紧数值 |
+| \`useSorted(items, cmp)\` | 排序后的 computed |
+
+\`\`\`ts
+const search = ref('')
+const debounced = useDebouncedRef(search, 400)              // 输入后 400ms 才更新
+watch(debounced, (q) => fetch(\`/search?q=\${encodeURIComponent(q)}\`))
+
+// 撤销重做
+const state = ref('')
+const { undo, redo, history, canUndo, canRedo } = useRefHistory(state, { capacity: 30 })
+\`\`\`
+
+### D. 异步请求（重点）：useFetch
+
+VueUse 里最强大的 composable 之一，一行替换 axios + useEffect + 三态管理：
+
+\`\`\`ts
+import { useFetch } from '@vueuse/core'
+
+// 1. 最简：URL → data 响应式
+const { data, error, isFetching, isFinished, execute, then, onFetchResponse } = useFetch('/api/user/1')
+
+// 2. 自动重试、GET 参数、Abort 控制、请求时机
+const { data: users, execute, abort } = useFetch('/api/users', {
+  immediate: false,                // 不立刻发，等手动 execute()
+  refetch: true,                   // 响应式依赖变化自动重发
+  timeout: 10_000,
+  retries: 3,                      // 失败重试 3 次
+  retryDelay: 500,
+  beforeFetch(ctx) {
+    ctx.options.headers = { Authorization: 'Bearer ' + token.value }  // 统一加 token
+    return ctx
+  },
+  afterFetch(ctx) {
+    ctx.data = ctx.data.data     // 解开后端 {"code":0,"data":{}} 的包装
+    return ctx
+  },
+  onFetchError(ctx) {
+    if (ctx.response?.status === 401) logout()
+    return ctx
+  }
+}).get().json()
+
+watchEffect(() => console.log('拿到用户:', users.value))
+await execute({ skipCache: true })  // 手动刷新
+\`\`\`
+
+进阶能力：
+- \`.post(json).json() / .multipartFormData()\` 链式指定 method + body。
+- 内置 useFetch 间的**缓存**（同 URL 短时间重复调用只发一次）。
+- 配合 **@vueuse/integrations** 里的 \`useAxios\` 直接接 axios 实例。
+- SSR 场景配合 Nuxt / onServerPrefetch，首屏直接拿数据不发重复请求。
+
+> ⚠️ 如果你已经在项目里用了 \`axios + @tanstack/vue-query\`，那么 useFetch 只适合轻量接口，复杂缓存/失效/乐观更新还是推荐 vue-query。
+
+### E. 主题与颜色
+
+| 函数 | 作用 |
+| --- | --- |
+| \`useDark()\` | 响应式深色模式：自动跟随系统、手动切换、自动写 html class='dark'（Tailwind 官方推荐） |
+| \`usePreferredDark()\` | 只读取系统暗色偏好，不做切换 |
+| \`useColorMode()\` | 更通用：light/dark/cupcake/... 多主题 |
+| \`useCssVar('--primary')\` | 响应式读写 CSS 变量 |
+
+\`\`\`ts
+const isDark = useDark({ selector: 'html', attribute: 'class', valueDark: 'dark', valueLight: '' })
+isDark.value = true  // 立刻切到暗色模式，持久化到 localStorage
+\`\`\`
+
+### F. 时间类
+
+| 函数 | 作用 |
+| --- | --- |
+| \`useNow()\` | 响应式当前时间（每 1s 更新） |
+| \`useTimestamp()\` | 响应式时间戳，可控 interval |
+| \`useRelativeTime(date)\` | "3 分钟前" 自动刷新（i18n 友好） |
+| \`useTimeoutFn / useIntervalFn\` | setTimeout / setInterval 的 composable 版，自动 cleanup |
+| \`useRafFn(cb)\` | requestAnimationFrame 循环，pause/resume 控制 |
+
+### G. Vue 组件内部能力（组合 API 缺失的补丁）
+
+| 函数 | 作用 |
+| --- | --- |
+| \`useTemplateRefsList\` | v-for 里 ref 收集数组（Vue 默认 v-for 中 ref 不会自动收集成数组） |
+| \`useVModel(props, 'modelValue')\` | 手写 v-model 组件时的 computed 封装（3.4 前替代 defineModel 的旧方案，3.4+ 直接用 defineModel） |
+| \`useAttrs / useSlots\` | runtime API 的 composable 封装（与内置宏基本等价） |
+| \`onClickOutside / onKeyStroke\` | 与指令等价的 composable 形式（组件内用更易组合） |
+
+---
+
+## 三、@vueuse/components：渲染为组件形式（模板党喜欢）
+
+不喜欢在 script 里写 composable，可以写组件（Renderless，只提供 slot props）：
+
+\`\`\`vue
+<template>
+  <UseFetch url="/api/users" let:data let:isFetching>
+    <Skeleton v-if="isFetching" />
+    <ul v-else>
+      <li v-for="u in data" :key="u.id">{{ u.name }}</li>
+    </ul>
+  </UseFetch>
+
+  <UseDark let:isDark let:toggle>
+    <button @click="toggle">{{ isDark ? 'Light' : 'Dark' }}</button>
+  </UseDark>
+</template>
+\`\`\`
+
+---
+
+## 四、VueUse 与"自定义 composable"的关系（核心面试题）
+
+**关系**：VueUse 是"官方质量、社区维护的通用 composable 大集合"；你自己写的 composable 是**项目业务专属**的（比如 useProductList、useOrderCheckout、useWechatLogin）。两者本质都是**以 use 开头、内部调 Vue API、返回响应式数据/方法的函数**。
+
+### 写 composable 的 VueUse 风格准则
+
+1. **参数 + 返回 ref 化**：输入接受 MaybeRef（值或 ref 都行），输出用 ref。VueUse 大量工具支持 MaybeRefOrGetter，call site 用起来随意。
+2. **自动 cleanup**：内部的监听器、定时器、Observer 必须在 onBeforeUnmount 清理。VueUse 会返回 stop() 方法，手动控制停止也方便。
+3. **options 对象而非长参数列表**：第 2 个参数往后写成 options（{ immediate, deep, flush, onError }），扩展性好。
+4. **返回对象不要解构即废**：像 VueUse 返回 \`{ value, isFetching, error, execute, abort }\`，字段名清晰，用户解构或整体用都行。
+5. **SSR 安全**：开头 if (typeof window === 'undefined') 返回合理默认值，不要直接 addEventListener 崩在 Node。
+
+对比：
+
+\`\`\`ts
+// ❌ 初学者版本：不清理、不接受 ref、不 SSR 安全
+function useMyScroll(cb: (y: number) => void) {
+  window.addEventListener('scroll', () => cb(window.scrollY))  // 组件卸载后监听器还在 😢
+}
+
+// ✅ VueUse 风格
+import type { MaybeRef, OnUnmount } from '@vueuse/core'
+export function useMyScroll(
+  target: MaybeRef<HTMLElement | Window> = window,
+  cb: (y: number) => void,
+  options?: { passive?: boolean }
+) {
+  const handler = () => cb(unref(target) === window ? window.scrollY : (unref(target) as HTMLElement).scrollTop)
+  const stop = useEventListener(target, 'scroll', handler, { passive: options?.passive ?? true })
+  return { stop }
+}
+\`\`\`
+
+---
+
+## 五、VueUse Integrations：与常见第三方库的组合
+
+\`@vueuse/integrations\` 单独包（按需，要装对应 peerDependency）：
+
+| 函数 | 对应库 | 能力 |
+| --- | --- | --- |
+| useAxios | axios | 响应式 axios 请求 |
+| useDraggable | — | HTML5 Drag & Drop 的响应式封装（x/y + onEnd） |
+| useQRCode | qrcode | 数据 → QR Code Image DataURL |
+| useNProgress | nprogress | 顶部加载条，配合 Vue Router 钩子 |
+| useChangeCase | change-case | camelCase/snake-case 实时转换 |
+| useFuse | fuse.js | 模糊搜索 ref 列表 |
+| useSortable | sortablejs | 拖放排序 |
+| useECharts | echarts | 响应式 echarts（自动 resize、卸载销毁） |
+
+---
+
+## 六、误区与坑
+
+### 误区 1：useFetch / useLocalStorage 每次组件调用都会创建新副作用吗？
+
+不会。VueUse 内部对全局资源（localStorage 事件监听、window resize 等）做了**单例化 + 引用计数**：第一个组件挂载开始监听，最后一个卸载才停。
+
+### 误区 2：VueUse 太大，会不会让包体积爆炸？
+
+前面强调过 VueUse 是**100% tree-shakable** 的 ESM。最终包体积 = 你实际 import 的几个函数之和（通常 gzip 后只有几 KB），远小于自己手写重复造轮子 + 不清理 bug 的总代价。
+
+### 误区 3：Nuxt/SSR 直接用会不会 hydration 不一致？
+
+所有浏览器相关的 composable 在 SSR 下都返回合理默认值（useDark 在 SSR 时是 false，hydrated 后才会从 localStorage 切回来）。但如果你把 isDark 直接拿去画服务端 HTML，会"首屏是亮色，hydrated 后瞬间变深色"的 FOUC——Nuxt + Tailwind 建议用官方 color-mode 模块做 class 注入。
+
+### 误区 4：自己实现一遍更好？
+
+对学习是好事；生产上 VueUse 处理了 99% 的边界（取消请求、重试、SSR、cleanup、ref 响应式输入、Ref 与原始值双支持、i18n、TypeScript 推导、单元测试覆盖）。手写只适合业务逻辑，通用浏览器逻辑直接用 VueUse 更稳。
+
+---
+
+## 七、一句话总结选型
+
+- **浏览器 API / 存储 / 防抖节流 / 三态异步请求 / 动画帧 / 主题切换等通用能力 → 直接用 VueUse**，不用自己写 cleanup、不用自己考虑 SSR、不用自己调类型。
+- **业务领域逻辑（登录流程、订单计算、权限路由、商品选择）→ 写自己的 composable，可以内部组合 VueUse 的能力**（例如 useCheckout 内部调用 useStorage 存草稿、useFetch 拉运费、useDebounceFn 防抖 SKU 查询）。
+
+VueUse 的核心价值是：**把 Composition API 模式下"每个项目都会写一遍的通用工具"标准化、打补丁、修边界、写好类型，让你把精力聚焦在业务本身。**`
+  },
+  {
+    id: 'vue-074',
+    category: 'vue',
+    title: 'Vue SFC（.vue 单文件组件）编译原理全流程拆解？（parse / compileScript / compileTemplate / generate）',
+    difficulty: '困难',
+    tags: ['SFC', '编译原理', '@vue/compiler-sfc', 'compileTemplate'],
+    answer: `## SFC 是什么
+
+Vue SFC（Single File Component）是把 template / script / style 三块写到同一个 .vue 文件里的格式：
+
+\`\`\`vue
+<template>
+  <h1>{{ title }}</h1>
+</template>
+
+<script setup lang="ts">
+const title = ref('Hello Vue')
+</script>
+
+<style scoped>
+h1 { color: v-bind(titleColor); }
+</style>
+\`\`\`
+
+它不是浏览器原生能理解的格式（浏览器只会跑 ESM/CSS/HTML），因此必须经过**编译器**处理。编译器主库：**\`@vue/compiler-sfc\`**（Vue 3 官方，底层再调 \`@vue/compiler-dom\` / \`@vue/compiler-core\` / \`@vue/compiler-ssr\`）。
+
+Vite 里的 \`@vitejs/plugin-vue\`、Webpack 里的 \`vue-loader\`、Rollup 里的 \`rollup-plugin-vue\`，本质都是"收到 HTTP 请求 → 调 compiler-sfc → 把结果以 JS ESM 形式返回"的中间件。
+
+---
+
+## 编译四阶段总览
+
+\`\`\`
+src/App.vue 源文件（字符串）
+    │
+    ▼
+① PARSE — descriptor 解析
+   @vue/compiler-sfc.parse(source)
+   → { descriptor: { template, scriptSetup, styles, customBlocks }, errors }
+    │
+    ▼
+② COMPILE SCRIPT — 处理 script + script setup（含宏展开）
+   compileScript(descriptor, { id, isProd })
+   → { content: string, bindings: Set<string>, scriptAst: Program }
+   展开 defineProps / defineEmits / defineModel / defineOptions
+   TS 类型生成 runtime props 默认值
+   withDefaults / 响应式解构处理
+    │
+    ▼
+③ COMPILE TEMPLATE — 模板编译成 render 函数
+   compileTemplate({ source: template.content, filename, id, bindings })
+   → { code: 'import { createElementBlock as _createElementBlock... } from "vue"\nexport function render(_ctx, _cache){...}', map, ast }
+   做静态分析：PatchFlag / Hoist Static / Block Tree / CacheHandlers
+    │
+    ▼
+④ COMPILE STYLE — CSS 处理（scoped / CSS Modules / v-bind 注入）
+   compileStyleAsync({ source: style.content, filename, id, scoped })
+   → { code, map, dependencies, shortChain }
+   scoped → 加 [data-v-xxx] 属性选择器
+   v-bind(color) → 转 var(--xyz) + 记录依赖
+    │
+    ▼
+组装最终 JS 模块（Vite 的 plugin-vue 做）：
+   import './App.vue?vue&type=style&index=0.css'
+   import { render } from './App.vue?vue&type=template'
+   // ... 把 compileScript 的 JS 内容放这里
+   export default { ..., render }
+→ 浏览器拿到的已经是纯 ES Module + CSS
+\`\`\`
+
+---
+
+## 一、Stage 1：parse — 把 .vue 字符串切出 descriptor
+
+**parse** 用的是 \`@vue/compiler-sfc\` 内置的一个小型 HTML parser（H3 同款扩展），**不是正则**！因为 template/style 内部本身也包含 HTML 嵌套，正则无法正确处理。
+
+核心数据结构：
+\`\`\`ts
+export interface SFCDescriptor {
+  filename: string
+  source: string
+  template: SFCTemplateBlock | null      // <template> 最多一个
+  scriptSetup: SFCScriptBlock | null     // <script setup> 或 null
+  script: SFCScriptBlock | null          // <script>（普通）或 null
+  styles: SFCStyleBlock[]                // <style> 可以多个，支持 scoped/CSS Modules/lang
+  customBlocks: SFCCustomBlock[]         // <docs>、<i18n>、<md> 等自定义
+  errors: Array<string | CompilerError>
+}
+\`\`\`
+
+### parse 的几个关键规则
+
+- 顶级只能是 \`<template>\`、\`<script>\`、\`<script setup>\`、\`<style>\`、自定义块五种标签（可以乱序，style 可以多个）。
+- \`<script>\` 和 \`<script setup>\` **可以共存**（前者写 Options/声明全局组件，后者写 setup 代码；编译器会合并）。
+- 块内部的内容原样保留，不会做二次解析（template 内部的 <template v-if> 不会被当成 SFC 块切出去）。
+- lang 属性决定后续编译链路：\`<script setup lang="ts">\`、\`<style lang="scss">\`。
+
+parse 的产物只做"切分"，语义验证放到后续阶段（这样你能用自定义块做 i18n/docs/测试）。
+
+---
+
+## 二、Stage 2：compileScript — 宏展开 + 依赖分析
+
+这是 SFC 编译里最复杂的一步，把 <script setup> 的语法糖"编译回"等价的普通 Options setup 代码。输入是 descriptor 的两个 script 块，输出是纯 JS/TS（以及 bindings 集合——哪些变量暴露给 template）。
+
+### 2.1 宏展开
+
+遍历 scriptSetup 的 TypeScript AST（用 @babel/parser 或 typescript，Vue 用自己写的一个轻量 TS parser），识别每个宏调用：
+
+| 宏 | 编译器转换做的事 |
+| --- | --- |
+| **defineProps**<br>\`defineProps<{ msg: string }>()\` | ① 若传 TS 类型 → 遍历 AST 类型节点，**生成运行时的 props 校验对象**（{ type: String, required: true }）。② 若写对象形式 → 直接用对象。③ 把返回值绑定到 setup 的第一个参数 \`__props\` 上 |
+| **withDefaults**<br>\`withDefaults(defineProps<...>(), { size: 'md' })\` | 从参数里提取默认值对象，生成：\`propsDefaults = { size: 'md' }\`，并作为 defineProps 第二参数 |
+| **响应式解构（3.5）**<br>\`const { msg } = defineProps()\` | 把这行重写成 \`const msg = toRef(__props, 'msg')\`（保持响应式） |
+| **defineEmits**<br>\`defineEmits<{ (e:'update:modelValue'):void }>()\` | 类型形式 → 生成运行时 emits 数组/对象校验定义；对象形式直接用；把返回值绑定到 setup 的第二个参数解构 \`__emit\` |
+| **defineModel（3.4+）**<br>\`const v = defineModel<string>()\` | ① 往 props 里加 modelValue；往 emits 里加 update:modelValue。② 返回一个 Writable Computed：get = props.modelValue，set = emit('update:modelValue', v)。③ 修饰符通过 defineModel 第二个参数访问。 |
+| **defineOptions**<br>\`defineOptions({ name: 'MyComp' })\` | 把对象贴到组件 options 对象字面量上（name / inheritAttrs / customOptions 等） |
+| **defineSlots / defineModel 的类型形式** | 不产生 runtime 代码，仅保留 TS 类型 |
+| **顶层 import / 顶层声明** | 全部保留作为 setup() 函数作用域里的声明；除了类型 import 被剥掉。 |
+| **defineExpose**<br>\`defineExpose({ reset })\` | 转成 setup({ expose }) 里的 \`expose({ reset })\` |
+
+### 2.2 Bindings 集合输出
+
+compileScript 最后会输出：哪些变量**暴露给 template 使用**。这是 template 编译器需要的核心信息！因为 template 编译时要知道某个标识符 \`foo\` 是 setup 里自己定义的（直接 \`_ctx.foo\` 读）还是要去 resolveComponent / resolveDirective（内置指令和组件）。
+
+\`\`\`ts
+// 返回值
+interface SFCScriptCompileResult {
+  content: string                    // 编译后的纯 JS（setup 函数）
+  bindings: Record<string, BindingTypes>   // setup 暴露给 template 的所有标识符
+  imports: ImportBinding[]
+  scriptAst: Program
+  ...
+}
+\`\`\`
+
+BindingTypes 有 SCRIPT_SETUP / PROPS / SETUP_REF / LITERAL 等分类，template 编译器会据此决定编译策略。例如如果是 SETUP_REF，模板里访问它就不用 \`.value\`（编译器自动解包）。
+
+### 2.3 最终组装 setup 函数
+
+compileScript 输出的 content 大致长这样（伪代码）：
+
+\`\`\`js
+import { toRef, computed } from 'vue'
+export default {
+  name: 'MyComp',                          // 来自 defineOptions
+  props: { msg: { type: String, required: true }, modelValue: String },  // 来自 defineProps + defineModel
+  emits: ['update:modelValue'],            // 来自 defineEmits + defineModel
+  setup(__props, { expose, emit }) {
+    const msg = toRef(__props, 'msg')      // 响应式解构
+
+    // defineModel：生成的 writable computed
+    const model = computed({
+      get: () => __props.modelValue,
+      set: (v) => emit('update:modelValue', v)
+    })
+
+    // 你的顶层代码
+    const title = ref('Hello Vue')
+
+    // defineExpose：
+    expose({ reset: () => { title.value = '' } })
+
+    return { title, msg, model, /* ...bindings... */ }
+  }
+}
+\`\`\`
+
+---
+
+## 三、Stage 3：compileTemplate — 模板 → render 函数
+
+这一步把字符串模板 \`<h1>{{ title }}</h1>\` 变成等价的 JS render 函数源代码。底层由 \`@vue/compiler-dom\` 调 \`@vue/compiler-core\`。
+
+经典三步：**parse → transform → generate**。
+
+### 3.1 Template parse（parse 成 AST）
+
+\`\`\`html
+<div v-if="ok">
+  <h1>{{ title }}</h1>
+</div>
+\`\`\`
+
+得到 Vue 模板 AST（类似 HTML AST 但有指令节点）：
+\`\`\`
+Root
+  └─ Element div
+       ├─ Directive v-if (ok)
+       └─ Element h1
+            └─ Interpolation (title)
+\`\`\`
+
+### 3.2 Transform（核心优化 + 语义分析）
+
+对 AST 递归做一系列 transform 插件，产出"带优化标记的新 AST"：
+
+**A. PatchFlag 标记**：对动态部分打位掩码（位运算），Diff 时只比较对应部分：
+- TEXT = 1
+- CLASS = 2
+- STYLE = 4
+- PROPS = 8
+- FULL_PROPS = 16
+- NEED_PATCH = 32
+……
+所以 \`<h1 :class="cls">{{ title }}</h1>\` = CLASS + TEXT = 2 | 1 = 3，编译出来：
+\`_createElementVNode("h1", { class: _ctx.cls }, _toDisplayString(_ctx.title), 3 /* CLASS, TEXT */)\`
+
+**B. HoistStatic（静态提升）**：纯静态节点和纯静态 props 提到 render 函数外（文件级常量），每次 render 复用同一个 vnode，跳过创建：
+
+\`\`\`js
+// 静态提升前（每次 render 都创建新对象）
+function render(_ctx, _cache) {
+  return _createElementBlock('div', null, [
+    _createElementVNode('p', null, 'Hello'),          // 纯静态，每次新建浪费
+    _createElementVNode('p', null, _ctx.title, 1)
+  ])
+}
+
+// 静态提升后（只有 _hoisted_1 每次复用同一对象）
+const _hoisted_1 = /*#__PURE__*/_createElementVNode('p', null, 'Hello')
+function render(_ctx, _cache) {
+  return _openBlock(), _createElementBlock('div', null, [
+    _hoisted_1,
+    _createElementVNode('p', null, _ctx.title, 1)
+  ])
+}
+\`\`\`
+
+**C. Block Tree（块树）**：遇到 \`v-if / v-for / component\` 等"结构边界"时开启新 Block。Block 里把所有**动态后代节点**（含嵌套 block）收集到 \`dynamicChildren\` 数组中。Diff 时不再递归整棵树，只遍历 dynamicChildren，**静态子树完全跳过**——这是 Vue 3 Diff O(n) 高效的关键。
+
+**D. CacheHandlers（事件处理器缓存）**：内联箭头函数 \`@click="() => doFoo(x)"\` 会被缓存：
+
+\`\`\`js
+return _createElementVNode('button', {
+  onClick: _cache[0] || (_cache[0] = ($event) => _ctx.doFoo(_ctx.x))
+})
+\`\`\`
+
+避免每次渲染新函数引用导致下游 memo 组件失效。
+
+**E. Transform 指令**：\`v-if / v-for / v-on / v-model / v-bind\` 分别有独立插件，把它们的语义转成正确的运行时调用（比如 v-for 转 renderList 调用 + Fragment）。
+
+**F. 组件 / 指令 resolve**：根据上一阶段 bindings 集合知道哪些标识符是自定义组件 / 指令。如果 binding 不存在，就调用 runtime 的 resolveComponent('MyButton')（从 components 注册表里查）。
+
+### 3.3 Generate（代码生成）
+
+遍历 transform 后的 AST，输出 JS 字符串 + sourcemap：
+
+- 开头注入 runtime helper import：\`import { createElementBlock as _createElementBlock, toDisplayString as _toDisplayString, ... } from 'vue'\`。
+- 每个节点类型对应的 createXXX 调用。
+- SSR 模式走 @vue/compiler-ssr，输出 renderSSR 函数（字符串拼接而非 vnode 创建，性能更高）。
+
+---
+
+## 四、Stage 4：compileStyle（样式处理）
+
+每个 <style> 块独立处理，核心三件事：
+
+### 4.1 scoped CSS：属性选择器哈希注入
+
+每个 SFC 有稳定哈希 \`data-v-xxxxx\`（基于文件路径 + 内容计算），scoped 样式会经过 PostCSS scoped plugin：
+
+- 元素选择器：\`h1 { color: red }\` → \`h1[data-v-xxxxx] { color: red }\`。
+- 组件根元素：Vue runtime 会把 \`data-v-xxxxx\` 自动打到组件根 DOM（父子 scoped 哈希都打上去）。
+- 深度选择器语法：\`:deep(.foo)\` 或 Vue 2 的 \`::v-deep .foo\` → 生成 \`[data-v-xxxxx] .foo\`（哈希放父元素后、空格隔开，表示内部子组件也能命中）。
+- \`:slotted(.bar)\` → 命中 slot 分发的元素。
+- \`:global(.reset)\` → 不追加哈希，全局生效。
+
+### 4.2 CSS Modules（module mode）
+
+\`<style module>\` 时，不做 scoped 哈希，而是把 \`.title { color: red }\` 编译成 \`._1a2b3c_title { color: red }\`，class 名改为哈希；并在 setup 中注入 \`const $style = { title: '_1a2b3c_title' }\`，模板里 \`class="$style.title"\` 引用。
+
+### 4.3 CSS v-bind（CSS 中绑定响应式值）
+
+\`\`\`vue
+<style scoped>
+h1 { color: v-bind(titleColor); }
+</style>
+<script setup>
+const titleColor = ref('#42b883')
+</script>
+\`\`\`
+
+编译步骤：
+1. compileStyle 里发现 v-bind(titleColor) → 生成稳定哈希 key，把 CSS 改写成：
+   \`h1 { color: var(--a4b7c88a-titleColor); }\`
+2. compileScript / runtime 里给组件生成 useCssVars 钩子，挂载/更新时：
+   \`el.style.setProperty('--a4b7c88a-titleColor', titleColor.value)\`
+3. watch(titleColor) 变化时同步 setProperty。
+
+**不需要 rerender 就能更新 CSS**，性能极好。
+
+### 4.4 PostCSS 插件链顺序
+
+一般先跑用户自定义 PostCSS（autoprefixer / nested / tailwind），再跑 Vue 自带的 scoped / v-bind 插件——所以你写 @apply 等 Tailwind 语法先被转成正常 CSS，后面再加哈希。
+
+---
+
+## 五、HMR 时增量编译（面试加分）
+
+SFC 改 template → 只重跑 compileTemplate + style 相应块；
+改 scoped style → 只重跑 compileStyle（连 render 都不变，Vue HMR 只替换 style 标签，不丢状态）；
+改 scriptSetup → 重新 compileScript，HMR 标记组件为需要 reload（组件实例重建，本地 ref 状态会重置但全局 Pinia 保留）。
+
+所以 SFC 编译器对三个块的编译是**各自独立的产物**，Vite 用 query 参数（?vue&type=template / script / style）分别请求，HMR 粒度更细。
+
+---
+
+## 六、面试常考的 3 个细节
+
+### Q1：为什么 SFC 需要 id（hash）传给 template/script/style 三处？
+
+- compileScript：defineProps 类型转 runtime 时错误信息里定位文件。
+- compileTemplate：SSR 水合一致性、scoped 样式的 hash 作为组件的 scopeId。
+- compileStyle：scoped 的哈希 [data-v-xxx] 就是基于 id 生成的。同一个组件必须用同一 id 才能保证模板里打的 data-v 属性与 style 的选择器匹配。
+
+### Q2：如果用户在 template 里写了 scriptSetup 里没 import 的组件，编译器怎么处理？
+
+Phase 2 bindings 集合里找不到这个标识符。Phase 3 compileTemplate 会把它当成全局组件，输出 \`_resolveComponent('MyButton')\` 的运行时调用。运行时会先去当前 app 的全局 components 表查找（全局注册）。找不到就抛警告。VueUse / Components unplugin 就是利用 SFC 编译阶段自动帮你在 script 头部加 import，让 bindings 有值，避免 runtime resolve。
+
+### Q3：自定义块 <docs> 会被编译成什么？
+
+默认**不会**被输出为任何 JS。但是你可以在 @vitejs/plugin-vue 里配置 \`customElement: true\` 或自己写 Vite 插件 intercept 自定义块，把它转成 markdown / i18n 资源（VitePress 的 <route> 块 / vue-i18n 的 <i18n> 块就是这么做的）。
+
+---
+
+## 一句话总结
+
+Vue SFC 编译可以看成：**parse 负责把三块切开，compileScript 负责把 script setup 的语法糖去型+宏展开变成正常 setup 代码并输出 bindings，compileTemplate 把模板转成带 patchFlag / 静态提升 / 缓存的 render 函数，compileStyle 负责 scoped 哈希、CSS Modules、v-bind 变量注入**。Vite/Webpack 的 Vue 插件再把四个阶段的产物拼起来，变成浏览器能消费的 ES Module + CSS。`
+  }
 ]
