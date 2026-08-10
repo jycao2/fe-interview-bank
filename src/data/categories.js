@@ -82,6 +82,12 @@ export const categories = [
     name: 'GIS 地理信息',
     icon: '🗺️',
     desc: 'GeoJSON、坐标系、瓦片、Turf、WebGL 可视化'
+  },
+  {
+    id: 'mobile',
+    name: '移动端 / 小程序',
+    icon: '📱',
+    desc: '移动端 H5 兼容、微信小程序、uni-app / Taro 跨端、Hybrid JSBridge、RN/Flutter 选型'
   }
 ]
 

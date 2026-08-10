@@ -20,9 +20,9 @@ const letters = ['A', 'B', 'C', 'D', 'E', 'F']
 
 const showConfirm = ref(false)
 
-// 可选分类（只展示有考试题的分类：前 10 个核心分类）
+// 可选分类（只展示有考试题的分类：核心分类 + mobile）
 const examCategories = computed(() => {
-  const core = ['html', 'css', 'javascript', 'typescript', 'vue', 'react', 'browser', 'network', 'performance', 'engineering']
+  const core = ['html', 'css', 'javascript', 'typescript', 'vue', 'react', 'browser', 'network', 'performance', 'engineering', 'mobile']
   return core.map(id => categories.find(c => c.id === id)).filter(Boolean)
 })
 

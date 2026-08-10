@@ -15,14 +15,15 @@ const SCORE_PER_Q = 100 / EXAM_SIZE
 const CATEGORY_WEIGHTS = {
   javascript: 0.18,   // 18% ~ 5~6 题
   css: 0.12,          // 12% ~ 3~4 题
-  html: 0.08,         // 8%  ~ 2~3 题
-  typescript: 0.07,   // 7%  ~ 2 题
-  vue: 0.12,          // 12% ~ 3~4 题
-  react: 0.12,        // 12% ~ 3~4 题
-  browser: 0.08,      // 8%  ~ 2~3 题
-  network: 0.08,      // 8%  ~ 2~3 题
-  performance: 0.07,  // 7%  ~ 2 题
-  engineering: 0.06,  // 6%  ~ 2 题
+  html: 0.07,         // 7%  ~ 2 题
+  typescript: 0.06,   // 6%  ~ 2 题
+  vue: 0.11,          // 11% ~ 3~4 题
+  react: 0.11,        // 11% ~ 3~4 题
+  browser: 0.07,      // 7%  ~ 2 题
+  network: 0.07,      // 7%  ~ 2 题
+  performance: 0.06,  // 6%  ~ 2 题
+  engineering: 0.05,  // 5%  ~ 1~2 题
+  mobile: 0.06,       // 6%  ~ 2 题（移动端H5 / 小程序 / uni-app）
   algorithm: 0.01,    // 1%  ~ 0~1 题
   handwriting: 0.01   // 1%  ~ 0~1 题
 }

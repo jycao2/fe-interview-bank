@@ -1701,6 +1701,148 @@ export const examQuestions = [
     ],
     answer: 3,
     analysis: '三者均正确。A：ESBuild 速度碾压（Go 并行+避免 AST 多次遍历），但在 HMR、插件复杂场景、CSS 处理、复杂 code splitting 上生态成熟度仍不及 Rollup/Webpack；B：Rolldown 是 Rolldown 组织/Rolldown 团队主导的 Rust 实现，设计目标是 Rollup 兼容的高性能替代；C：Vite 采用双引擎策略（esbuild 用于 dev 预构建，Rollup 用于 production），Rolldown 是后续可能的升级路径以统一引擎并加速生产构建。'
+  },
+
+  // ===== 移动端 / 小程序 / uni-app =====
+  {
+    id: 'mcq-121',
+    category: 'mobile',
+    difficulty: '简单',
+    question: '关于 iOS Safari 下的 100vh 被地址栏/底部工具栏挤占的问题，以下哪个是现代最推荐的写法？',
+    options: [
+      '仍然使用 100vh，系统会自动适配',
+      '使用 100dvh（动态视口单位），或配合 height: 100vh 做 fallback',
+      '写死固定像素值，如 height: 812px',
+      '用 JS 监听 resize 事件并读取 clientHeight 设置为 body 像素高度'
+    ],
+    answer: 1,
+    analysis: '100dvh 是 CSS 新的"动态视口单位"，会把浏览器 UI（地址栏）展开/收起状态考虑进去，2023+ 主流移动端浏览器（Safari 15.4+、Chrome、微信）均已支持。最佳实践：写 \`height: 100vh; height: 100dvh;\`，低版本 fallback 到 100vh，高版本自动升级。A 错误，100vh 在 iOS 仍会被地址栏截短；C 机型适配差；D 可行但有闪烁且维护成本高，非首选。'
+  },
+  {
+    id: 'mcq-122',
+    category: 'mobile',
+    difficulty: '简单',
+    question: '以下哪项不是 <meta name="viewport"> 的常见配置？',
+    options: [
+      'width=device-width：布局视口宽度 = 设备逻辑宽度',
+      'initial-scale=1.0：初始缩放为 100%',
+      'viewport-fit=cover：iOS 下内容延伸到安全区域之外（刘海/底部）',
+      'safe-area-inset-bottom：直接在 viewport meta 中指定底部安全区域像素'
+    ],
+    answer: 3,
+    analysis: 'safe-area-inset-bottom 是 CSS env() 变量（用于 padding/margin），不是 viewport meta 的属性。viewport-fit=cover 才是在 viewport meta 中开启安全区域延伸的开关，再配合 \`padding-bottom: env(safe-area-inset-bottom)\` 才能正确处理。ABC 均为 viewport meta 标准属性。'
+  },
+  {
+    id: 'mcq-123',
+    category: 'mobile',
+    difficulty: '中等',
+    question: '微信小程序采用"双线程模型"（View + AppService），下列说法错误的是？',
+    options: [
+      'View 层（渲染层）运行在 WebView/Skyline 里，负责 WXML/WXSS 渲染与事件捕获',
+      'AppService 层运行在 JSCore/V8，无 DOM/BOM，负责执行 JS 逻辑和维护 data',
+      '两层之间通过 Native Bridge 通信，数据会被 JSON 序列化，所以 setData 里无法直接传递函数',
+      '逻辑层可以直接操作 DOM，这样渲染更快'
+    ],
+    answer: 3,
+    analysis: 'D 明显错误：小程序逻辑层（AppService）运行在 JSCore/V8 沙箱里，没有 document/window 对象，**根本无法操作 DOM**，这是微信有意为之的安全与性能隔离。A、B、C 均为双线程模型的标准描述。'
+  },
+  {
+    id: 'mcq-124',
+    category: 'mobile',
+    difficulty: '中等',
+    question: '关于小程序 setData 的性能优化，下列做法错误的是？',
+    options: [
+      '使用路径写法 this.setData({ "list[2].name": x }) 精准更新，而非每次 setData({ list: wholeList }) 覆盖',
+      '把不需要渲染的中间态（如定时器 id）挂在 this 上，不放入 data',
+      '在 onPageScroll / touchmove 回调里每帧都 setData，保证页面跟手',
+      '单次 setData 数据控制在 256KB 以内，长列表分页加载'
+    ],
+    answer: 2,
+    analysis: 'onPageScroll/touchmove 每 16ms 一次，若在回调里高频 setData 会导致 Bridge 消息堆积、掉帧、输入卡顿。正确做法是 throttle/防抖，且非 UI 数据不要 setData。A 路径写法可减少序列化量；B 减少 data 体积；D 是官方明确的建议。'
+  },
+  {
+    id: 'mcq-125',
+    category: 'mobile',
+    difficulty: '中等',
+    question: '冷启动打开一个含子组件 C 的小程序页面 A，下列 App/Page/Component 生命周期执行顺序正确的是？',
+    options: [
+      'App.onLaunch → PageA.onLoad → App.onShow → PageA.onShow → C.created → C.attached → C.ready → PageA.onReady',
+      'App.onLaunch → App.onShow → PageA.onLoad → C.created → C.attached → PageA.onShow → C.ready → PageA.onReady',
+      'App.onShow → App.onLaunch → PageA.onShow → PageA.onLoad → PageA.onReady → C.created → C.attached → C.ready',
+      'PageA.onLoad → App.onLaunch → App.onShow → C.created → C.attached → PageA.onShow → PageA.onReady → C.ready'
+    ],
+    answer: 1,
+    analysis: '标准顺序：App.onLaunch（冷启动一次）→ App.onShow → 页面进入 onLoad → 组件 created/attached（同步） → 页面 onShow（页面即将显示） → 子组件 ready（布局完成） → 父页面 onReady。B 符合这个顺序。A 把 App.onShow 放晚了；C App.onShow 早于 onLaunch 不可能；D PageA.onLoad 早于 App.onLaunch 也不可能。'
+  },
+  {
+    id: 'mcq-126',
+    category: 'mobile',
+    difficulty: '中等',
+    question: '关于 uni-app 条件编译（#ifdef / #ifndef / #endif），下列说法错误的是？',
+    options: [
+      '// #ifdef MP-WEIXIN 代码块只会在微信小程序平台被编译保留，H5/App 端会被剔除',
+      '条件编译只能用在 JS 代码中，template 和 style 里不支持',
+      '// #ifndef H5 代码块会在除 H5 以外的所有平台生效（小程序 + App）',
+      '常用宏有 H5、MP-WEIXIN、MP-ALIPAY、MP-TOUTIAO、MP、APP-PLUS、APP-PLUS-NVUE 等'
+    ],
+    answer: 1,
+    analysis: 'B 错误：条件编译在 JS、template（\`<!-- #ifdef ... -->\`）、style（\`/* #ifdef ... */\`）三种语言块内都可用，这是 uni-app 处理跨端差异的核心机制。A、C、D 均正确。'
+  },
+  {
+    id: 'mcq-127',
+    category: 'mobile',
+    difficulty: '中等',
+    question: '小程序登录链路中，wx.login / code2Session / openid / unionid / session_key 相关的说法，错误的是？',
+    options: [
+      'wx.login 返回的 code 只能使用一次，且 5 分钟内有效，后端应做幂等缓存',
+      'openid 是用户在"当前小程序"的唯一标识，unionid 是用户在同一微信开放平台账号（小程序+公众号+App）下的统一标识',
+      'session_key 会有生命周期，后端需把它下发给前端并保存在 localStorage，便于后续解密用',
+      '手机号解密需要 session_key、iv、encryptedData 三个要素，且 AES-128-CBC 解密后还要校验 watermark.appid'
+    ],
+    answer: 2,
+    analysis: 'C 错误：session_key **绝对不能下发给前端**，因为它可用来解密手机号、用户资料等敏感数据，必须保存在服务端（如 Redis）。A 正确，code 一次性且有有效期；B 正确，openid 与 unionid 的区别是面试高频；D 正确，解密后校验 watermark.appid 是防重放的必要步骤。'
+  },
+  {
+    id: 'mcq-128',
+    category: 'mobile',
+    difficulty: '中等',
+    question: '关于 uni-app 的 pages.json 和 manifest.json，下列说法正确的是？',
+    options: [
+      'pages.json 主要描述应用发布配置：包名、AppID、权限、SDK、启动图等',
+      'manifest.json 主要描述页面路由、全局外观、tabBar、分包、easycom 等运行时表现',
+      'pages.json 里配置 subPackages 可实现分包加载，tabBar 页面也可以放在分包里',
+      'manifest.json 里 mp-weixin 段用于配置微信小程序专用选项：appid、es6 转 es5、云函数开关、权限 scope 声明等'
+    ],
+    answer: 3,
+    analysis: 'D 正确。A 反了：manifest.json 才是发布配置；B 反了：pages.json 才是路由/外观/tabBar；C 错误：**tabBar 页面必须放在主包**，这是小程序/uni-app 硬性规则，放分包会导致找不到。'
+  },
+  {
+    id: 'mcq-129',
+    category: 'mobile',
+    difficulty: '困难',
+    question: 'Hybrid App 里实现 JSBridge 供 H5 调用原生能力时，下列哪种方案**在 iOS WKWebView 上**综合性能、协议清晰度、参数长度、原生度都是最优选择？',
+    options: [
+      '构造自定义 URL Scheme（如 jsbridge://xxx），通过 iframe.src/location.href 触发，原生在 decidePolicyForNavigationAction 中拦截',
+      '通过 prompt("jsbridge:xxx", payload) 触发，原生拦截 runJavaScriptTextInputPanelWithPrompt 回调',
+      '使用 WKUserContentController.add(MessageHandler, name: "xxx") 注册，JS 端 window.webkit.messageHandlers.xxx.postMessage({...}) 发送',
+      '在 document.cookie 里写数据，原生每 200ms 轮询读取并解析'
+    ],
+    answer: 2,
+    analysis: 'C（WKScriptMessageHandler）是苹果官方为 WKWebView 设计的原生桥接通道：无 URL 长度限制、直接接收字典对象、参数任意可序列化、性能高、协议清晰。A URL Scheme 参数长度受限且连续 iframe.src 易丢消息；B prompt 可用但语义奇怪、参数长度仍受限；D 轮询浪费性能、实时性差、属奇技淫巧。'
+  },
+  {
+    id: 'mcq-130',
+    category: 'mobile',
+    difficulty: '困难',
+    question: '跨端框架选型：若业务需同时覆盖 H5 + 微信小程序 + 支付宝小程序 + 抖音小程序 + App（iOS/Android），团队为 Vue 生态，综合多端覆盖率与上手成本，以下最合理的首选是？',
+    options: [
+      'Flutter：自绘 UI + Dart，性能最高，多端一致',
+      'uni-app：Vue 语法，国内各大小程序平台覆盖最全，App 端可上 UTS/nvue 提升性能',
+      'React Native（RN）：原生控件渲染，iOS/Android 性能好，小程序直接兼容',
+      'Taro + RN：只支持 React 语法，小程序端覆盖率最高'
+    ],
+    answer: 1,
+    analysis: 'B（uni-app）最匹配题意：Vue 语法上手快 + 国内小程序平台覆盖率最全（微信/支付宝/抖音/百度/快手/快应用）+ 同时出 H5/App。A Flutter 不能直接出小程序；C RN 专注 App 端，小程序端不兼容；D 团队是 Vue 生态且 Taro 小程序覆盖率逊于 uni-app，不匹配。'
   }
 ]
 

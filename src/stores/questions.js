@@ -15,6 +15,7 @@ import { algorithmQuestions } from '@/data/algorithm'
 import { handwritingQuestions } from '@/data/handwriting'
 import { aicodeQuestions } from '@/data/aicode'
 import { gisQuestions } from '@/data/gis'
+import { mobileQuestions } from '@/data/mobile'
 
 const FAV_KEY = 'feib-favorites'
 
@@ -32,7 +33,8 @@ const allQuestions = [
   ...algorithmQuestions,
   ...handwritingQuestions,
   ...aicodeQuestions,
-  ...gisQuestions
+  ...gisQuestions,
+  ...mobileQuestions
 ]
 
 export const useQuestionsStore = defineStore('questions', () => {
