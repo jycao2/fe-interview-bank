@@ -1843,6 +1843,118 @@ export const examQuestions = [
     ],
     answer: 1,
     analysis: 'B（uni-app）最匹配题意：Vue 语法上手快 + 国内小程序平台覆盖率最全（微信/支付宝/抖音/百度/快手/快应用）+ 同时出 H5/App。A Flutter 不能直接出小程序；C RN 专注 App 端，小程序端不兼容；D 团队是 Vue 生态且 Taro 小程序覆盖率逊于 uni-app，不匹配。'
+  },
+  {
+    id: 'mcq-131',
+    category: 'network',
+    difficulty: '中等',
+    question: '关于 WebSocket 握手阶段的 Sec-WebSocket-Key / Sec-WebSocket-Accept，下列说法错误的是？',
+    options: [
+      'Sec-WebSocket-Key 由浏览器随机生成 16 字节再 Base64，长度固定 24 个字符',
+      '服务端用公式 Accept = Base64(SHA1(Key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11")) 计算 Sec-WebSocket-Accept',
+      'Sec-WebSocket-Key / Accept 的作用是对客户端进行"身份鉴权"，防止未授权用户接入',
+      '设计这个机制的真实目的是：防止代理/缓存把旧的 Upgrade 响应回放造成协议错乱'
+    ],
+    answer: 2,
+    analysis: 'C 错误：Key/Accept 只校验"对端真的懂 WebSocket"，不做任何身份鉴权——Key 本身只是随机 Base64，无签名无密钥。真实目的是 D 项描述的"防止缓存回放/代理错乱"。A 是 Key 的生成规则（16B→24 字符 Base64）；B 是 RFC 6455 规定的 Accept 计算式（GUID 固定为那串魔数）；D 是该机制的真实设计动机（避免代理误判 Upgrade 为普通 HTTP）。'
+  },
+  {
+    id: 'mcq-132',
+    category: 'network',
+    difficulty: '困难',
+    question: '关于 WebSocket 二进制帧里的 MASK（掩码）位，下列说法错误的是？',
+    options: [
+      '客户端→服务端发送的帧必须 MASK=1，否则服务端应立即关闭连接（1002 Protocol Error）',
+      '服务端→客户端发送的帧必须 MASK=0，否则浏览器会自动关闭连接',
+      '掩码算法是逐字节 XOR：octet[i] ^= mask[i mod 4]，目的是为了给帧内容加密，防止中间人窃听',
+      'MASK 设计的真正动机是：防止恶意 JS 构造恰好形如 HTTP 的二进制帧，欺骗中间透明代理/缓存，造成缓存投毒或请求走私'
+    ],
+    answer: 2,
+    analysis: 'C 错在"加密"二字——XOR + 随机 4 字节不是加密，任何拿到帧和 4 字节 Masking-Key 的人都能 100% 还原明文（服务端即如此做）。MASK 的真正目的如 D 所述：对抗"脚本构造伪 HTTP 包攻击透明代理"（RFC 6455 §10.3）。A/B 为规则正解：客户端发必须掩码、服务端发必须不掩码，反之都属于协议错误。'
+  },
+  {
+    id: 'mcq-133',
+    category: 'network',
+    difficulty: '中等',
+    question: '关于 WebSocket 控制帧与关闭码 1006，下列说法正确的是？',
+    options: [
+      'Ping(0x9)/Pong(0xA)/Close(0x8) 是控制帧，允许分片发送（FIN=0）以适配大消息',
+      '服务端可主动发 Ping；客户端收到 Ping 必须尽快回 Pong，且 Pong 的 Payload 必须与 Ping 完全相同',
+      'Close 帧里 code=1006 (ABNORMAL_CLOSURE) 表示"对端非正常断开"，是服务端最常主动发送的关闭码之一',
+      'Ping/Pong 心跳机制完全等价于 TCP keepalive，两者开一个即可'
+    ],
+    answer: 1,
+    analysis: 'B 正确：收到 Ping → 必须尽快回 Pong，Payload 原样拷贝（RFC 6455 §5.5.2/Pong 必须携带最近一次 Ping 的 Payload）。A 错误：控制帧长度 ≤125B，**严禁分片**，OpCode 必须在 FIN=1 的帧里出现。C 错误：1006 是**保留码**，绝不能出现在 Close 帧里，只在底层 API 中"未收到 Close 帧就检测到连接断开（如 TCP RST）"时作为上层事件 code 上报。D 错误：TCP keepalive 默认 2 小时触发，远慢于中间代理空闲超时（30s~5min），不能替代应用层心跳；通常应用心跳 30s 才是王道。'
+  },
+  {
+    id: 'mcq-134',
+    category: 'network',
+    difficulty: '中等',
+    question: '浏览器在 https://a.com 页面里执行 new WebSocket("wss://b.com/ws?token=xxx")。下列关于其跨域/鉴权/混合内容的说法，错误的是？',
+    options: [
+      '浏览器会自动在握手请求中带上 Origin: https://a.com，服务端应做 Origin 白名单校验，否则存在"跨站 WebSocket 劫持"风险',
+      '该握手不受同源策略限制，浏览器不会发 CORS Preflight；但是否放行，完全由服务端 b.com 通过 Origin 检查决定',
+      '由于页面是 https，连接的是 wss（加密版 WS），不会触发 Mixed Content 拦截。若改成 ws:// 则会被浏览器直接拦截',
+      '浏览器默认会自动把 https://a.com 的 Cookie 带到 wss://b.com 的握手里，实现和 fetch({ credentials: "include" }) 等价的跨域 Cookie 自动携带'
+    ],
+    answer: 3,
+    analysis: 'D 错误：WebSocket 没有类似 fetch credentials 的开关，**跨第三方域（a.com→b.com）默认根本不带对方 Cookie**。即便同站也需依赖 SameSite=None+Secure 策略；跨第三方不传是现代浏览器默认行为。A 正确：Origin 白名单是 WS 防跨站劫持的唯一手段。B 正确：WS 没有 CORS 预检/ACAO 体系，Origin 由服务端校验。C 正确：https→wss 没问题；https→ws 是 Mixed Content，被浏览器硬拦。'
+  },
+  {
+    id: 'mcq-135',
+    category: 'network',
+    difficulty: '中等',
+    question: '下列关于浏览器原生 WebSocket API 的描述，错误的是？',
+    options: [
+      'new WebSocket(url, protocols) 第二个参数 protocols 数组可利用 Sec-WebSocket-Protocol 字段变相传递 token，但服务端必须在握手响应里原样回写该值，否则浏览器自动 close',
+      '浏览器端 ws.send() 在 readyState 不是 OPEN 时会抛异常；生产通常在应用层维护队列 + 检查 bufferedAmount 做背压',
+      '浏览器原生 WebSocket 对象暴露了 ping() 方法与 pong 事件，可以直接用它们做协议级心跳，无需业务层自定义',
+      'DevTools Network 面板里 101 Switching Protocols 的 Frames/Messages 标签可以看到文本/二进制帧内容，但 Ping/Pong 控制帧默认看不到'
+    ],
+    answer: 2,
+    analysis: 'C 错误：**浏览器原生 WebSocket 对象不公开 ping() 方法和 pong 事件**——这是 Node 的 ws 库才有的 API。前端 99% 的心跳都用"业务层约定 JSON ping/pong 消息"实现。A 正确：用子协议塞 token 是常用技巧，但服务端必须回写 Sec-WebSocket-Protocol（否则 1002/1008）。B 正确：连接未就绪 send 抛异常，要配队列和背压。D 正确：Chrome DevTools 隐藏了 Ping/Pong 帧，要看必须上 Wireshark/tcpdump。'
+  },
+  {
+    id: 'mcq-136',
+    category: 'network',
+    difficulty: '简单',
+    question: 'WebSocket 与 SSE（Server-Sent Events / EventSource）都是长连接实时方案。下列说法错误的是？',
+    options: [
+      'WebSocket 全双工双向通信；SSE 只支持服务端→客户端单向推送（基于 HTTP Chunked）',
+      '浏览器端 EventSource 自带自动重连 + Last-Event-ID 续传机制，断线后浏览器会按 retry 毫秒数自动重连并带上上次的 id',
+      '生产环境如果只有"服务端推"的需求（如实时行情、AI 生成流式输出），选 WebSocket 比 SSE 更轻量、更省运维成本',
+      'SSE 默认纯文本，要推二进制必须先 Base64；WebSocket 原生支持 BINARY 帧，可直接发 ArrayBuffer/Blob'
+    ],
+    answer: 2,
+    analysis: 'C 刚好相反：只有"服务端单向推"时 **SSE 更轻量**——就是普通 HTTP 响应（text/event-stream），不用 Upgrade 握手、帧协议、反代要写的 proxy_set_header Connection upgrade 那一大坨；Nginx 也只要关 proxy_buffering + gzip 就行。SSE 还自带重连和 Last-Event-ID，编码量少一半。其余三项都是协议事实：A（双/单向）、B（EventSource 内置重连续传）、D（二进制支持）。'
+  },
+  {
+    id: 'mcq-137',
+    category: 'network',
+    difficulty: '困难',
+    question: '关于 Socket.IO（Engine.IO）的"先轮询后升级"连接策略，下列说法错误的是？',
+    options: [
+      '先通过 HTTP Long Polling（transport=polling）建立一个可用通道并拿到 sid，再在后台静默发起 Upgrade: websocket 尝试升级到 WS，失败就继续轮询，对上层透明',
+      '多实例部署 Socket.IO 时必须开启"粘性会话（Sticky Session）"，否则长轮询模式下同一 sid 的多个 HTTP 请求落到不同实例上会拿不到消息',
+      '浏览器可以用原生 new WebSocket("wss://srv/socket.io/?EIO=4&transport=websocket") 直接连上 Socket.IO 服务端，性能更好，推荐生产使用',
+      'Socket.IO 的 room 广播跨实例扩展要用 @socket.io/redis-adapter（或 Nats/Mongo Adapter），它通过 Redis Pub/Sub 把"房间消息"扇出到各实例，实例本地再遍历自己的连接下发'
+    ],
+    answer: 2,
+    analysis: 'C 错误：Socket.IO / Engine.IO **不是标准 WebSocket 协议**——它在 WS 帧之上再封装了自己的 Packet 编码 + EIO 握手（sid、pingInterval 等），原生 new WebSocket 去连会直接 400 Bad Request（服务端识别不出 EIO 握手包）。必须用 Socket.IO 客户端。A 是 Engine.IO 的经典"先轮询后升级"流程（保证首连成功率）。B 是 Sticky Session 必开原因（sid 绑定在单实例内存）。D 是 Adapter 跨实例广播的机制。'
+  },
+  {
+    id: 'mcq-138',
+    category: 'network',
+    difficulty: '中等',
+    question: '线上 Nginx 反代 WebSocket，出现"连接正好约 60 秒必断，客户端 close code=1006"，但双方都按 60 秒周期发心跳。下列哪项最可能是根因与正确修复？',
+    options: [
+      '根因是 Nginx 默认 proxy_connect_timeout 60s，修复：proxy_connect_timeout 3600s',
+      '根因是 Nginx 默认 proxy_read_timeout 60s：60 秒没收到任何来自后端的字节就断；心跳周期 60s 刚好踩点被先斩，修复：proxy_read_timeout 3600s + 心跳周期改成 ~30s（任一侧都能发）',
+      '根因是浏览器端 TCP keepalive 默认 2 小时太长，修复：在浏览器里给 WebSocket 开 TCP keepalive: true',
+      '根因是 SSL session 复用超时，修复：ssl_session_timeout 1d'
+    ],
+    answer: 1,
+    analysis: 'B 是 WS 反代最经典的坑：Nginx 的 proxy_read_timeout 默认 60s，指"从服务端方向收到两个连续字节之间的间隔"；60s 心跳周期两边都"刚好到 60s 才发包"，Nginx 在边界上先超时关闭 → 对端看到的是 TCP 被中间盒断开 → close code=1006。修复策略双保险：把心跳周期缩短到 30s（或服务端也主动 Ping），同时把 proxy_read_timeout 改大到 1h+。A 错（connect_timeout 是三次握手阶段的超时，不是空闲断开）。C 错（浏览器不提供 TCP keepalive 的开关，且内核默认 2h 也救不了 60s 的代理空闲表）。D 错（SSL 会话复用不影响已建立的长连接的空闲超时）。'
   }
 ]
 

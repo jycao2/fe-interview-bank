@@ -2,7 +2,7 @@
 
 一个基于 **Vue 3 + Vite + Pinia + Vue Router** 的前端技术总结与面试题库项目，收录覆盖全面的前端面试题与**详尽答案解析**，支持分类浏览、全文搜索、难度筛选、收藏、深色模式，以及**代码块高亮 + 一键复制 / 在线运行**。
 
-> 📊 当前共 **15 个分类 · 505 道题** + 模拟考试 **130 道选择题**，持续扩充中。
+> 📊 当前共 **15 个分类 · 514 道题** + 模拟考试 **138 道选择题**，持续扩充中。
 
 ---
 
@@ -17,7 +17,7 @@
 - 📱 **响应式布局**：桌面与移动端均适配。
 - 🔗 **上下题导航 + 关联推荐**，便于连贯学习。
 - 📝 **Markdown 富文本渲染**：答案支持代码块、表格、引用、列表等。
-- 📝 **模拟考试（进阶）**：从 130 道选择题题库**按分类权重 + 难度比例**抽取 30 题，支持「简单/均衡/困难」三档模式、可选指定分类，交卷即时出分，附**分类 + 难度分布统计**、错题解析与正确答案对照。
+- 📝 **模拟考试（进阶）**：从 138 道选择题题库**按分类权重 + 难度比例**抽取 30 题，支持「简单/均衡/困难」三档模式、可选指定分类，交卷即时出分，附**分类 + 难度分布统计**、错题解析与正确答案对照。
 
 ### 代码区增强（✨ v2）
 答案中所有代码块自带工具栏，支持：
@@ -31,7 +31,7 @@
 
 ---
 
-## 🗂️ 题库覆盖（505 题）
+## 🗂️ 题库覆盖（514 题）
 
 | 分类 | 数量 | 核心主题 |
 | --- | ---: | --- |
@@ -42,7 +42,7 @@
 | 🟢 Vue 3 | 74 | 响应式原理、组合式 API、Pinia、Router、编译优化、Composables、编译器、SSR、diff、调度器、defineModel、自定义渲染器、自定义指令、VueUse、SFC 编译 |
 | 🟦 React | 66 | Hooks、Fiber、状态管理、性能优化、React 18/19、并发渲染、Suspense、Server Components、useTransition、React Compiler、Custom Hook 模式、Zustand/Jotai |
 | 🧭 浏览器原理 | 23 | 渲染流水线、事件循环、存储、同源策略、跨域、WebAssembly、Service Worker、Cookie SameSite、XSS/CSRF 进阶、浏览器指纹、COOP/COEP、BFCache、Observer 系列 |
-| 🌐 计算机网络 | 23 | HTTP/HTTPS、缓存、TCP、CORS、状态码、HTTP/2/3、QUIC、TLS 1.3、OAuth2/OIDC、WebSocket、证书链+HSTS、gRPC/Protobuf、CDN、DNS |
+| 🌐 计算机网络 | 32 | HTTP/HTTPS、缓存、TCP、CORS、状态码、HTTP/2/3、QUIC、TLS 1.3、OAuth2/OIDC、证书链+HSTS、gRPC/Protobuf、CDN、DNS、**WebSocket 握手/帧格式/掩码**、Ping/Pong、心跳重连指数退避、SSE 与 EventSource、Socket.IO/Engine.IO、WS 跨域鉴权与混合内容、permessage-deflate 压缩、二进制 Protobuf、广播风暴与 Redis Adapter、故障排查与 Nginx 坑 |
 | ⚡ 性能优化 | 22 | Core Web Vitals、懒加载、防抖节流、构建优化、监控、长任务、Web Worker 优化、内存泄漏、INP、骨架屏、图片优化进阶（AVIF）、打包体积优化 |
 | 🏗️ 工程化 | 22 | 模块系统、Webpack/Vite、CI/CD、Monorepo、代码规范、Vite vs Webpack 原理、ESBuild/Rolldown、微前端方案、PWA、错误监控与性能埋点、灰度发布与 A/B 测试 |
 | 🧮 数据结构与算法 | 15 | 排序、二分、栈队列、链表、二叉树、动态规划、贪心 |
@@ -51,14 +51,14 @@
 | 🗺️ GIS 地理信息 | 41 | GeoJSON、坐标系纠偏、瓦片、Turf.js、OpenLayers、Mapbox/MapLibre、Leaflet、Cesium、Three.js、Deck.gl（分类页按框架分组） |
 | 📱 移动端 / 小程序 | 18 | iOS/Android H5 兼容、viewport 与 100dvh、rem/vw/px-to-viewport 适配、微信小程序双线程与 setData、生命周期、分包、自定义组件、登录/unionid、web-view/跳转、uni-app 条件编译与 nvue、Taro 编译原理、Hybrid JSBridge、手势、跨端选型、uniCloud/easycom/uni-id |
 
-### 📝 模拟考试题库（130 道选择题 · 全部带难度分级）
+### 📝 模拟考试题库（138 道选择题 · 全部带难度分级）
 
-独立的单选题库（结构：`category / difficulty / question / options / answer / analysis`），覆盖 11 个核心分类，每次从 130 道中**按预设权重 + 难度比例**抽取 30 题：
+独立的单选题库（结构：`category / difficulty / question / options / answer / analysis`），覆盖 11 个核心分类，每次从 138 道中**按预设权重 + 难度比例**抽取 30 题：
 
 | 分类 | 数量 | 分类 | 数量 |
 | --- | ---: | --- | ---: |
 | JavaScript | 19 | 浏览器原理 | 9 |
-| CSS | 17 | 计算机网络 | 9 |
+| CSS | 17 | 计算机网络 | 17 |
 | Vue | 14 | 性能优化 | 9 |
 | HTML | 12 | 工程化 | 8 |
 | React | 12 | 移动端/小程序 | 10 |

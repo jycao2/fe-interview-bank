@@ -2188,5 +2188,1282 @@ rpc Chat(stream ChatMessage) returns (stream ChatMessage);
 - **大字段（图片/附件）放哪？** 不要直接放 proto message 二进制里（protobuf 解码要整个加载进内存）。用"引用 + 流式 RPC 上传/下载对象存储"模式。
 - **JSON 转 proto 有坑吗？** proto3 JSON Mapping 对 int64 会转成字符串（JS 精度丢失）、enum 默认显示字符串名，注意序列化库选择。
 - **怎么断点调试？** grpcurl 模拟调用：\`grpcurl -plaintext localhost:50051 list\`、\`grpcurl -d '{"user_id":1}' ... GetUser\`；grpcui 本地 Web UI 交互。`
+  },
+  {
+    id: 'network-024',
+    category: 'network',
+    title: 'WebSocket 升级握手过程？Sec-WebSocket-Key / Sec-WebSocket-Accept 的作用与计算方式？',
+    difficulty: '困难',
+    tags: ['WebSocket', 'Upgrade', '握手', 'Sec-WebSocket-Key', 'Sec-WebSocket-Accept', 'GUID'],
+    answer: `## 握手是 HTTP Upgrade，不是新建协议
+
+WebSocket 为了能复用现有 HTTP 基础设施（代理、防火墙、Nginx、443 端口穿透），**首次"握手"用 HTTP/1.1 发起 Upgrade 请求**，服务端回复 101 Switching Protocols 之后，连接就切换为 WebSocket 二进制帧协议——不再有 HTTP 语义。
+
+## 完整握手流程
+
+\`\`\`
+  客户端 (C)                                   服务端 (S)
+     │                                            │
+     │  TCP 三次握手 / TLS 握手（wss 时）         │
+     │◀──────────────────────────────────────────▶│
+     │                                            │
+     │  GET /chat HTTP/1.1                        │
+     │  Host: example.com                         │
+     │  Upgrade: websocket          ←── 声明升级   │
+     │  Connection: Upgrade          ←── 必带字段  │
+     │  Sec-WebSocket-Key: dGhlIHNhbXBs...        │
+     │  Sec-WebSocket-Version: 13   ←── 固定 13   │
+     │  Origin: https://foo.com     ←── 同源校验  │
+     │  (Sec-WebSocket-Protocol)    ←── 可选子协议│
+     │───────────────────────────────────────────▶│
+     │                                            │ 1. 校验 Upgrade/Connection
+     │                                            │ 2. 校验 Version = 13
+     │                                            │ 3. 校验 Origin（防盗链）
+     │                                            │ 4. 计算 Accept
+     │  HTTP/1.1 101 Switching Protocols ◀───────│
+     │  Upgrade: websocket                        │
+     │  Connection: Upgrade                       │
+     │  Sec-WebSocket-Accept: s3pPLMBiTxaQ9k...   │
+     │  (Sec-WebSocket-Protocol: chat)            │
+     │                                            │
+     │◀──────────── TCP 连接已变 WS 帧协议 ──────▶│
+     │       双向消息帧（二进制/text/ping/pong）    │
+\`\`\`
+
+## Sec-WebSocket-Key 与 Accept 的计算
+
+### 目的
+不是"鉴权"，而是**防止代理/缓存误把之前缓存的 Upgrade 请求再回放**。避免代理缓存"错误地认为这是一个普通 HTTP 响应"造成协议错乱。
+
+### Key（客户端）
+浏览器每次握手**随机生成 16 字节二进制，再 Base64 编码**：
+\`\`\`
+Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==   // 只是示例
+\`\`\`
+长度固定为 24 字符（16 字节→Base64）。无密码学意义，也**不保证随机性强度**。
+
+### Accept（服务端）
+服务端按 RFC 6455 §4.2.2 步骤算：
+
+\`\`\`
+Accept = Base64( SHA1( Key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11" ) )
+                                                  ↑ 这是 WebSocket 的"魔数 GUID"
+\`\`\`
+
+Node 原生实现（不要依赖任何库）：
+\`\`\`js
+const crypto = require('crypto')
+function computeAccept(key) {
+  const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
+  return crypto
+    .createHash('sha1')
+    .update(key + GUID)
+    .digest('base64')
+}
+console.log(computeAccept('dGhlIHNhbXBsZSBub25jZQ==')
+// → s3pPLMBiTxaQ9kYGzzhZRbK+xOo=
+\`\`\`
+
+客户端收到 Accept 后做校验：
+- **相等** → 服务端确实理解 WebSocket，不是某个中间盒乱回 200
+- **不等 / 缺失** → 关闭连接（\`ws.close()\`），握手失败
+
+## 各字段检查清单（服务端必做）
+
+| 字段 | 必须值/检查项 | 不满足时 |
+| --- | --- | --- |
+| Method | GET | 返回 405 |
+| HTTP 版本 | ≥ 1.1 | 400 |
+| Upgrade（大小写不敏感） | 包含 \`websocket\` | 400 |
+| Connection（大小写不敏感） | 包含 \`Upgrade\` | 400 |
+| Sec-WebSocket-Version | 13 | 不支持返回 426 + \`Sec-WebSocket-Version: 13\` |
+| Sec-WebSocket-Key | 存在，长度 24（可选校验） | 400 |
+| Origin（可选但强烈推荐） | 业务允许的白名单域名 | 403 |
+
+## 常见 Nginx 反代配置（踩坑点）
+
+\`\`\`nginx
+location /ws {
+  proxy_pass http://ws_backend;
+  proxy_http_version 1.1;            # ★ 不能用默认 1.0
+  proxy_set_header Upgrade \$http_upgrade;          # ★ 透传 Upgrade
+  proxy_set_header Connection "upgrade";            # ★ 不能是 keep-alive
+  proxy_set_header Host \$host;
+  proxy_read_timeout 3600s;           # ★ 默认 60s 无数据断连
+  proxy_send_timeout 3600s;
+}
+\`\`\`
+
+> 最常见坑：**Nginx 默认 \`proxy_read_timeout 60s\`**，如果你的 WS 应用 60 秒内双方都没消息会被 Nginx 一刀断。要么用心跳（30s ping），要么改超时时间，**推荐心跳**。
+
+## 加密版本：wss:// vs ws://
+- \`ws://\` → TCP 明文，默认 80
+- \`wss://\` → TCP + TLS，默认 443（推荐，和 https 共用 443 方便穿透公司/运营商代理）
+
+生产部署一律 **wss + 心跳 + Nginx 升级头透传**。`
+  },
+  {
+    id: 'network-025',
+    category: 'network',
+    title: 'WebSocket 数据帧格式？文本/二进制/控制帧（Ping/Pong/Close）、掩码（Masking）的作用是什么？',
+    difficulty: '困难',
+    tags: ['WebSocket', '帧格式', 'MASK', 'Ping', 'Pong', 'Close', 'OpCode'],
+    answer: `## 帧总览
+
+握手完成后，双方在同一条 TCP 上互发的是**WebSocket Frame**（RFC 6455 §5）。帧分两大类：
+
+- **数据帧（Data Frame）**：承载应用数据
+  - \`0x1\` TEXT（UTF-8 文本）
+  - \`0x2\` BINARY（任意二进制，如 protobuf/图片/音视频）
+  - \`0x0\` CONTINUATION（分片延续帧，超大消息切成多帧）
+- **控制帧（Control Frame）**：协议控制，长度 ≤ 125 字节，不可被分片
+  - \`0x8\` CLOSE（关闭帧，带关闭码）
+  - \`0x9\` PING（心跳探测）
+  - \`0xA\` PONG（心跳应答）
+
+## 二进制帧结构（按位 / 按字节）
+
+\`\`\`
+  0                   1                   2                   3
+  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ +-+-+-+-+-------+-+-------------+-------------------------------+
+ |F|R|R|R| opcode|M| Payload len |    Extended payload length    |
+ |I|S|S|S|  (4)  |A|     (7)     |             (16/64)           |
+ |N|V|V|V|       |S|             |   (if payload len==126/127)   |
+ | |1|2|3|       |K|             |                               |
+ +-+-+-+-+-------+-+-------------+ - - - - - - - - - - - - - - - +
+ |     Extended payload length continued, if payload len == 127  |
+ + - - - - - - - - - - - - - - - +-------------------------------+
+ |                               |Masking-key, if MASK set to 1  |
+ +-------------------------------+-------------------------------+
+ | Masking-key (continued)       |          Payload Data         |
+ +-------------------------------- - - - - - - - - - - - - - - - +
+ :                     Payload Data continued ...                :
+ + - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - +
+ |                     Payload Data continued ...                |
+ +---------------------------------------------------------------+
+\`\`\`
+
+逐字段：
+
+| 字段 | 位 | 含义 |
+| --- | --- | --- |
+| FIN | 1 | \`1\`=这是最后一帧；\`0\`=后续还有 CONTINUATION 帧（分片） |
+| RSV1/2/3 | 各 1 | 扩展位，没启用扩展必须 0；若用 permessage-deflate 压缩 RSV1=1 |
+| Opcode | 4 | 0x0 续 / 0x1 文本 / 0x2 二进制 / 0x8 Close / 0x9 Ping / 0xA Pong |
+| MASK | 1 | **客户端→服务端必须为 1（加掩码）**；服务端→客户端必须 0 |
+| Payload len | 7 | 表示"载荷长度"或"长度扩展标志"：<126 直接是长度；=126 再用 2 字节扩展；=127 再用 8 字节扩展 |
+| Extended payload len | 0/16/64bit | 按上面规则出现的真实长度（大端序） |
+| Masking-key | 0/32bit | MASK=1 时出现，4 字节随机数 |
+| Payload Data | N字节 | 掩码后的数据 |
+
+## 长度三段式的例子
+- 30 字节 → Payload len=30，无扩展
+- 300 字节 → Payload len=126，随后 2 字节大端 0x012C=300
+- 200KB → Payload len=127，随后 8 字节大端长度
+
+## MASK 掩码机制（为什么客户端要做？）
+
+**这是 WebSocket 设计里最被误解的字段。它不是"加密"！** 目的纯粹是：
+
+> 防止**恶意的 JS 代码**构造恰好与"HTTP 请求行/头部格式一样"的 WebSocket 二进制帧，欺骗中间代理（透明代理、缓存）认为这是普通 HTTP 请求，从而进行**缓存投毒 / 请求走私**。
+
+### 算法（RFC 6455 §5.3）
+客户端每发一个帧都生成一个**新的 32 位随机 Masking-Key**，对载荷逐字节 XOR：
+
+\`\`\`
+octet-i = original-octet-i  XOR  masking-key-octet[i mod 4]
+\`\`\`
+
+服务端拿到 MASK=1 的帧后，再用同样的 4 字节 key **XOR 回来**还原明文：
+
+\`\`\`js
+// Node.js 解码掩码
+function unmask(payload, maskKey /* Buffer(4) */) {
+  for (let i = 0; i < payload.length; i++) {
+    payload[i] ^= maskKey[i & 3]
+  }
+}
+\`\`\`
+
+### 规则记忆
+- **Client→Server**：必须 MASK=1；服务器收到没掩码的帧 → **必须立即关闭（1002 Protocol Error）**
+- **Server→Client**：必须 MASK=0；客户端收到有掩码的帧 → **必须立即关闭**
+
+> 为什么服务端发不用掩码？因为**浏览器信任自己**——不会有"伪造 HTTP"的风险；而"不信任"执行环境中的脚本代码。
+
+## 分片消息（FIN + CONTINUATION）
+
+超大消息不必一次发完，可拆成多帧：
+1. 第 1 帧：FIN=0，OpCode=TEXT/BINARY（消息类型只在首帧标注）
+2. 中间帧：FIN=0，OpCode=CONTINUATION（必为 0x0）
+3. 最后帧：FIN=1，OpCode=CONTINUATION
+
+优点：流式发送/接收，内存占用小；**控制帧（Ping/Pong）可以在分片之间插进来**，保证心跳不被大消息阻塞。
+
+## Ping/Pong 心跳
+
+任何一端都可随时发 Ping（0x9）：
+- 收到 Ping 的**必须尽快回 Pong（0xA）**，Payload 必须原样拷贝 Ping 的 Payload。
+- 端上判定对端失联的通用策略：连续 N 次心跳周期没收到 Pong → 关闭并进入重连。
+- **不建议只靠 TCP keepalive**：默认 2 小时触发一次，太慢；中间盒的"空闲 TCP 会话表"常常早于 keepalive 被清理。
+
+## Close 关闭帧（1002 / 1006 / 1007…）
+
+关闭帧可带 2 字节关闭码 + 可选 UTF-8 reason。常见：
+
+| Code | 名称 | 用途 |
+| --- | --- | --- |
+| 1000 | NORMAL | 正常关闭 |
+| 1001 | GOING_AWAY | 服务端要下线 / 浏览器跳走 |
+| 1002 | PROTOCOL_ERROR | 协议错误（收到无掩码客户端帧、越界 OpCode…） |
+| 1006 | ABNORMAL | 保留，**不能出现在 Close 帧里**，只在底层检测到没收到 Close 帧就断（如 TCP RST）时上报给上层 API（\`event.code === 1006\`） |
+| 1007 | UNSUPPORTED_DATA | 收到文本帧但内容不是 UTF-8 |
+| 1008 | POLICY_VIOLATION | 业务策略拒绝（过大消息、鉴权失败…） |
+| 1009 | MESSAGE_TOO_BIG | 单帧/单消息超过实现允许的大小 |
+| 1011 | INTERNAL_ERROR | 服务端内部错 |
+| 3000-3999 / 4000-4999 | 自定义 | 3xxx 需 IETF 注册；4xxx 给应用私有（游戏房解散、重复登录顶号等） |
+
+面试中常被"追问"的两题：
+1. **MASK 是不是加密？** ——不是，XOR 的目的是防止代理被脚本伪装的 HTTP 包投毒。
+2. **1006 能出现在 Close 帧吗？** ——不能，只在底层异常关闭的事件里出现。`
+  },
+  {
+    id: 'network-026',
+    category: 'network',
+    title: 'WebSocket 断线重连、心跳保活、指数退避的生产级实现思路与代码？',
+    difficulty: '中等',
+    tags: ['WebSocket', '心跳', 'Ping Pong', '断线重连', '指数退避', '重连风暴', '背压'],
+    answer: `## 为什么 WS 不能"连上就不管"
+
+现实世界有几类必现问题：
+
+1. **NAT/防火墙空闲表超时**：运营商/公司内网通常 5~30 分钟没包就丢会话，TCP 层都还以为连着。
+2. **移动端网络切换**：WiFi→5G / 电梯→地面，QUIC 有迁移但 WS 靠 TCP，必然断。
+3. **服务端滚动发布**：滚动升级实例会优雅关闭一批连接。
+4. **中间代理"断了却不说"**：半开连接，一端以为还连着其实对端早就 RST。
+
+所以生产级 WS 客户端必须同时有：**心跳保活 + 自动重连 + 指数退避 + 防重连风暴**。
+
+## 一、心跳保活（双向）
+
+原则：**宁可多跳一次，也不要让代理空闲超时**。
+
+\`\`\`js
+class HeartbeatWS {
+  constructor(url) {
+    this.url = url
+    this.pingIntervalMs = 30_000            // 30s 发一次 Ping
+    this.pongTimeoutMs  = 10_000            // 10s 没收到 Pong 判死
+    this._pingTimer = null
+    this._pongTimer = null
+    this._connect()
+  }
+
+  _connect() {
+    this.ws = new WebSocket(this.url)
+    this.ws.addEventListener('open', () => this._startHeartbeat())
+    this.ws.addEventListener('pong', () => this._resetPongTimer())    // 浏览器 WS API 不一定暴露 pong 事件
+    this.ws.addEventListener('message', (e) => {
+      // 收到任意消息都认为链路是活的
+      this._resetPongTimer()
+    })
+    this.ws.addEventListener('close', () => this._stopHeartbeat())
+    this.ws.addEventListener('error', () => {})
+  }
+
+  _startHeartbeat() {
+    this._stopHeartbeat()
+    this._pingTimer = setInterval(() => {
+      // 方案 A：发浏览器原生 Ping（注意：不是所有浏览器都暴露 ws.ping）
+      if (this.ws.ping) this.ws.ping()
+      // 方案 B（通用）：业务层面约定 \`{"type":"ping"}\`，服务端回 \`{"type":"pong"}\`
+      else this.ws.send(JSON.stringify({ type: 'ping', ts: Date.now() }))
+
+      this._pongTimer = setTimeout(() => {
+        console.warn('[WS] pong timeout, force close and reconnect')
+        this.ws.close(4000, 'pong timeout')
+      }, this.pongTimeoutMs)
+    }, this.pingIntervalMs)
+  }
+
+  _resetPongTimer() {
+    clearTimeout(this._pongTimer)
+    this._pongTimer = null
+  }
+
+  _stopHeartbeat() {
+    clearInterval(this._pingTimer)
+    clearTimeout(this._pongTimer)
+  }
+}
+\`\`\`
+
+> 面试提醒：浏览器原生的 \`WebSocket\` 对象**没有公开的 \`ping()/pong 事件\`**（这是 Node 的 \`ws\` 库才有的），前端 99% 场景用**业务层心跳**（约定 JSON 帧）更稳。
+
+## 二、断线重连 + 指数退避（Exponential Backoff）
+
+每次失败等待时间翻倍，上限封顶：
+- 1s → 2s → 4s → 8s → 16s → 30s（封顶）
+- 连接稳定**超过 10s** 后把重试计数清零，下次失败从头 1s 起。
+
+\`\`\`js
+class ReconnectingWS extends HeartbeatWS {
+  constructor(url) {
+    super(url)
+    this.baseDelay = 1_000
+    this.maxDelay  = 30_000
+    this.attempts  = 0
+    this.wasStableMs = 10_000
+    this._stableTimer = null
+    this.ws.addEventListener('open', () => {
+      this._stableTimer = setTimeout(() => { this.attempts = 0 }, this.wasStableMs)
+    })
+    this.ws.addEventListener('close', () => {
+      clearTimeout(this._stableTimer)
+      this._reconnect()
+    })
+    this.ws.addEventListener('error', () => { /* 浏览器 error 之后一定会 close，交给 close 处理 */ })
+  }
+
+  _reconnect() {
+    // ★ 加 0~50% 随机抖动，避免"整个机房的连接一起断，一起重连"打爆服务端
+    const jitter = Math.random() * 0.5 + 0.5
+    const delay  = Math.min(this.maxDelay, this.baseDelay * 2 ** this.attempts) * jitter
+    this.attempts++
+    console.log(\`[WS] reconnect in \$\{Math.round(delay)}ms (attempt \$\{this.attempts})\`)
+    setTimeout(() => this._connect(), delay)
+  }
+}
+\`\`\`
+
+### 防重连风暴（Thundering Herd）
+上面的 **jitter（随机抖动）** 是关键。若 1000 个客户端一起断（比如服务端滚动重启）：
+- 无 jitter：1s 后 1000 个同时打过来，直接把握手包队列打爆（SYN Flood）
+- 有 jitter：1s 区间均匀分布到 500~1500ms，服务端压力下降一个数量级
+
+## 三、发送队列 + 背压（Backpressure）
+
+\`ws.send()\` 在连接未就绪（CONNECTING/CLOSED）时会抛异常；在 \`bufferedAmount\` 很大时继续塞，会把内存撑爆。
+
+\`\`\`js
+class SafeWS extends ReconnectingWS {
+  constructor(url) {
+    super(url)
+    this.queue = []
+    this.highWater = 4 * 1024 * 1024      // 4MB 以上停止往内核队列塞
+  }
+
+  enqueue(data) {
+    if (this.ws.readyState === WebSocket.OPEN) {
+      if (this.ws.bufferedAmount < this.highWater) this.ws.send(data)
+      else this.queue.push(data)          // 积压到应用层队列
+    } else {
+      this.queue.push(data)               // 连不上也先存着
+    }
+  }
+
+  _onOpen() {
+    // 连接成功，先把积压消息刷出去（按顺序）
+    while (this.queue.length && this.ws.bufferedAmount < this.highWater) {
+      this.ws.send(this.queue.shift())
+    }
+  }
+
+  _onDrain() {
+    // 定时轮询 bufferedAmount 或监听 drain（Node 端有，浏览器靠定时器）
+  }
+}
+\`\`\`
+
+浏览器版小知识：\`WebSocket.bufferedAmount\` 是可查的，但**没有 \`drain\` 事件**，需要用 \`setInterval\` 或者"每发一次后判断"。
+
+## 四、鉴权 URL 的 token 过期 + 续期
+
+常见做法是把 token 放 URL：\`wss://api.foo.com/ws?token=JWT\`。
+但 JWT 过期了，下一次重连就会 **401 直接失败**。所以在重连之前要先刷新 token：
+
+\`\`\`js
+async _reconnect() {
+  try {
+    if (isTokenExpired(this.token)) this.token = await refreshMyToken()
+  } catch (e) {
+    /* 续期失败，让用户去登录 */
+    return this.emit('authFailed')
+  }
+  // 重新拼 URL（不要闭包缓存旧 token）
+  this.url = buildWsUrlWithToken(this.baseUrl, this.token)
+  super._reconnect()
+}
+\`\`\`
+
+## 服务端对应动作
+- **同一用户"重复登录"顶号**：收到新连接时，查 Redis 中 uid→connId，如果旧连接还在，给旧连接发 \`Close(4001, 'duplicate login')\` 后替换。
+- **广播风暴**：房间消息先聚合到 Redis Pub/Sub 再下发到各实例；不做"每条消息循环遍历所有连接"。
+- **单连接限流**：\`ws\` 库可用 \`maxPayload\` 限制最大单帧，避免一个 1GB 帧打爆内存。
+
+面试里的"加分项表述"：
+> 心跳 30s、Pong 超时 10s、重连指数退避 + jitter、bufferedAmount 背压、token 过期预刷新、服务端 Redis Pub/Sub 广播去遍历化。`
+  },
+  {
+    id: 'network-027',
+    category: 'network',
+    title: 'WebSocket 与 SSE（Server-Sent Events）的区别？选型建议？SSE 的自动重连、Last-Event-ID、消息 ID 机制？',
+    difficulty: '中等',
+    tags: ['WebSocket', 'SSE', 'Server-Sent Events', 'EventSource', '单向推送', 'Last-Event-ID'],
+    answer: `## 一句话区分
+
+- **WebSocket**：**全双工双向**，客户端↔服务端都能随时发；需要 HTTP Upgrade 握手；走自定义二进制/文本帧。
+- **SSE (Server-Sent Events)**：**半双工单向**，只能 服务端→客户端；**就是普通 HTTP/1.1 响应**，只是把 Content-Type 设为 \`text/event-stream\`，基于 HTTP Chunked 持久推送；**浏览器自带自动重连 + 断线续传（Last-Event-ID）**。
+
+## 协议对比表
+
+| | WebSocket | SSE | 长轮询 |
+| --- | --- | --- | --- |
+| 方向 | 双向 | 服务端→客户端单向 | 单向（客户端拉） |
+| 连接 | HTTP Upgrade 后走 WS 帧 | 普通 HTTP（长连接 Chunked） | 普通 HTTP（每拉一次一个请求） |
+| 端口 | ws=80 / wss=443 | HTTP=80 / HTTPS=443 | 同 HTTP |
+| 断线重连 | 自己实现心跳+重连 | **浏览器内置**（EventSource 默认 3s 自动重连） | 客户端循环 setTimeout |
+| 续传 | 自己实现消息 ID + 服务端补偿 | **浏览器内置 Last-Event-ID** | 不支持 |
+| 二进制 | 原生 BINARY 帧 | 只能文本（要发二进制需 Base64） | 都可 |
+| 多路复用（一个连接多通道） | 自己约定 JSON channel 字段 | 原生支持 \`event:\` 多事件名 | 不支持 |
+| 跨域 | 握手 Origin 头校验（服务端放行） | **CORS**（需服务端返回 Access-Control-Allow-Origin） | 同普通 fetch |
+| 移动端后台保活 | 各自处理 | iOS Safari 后台会暂停 SSE 流，回到前台自动续 | 无 |
+| 浏览器兼容 | IE10+，全主流 | Edge 79+ / Safari 全版本 / Firefox/Chrome；**IE 全不支持** | 都支持 |
+| 调试 | 需抓 WS 帧（DevTools Network→WS→Frames） | **普通 HTTP 响应**，直接看 Response Body 流式输出 | 跟普通请求一样 |
+
+## SSE 的格式：text/event-stream
+
+SSE 的每一条"事件"都用纯文本按行拼：
+
+\`\`\`
+HTTP/1.1 200 OK
+Content-Type: text/event-stream; charset=utf-8
+Cache-Control: no-cache, no-transform
+Connection: keep-alive
+X-Accel-Buffering: no        ← ★★ 告诉 Nginx "别缓冲，立即 flush"
+
+: this is a comment line     ← 以 : 开头是注释，可做心跳
+retry: 5000                  ← 告诉浏览器"断线后隔 5000ms 再连"
+
+id: 42                       ← 消息 ID（保存在浏览器，下次重连会放到 Last-Event-ID 头里）
+event: chat                  ← 事件名（客户端 addEventListener('chat', fn) 来监听）
+data: {"from":"tom","msg":"hi"}
+                             ← 空行表示事件结束（定界符）
+
+data: 第一行
+data: 第二行（同一个 data 分多行，接收端用 \n 拼起来）
+
+id: 43
+data: 下一条消息
+\`\`\`
+
+### 关键字段
+- **\`data:\`**（必填）：事件载荷，多行 data 会用 \`\n\` 拼成一个字符串后作为 \`event.data\`。
+- **\`id:\`**（强烈推荐）：写入浏览器内部的"last event ID 缓冲区"，后续**无论断线重连还是首次重连**，浏览器都会自动在请求头加：
+  \`\`\`
+  Last-Event-ID: 43
+  \`\`\`
+  服务端根据这个 ID，**从消息队列（Kafka/RabbitMQ/Redis Stream）里把 ID 之后的消息补发过来**，实现"客户端被动也不丢消息"。
+- **\`event:\`**（可选）：自定义事件类型；省略就触发默认的 \`message\` 事件。
+- **\`retry:\`**（可选）：告诉浏览器重连间隔毫秒数；不写默认约 3 秒（各实现略有差异）。
+- **\`: comment\`**（注释行）：可做心跳，客户端不会触发事件；**每隔 15s 左右发一次注释行**，防止代理空闲超时。
+
+## 浏览器端使用 SSE（EventSource）
+
+\`\`\`js
+const es = new EventSource('https://api.foo.com/stream?topic=news', {
+  withCredentials: true      // 带 Cookie，默认 false
+})
+
+es.addEventListener('open', () => console.log('SSE connected'))
+
+// 普通消息（没写 event: 字段）
+es.addEventListener('message', e => {
+  console.log('新消息：', e.data, 'id=', e.lastEventId)
+})
+
+// 自定义事件（对应 event: chat 字段）
+es.addEventListener('chat', e => {
+  console.log('聊天室消息：', JSON.parse(e.data))
+})
+
+es.addEventListener('error', e => {
+  // 注意：EventSource 不会因为"网络断了"就停掉，它会自动重连。
+  // readyState：CONNECTING=0, OPEN=1, CLOSED=2
+  if (es.readyState === EventSource.CLOSED) {
+    console.log('被主动关闭，不会再连')
+  }
+})
+
+// 用户登出时记得关，否则一直重连
+function logout() { es.close() }
+\`\`\`
+
+## 服务端实现要点（Node / Nginx）
+
+### Node Express
+\`\`\`js
+app.get('/stream', (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*'
+  })
+
+  // ★ 发一条注释心跳，防止中间代理 30s 超时断连
+  const hb = setInterval(() => res.write(': keepalive\n\n'), 15_000)
+
+  const lastId = Number(req.header('Last-Event-ID') || 0)
+  replayMissedEvents(lastId, ev => res.write(formatSSE(ev)))
+
+  // ...业务消息写进来
+  pubsub.on('news', ev => res.write(formatSSE(ev)))
+
+  req.on('close', () => clearInterval(hb))
+})
+
+function formatSSE({ id, event, data }) {
+  let s = ''
+  if (id)    s += \`id: \$\{id}\n\`
+  if (event) s += \`event: \$\{event}\n\`
+  s += \`data: \$\{typeof data === 'string' ? data : JSON.stringify(data)}\n\n\`
+  return s
+}
+\`\`\`
+
+### Nginx 配置的两个致命坑
+\`\`\`nginx
+location /stream {
+  proxy_pass http://backend;
+  proxy_http_version 1.1;
+  proxy_set_header Connection "";
+
+  proxy_buffering off;          # ★ 别缓冲（默认 on，会攒到满才吐）
+  gzip off;                     # ★ SSE 本身就是长连接，gzip 要等 EOF，永远不会输出
+  chunked_transfer_encoding on;
+}
+\`\`\`
+
+漏了 \`proxy_buffering off\` / \`gzip off\`，客户端永远会"看起来还在连，但一条消息也收不到"，直到连接结束。
+
+## SSE 自动重连与 Last-Event-ID 的保证
+
+SSE 的"可靠"是**浏览器帮你做了一半**：
+
+1. 浏览器断开 → 等 \`retry\` 毫秒自动发起一个新请求，并带上 \`Last-Event-ID\` 头。
+2. 服务端读到 \`Last-Event-ID\`，把该 ID 之后的未收到消息回放给它。
+3. 如果服务端的消息日志已经被清理（超过保留期），应**返回 204 No Content** 或**回一个自定义事件通知客户端做全量同步**，避免"永远少消息"。
+
+\`\`\`
+ 浏览器 断连 → 自动重连 + Last-Event-ID: 42 ──► 服务端
+                                           ┌───────► 查 Redis Stream "42 之后"的消息
+                                           └───────► 回 200 + 依次输出 id=43/44/45…
+\`\`\`
+
+## 选型建议
+
+| 场景 | 推荐 |
+| --- | --- |
+| 股票行情、通知中心、ChatGPT 流式输出、实时仪表盘（**纯展示、服务端推为主**） | **SSE**（简单，HTTP 友好，自带重连+续传） |
+| IM 聊天、协作编辑（OT/CRDT）、在线游戏、白板同步、RTC 信令（**客户端也要高频发**） | **WebSocket** |
+| 兼容 IE 老浏览器、内网代理各种封 | **长轮询（降级兜底）** |
+| 跨端 App + H5 同用一套实时通道 | **WebSocket + 长轮询降级（Socket.IO）** |
+
+一句话经验：**服务端单向推优先 SSE，真·双向才上 WS**。SSE 实现成本和运维复杂度都比 WS 低很多。`
+  },
+  {
+    id: 'network-028',
+    category: 'network',
+    title: 'Socket.IO 的作用、连接建立流程（XHR Polling → WebSocket 升级）、房间/命名空间/Ack 机制？',
+    difficulty: '中等',
+    tags: ['Socket.IO', 'Engine.IO', '轮询降级', '房间', '命名空间', 'Acknowledgement', '房间广播'],
+    answer: `## Socket.IO ≠ WebSocket
+
+Socket.IO 是一个**构建在 WebSocket + 回退传输之上的实时通信库**，它解决了浏览器原生 WS 的这些痛点：
+
+1. **降级兜底**：用户在旧浏览器、企业内网、代理把 Upgrade 头剥离时，会自动从 WebSocket 降级为 **XHR Polling / JSONP Polling / WebSocket**，保证"无论如何都能连上"。
+2. **自动重连 + 指数退避**：像 SSE 一样内置。
+3. **房间/命名空间**：多频道逻辑（服务端广播、加入/离开房间）。
+4. **Ack 回执**：类似 RPC——send 带回调，对端处理完可以回复一个"收到+处理结果"。
+5. **二进制支持**：自动序列化 Blob/File/ArrayBuffer。
+6. **多房间多路复用**：一个底层连接上承载多个逻辑"频道"，不用为每间房开一个 WS。
+
+底层靠 **Engine.IO** 做抽象：Engine.IO 负责"连接升级/降级"，Socket.IO 在上层做"事件 + 房间 + 命名空间"。
+
+\`\`\`
+┌───────────────────────────────────────┐
+│              Socket.IO                │
+│  事件 / 房间 / 命名空间 / Ack / 重试    │
+└───────────────────────────────────────┘
+                ▲ 事件语义层
+┌───────────────────────────────────────┐
+│              Engine.IO                │
+│  握手 + 心跳 + 传输（WS↔XHR↔JSONP）     │
+│  Packet 编码 + 升级协商                │
+└───────────────────────────────────────┘
+                ▲ 传输抽象层
+ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
+   WebSocket / XHR-Polling / JSONP
+\`\`\`
+
+## 连接建立流程（经典"先长轮询，后升级"）
+
+为什么不一开始就 WS？因为浏览器在"代理把 Upgrade 头吃了"的环境里，**WS 握手会超时失败**，用户看到"白屏等了十几秒才好"。Socket.IO 默认先走**一定成功的 HTTP 长轮询**建立一个可用传输，**然后后台尝试升级到 WS**，升级成功就切过去，失败就继续轮询——**对应用透明**。
+
+\`\`\`
+  浏览器                                  Socket.IO Server
+     │                                         │
+     │ ① GET /socket.io/?EIO=4&transport=polling   "Engine.IO 握手"
+     │────────────────────────────────────────────▶│
+     │ ② 200 { sid: "abc123", upgrades:["websocket"], pingInterval, pingTimeout, maxPayload }
+     │◀────────────────────────────────────────────│  ← 拿到 sid，后面所有包绑同一会话
+     │                                         │
+     │ ③ POST /socket.io/?transport=polling&sid=abc123  (发消息)
+     │  GET  ...polling&sid=abc123              (拉消息，Long Poll 挂起)
+     │◀──────────── HTTP 长轮询收发消息 ────────▶│ ← 轮询模式已经可用，业务不阻塞
+     │                                         │
+     │ ④ 后台悄悄 GET /socket.io/?EIO=4&transport=websocket&sid=abc123
+     │    (Upgrade: websocket) 携带同一个 sid   │
+     │────────────────────────────────────────────▶│
+     │ ⑤ 101 Switching Protocols                  │
+     │◀────────────────────────────────────────────│
+     │         发送 Engine.IO "ping probe" 验证   │
+     │ ⑥ 升级成功 → 后续所有消息改走 WS 帧        │
+     │◀───────────── WS 双向帧协议 ──────────────▶│
+     │                                         │
+     │ ⑦ 若升级超时/失败 → 不影响业务，继续用 polling
+     │       （对上层完全透明）                    │
+\`\`\`
+
+所以 Socket.IO 的首次可用**一定比原生 WS 更快**（握手成功就有通道），但首次升级期间会多 1~2 个 HTTP 请求。
+
+## 房间（Room）与命名空间（Namespace）
+
+这是 Socket.IO 跟原生 WS **最大的不同**，也是它最常用的功能。
+
+### 1. Namespace（命名空间 / 逻辑连接）
+同一个底层连接上的**逻辑分隔**，URL 路径式：
+
+\`\`\`js
+// 客户端：同一个 TCP / WS 连接上逻辑挂到三个命名空间
+const main = io('https://srv/')          // 默认 "/"
+const chat = io('https://srv/chat')      // chat 命名空间
+const admin = io('https://srv/admin')    // admin 命名空间（可单独加鉴权中间件）
+
+// 服务端
+io.of('/admin').use((socket, next) => {
+  if (socket.handshake.auth.token === ADMIN_TOKEN) next()
+  else next(new Error('unauthorized'))            // 只拒绝 /admin，不影响 /chat
+})
+io.of('/admin').on('connection', socket => { /* … */ })
+\`\`\`
+
+### 2. Room（房间）
+一个 Namespace 内的**临时组播单元**，加入/离开只服务端操作：
+
+\`\`\`js
+// 服务端
+io.on('connection', socket => {
+  // 加入房间（多房间可重复 join）
+  socket.join('room-101')
+  socket.join(['room-101', 'user-friends'])
+
+  socket.on('say', (text) => {
+    // 给除自己外"房间内所有"人广播
+    socket.to('room-101').emit('msg', { from: socket.id, text })
+    // 给房间内所有人（含自己）
+    io.in('room-101').emit('msg', { … })
+    // 跨命名空间
+    io.of('/chat').to('room-101').emit(…)
+  })
+
+  socket.on('disconnect', () => {
+    // 断开后 socket 自动从所有房间移除，不用手动 leave
+  })
+})
+\`\`\`
+
+### 广播范围速记
+- \`socket.emit(...)\` → 只发给自己
+- \`socket.to('room').emit(...)\` → 发给 room 内**除自己外**的所有人（经典"我发言，别人收到"）
+- \`io.to('room').emit(...)\` → 发给 room 内**所有人**
+- \`socket.broadcast.emit(...)\` → 发给"本命名空间所有连接除自己"
+- \`io.emit(...)\` → 发给"本命名空间所有连接"
+
+## Acknowledgement（Ack）—— 请求-响应模式
+
+原生 WS 只有"发"，Socket.IO 支持类似 RPC 的**发-回调**模式：客户端第 N 个参数是函数，服务端调用它就会回包。
+
+\`\`\`js
+// 客户端
+socket.emit('getUser', 123, (user /* 服务端给的结果 */) => {
+  console.log('拿到用户了：', user)
+})
+
+// 服务端
+io.on('connection', socket => {
+  socket.on('getUser', async (id, callback /* 这就是回调 */) => {
+    const user = await db.User.findByPk(id)
+    callback(user)                     // ← 调了 callback 就会回一个 Ack 包给客户端
+  })
+})
+\`\`\`
+
+底层实现：emit 时在包体里带一个 **ackId（递增整数）**，客户端存 \`id → fn\` 映射；服务端 Ack 包把同样的 ackId 带回来，客户端根据 id 取到函数并调用。跟 JSONP 的 callbackId 思路一致。
+
+Ack **默认没有超时**，若对端挂了会内存泄漏。生产要自己加超时：
+\`\`\`js
+function emitWithAck(event, payload, timeoutMs = 10_000) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('ack timeout')), timeoutMs)
+    socket.emit(event, payload, (resp) => { clearTimeout(t); resolve(resp) })
+  })
+}
+\`\`\`
+
+## 多实例（Redis Adapter）+ 粘性会话（Sticky Session）
+
+Socket.IO 默认"房间"是单机内存里的 Map。多实例部署时：
+
+1. **Sticky Session（会话粘滞）必须开**：因为长轮询模式下同一 sid 会发多个 HTTP 请求，**必须落到同一台实例上**，否则轮询拉不到消息。
+   - Nginx：\`ip_hash\` / \`hash \$cookie_io\`
+   - k8s Ingress：nginx.ingress.kubernetes.io/affinity: cookie
+2. **Adapter 扩展**：用 \`@socket.io/redis-adapter\` 或 \`@socket.io/mongo-adapter\`，任何实例收到 \`io.to(room)\` 都通过 Redis Pub/Sub 同步到其他实例。
+   - Adapter 只广播**消息**；\`socket.rooms\`、\`socket.id\` 等"本地连接状态"仍只在单实例上，跨实例查"谁在线"需维护额外 Redis 在线集合。
+
+## 选型与替代
+
+- **Socket.IO 适合**：IM 聊天、协作、实时表单、需要兼容复杂网络环境 + 房间语义的业务；不想自己封装降级/重连/ACK。
+- **原生 WS 适合**：简单 IM、游戏（自建自定义二进制协议更省带宽）、或者已经用 SSE + Fetch 覆盖了场景。
+- **Socket.IO 客户端必须用 Socket.IO 服务端**：协议不是标准 WS（多了 Engine.IO 握手、Packet 编码），**不能跟普通 WS 客户端互通**。这点是面试常考点——"能不能用浏览器 new WebSocket 连 socket.io？"——**不行**，会直接 400 Bad Request。`
+  },
+  {
+    id: 'network-029',
+    category: 'network',
+    title: 'WebSocket 跨域、鉴权、CSP 混合内容限制？wss 自签证书问题、Origin 校验该如何做？',
+    difficulty: '中等',
+    tags: ['WebSocket', '跨域', '鉴权', 'Origin', 'CSP', '混合内容', 'wss 证书'],
+    answer: `## 一、WebSocket 的"跨域"跟 HTTP CORS 不一样
+
+浏览器 \`new WebSocket('wss://other.com/ws')\` **不受同源策略限制**——不会先偷偷发 Preflight，也不会被浏览器拦截（拦截的只是响应）。但浏览器**会自动带上 \`Origin\` 头**，要不要"放行"完全由服务端决定。
+
+\`\`\`
+ 浏览器 https://a.com
+   │  new WebSocket('wss://b.com/ws')
+   ├─▶ 握手请求（HTTP）
+   │    Host: b.com
+   │    Origin: https://a.com     ← 浏览器自动带
+   │    Upgrade: websocket
+   │
+   ▼ 服务端 b.com：
+       检查 Origin 白名单
+          ├─ 命中白名单 → 回 101 → ✅ 连上
+          └─ 没命中     → 回 403 → 浏览器 close(1008)
+\`\`\`
+
+因此 WS 的"跨域策略" = **服务端 Origin 白名单校验**，没有对应 HTTP 的 Access-Control-Allow-Origin 机制（因为握手后就不是 HTTP 了）。
+
+### 服务端 Origin 校验示例（Node + ws 库）
+\`\`\`js
+import { WebSocketServer } from 'ws'
+import { createServer } from 'http'
+
+const allowedOrigins = new Set([
+  'https://app.example.com',
+  'https://admin.example.com',
+  'http://localhost:5173'
+])
+
+const server = createServer()
+const wss = new WebSocketServer({ noServer: true })
+
+server.on('upgrade', (req, socket, head) => {
+  const origin = req.headers.origin ?? ''
+  // 1. Origin 校验（★★ 最关键）
+  if (!allowedOrigins.has(origin)) {
+    socket.write('HTTP/1.1 403 Forbidden\r\n\r\n')
+    socket.destroy()
+    return
+  }
+  // 2. 鉴权（在 URL 或 Cookie / Header 里取 token）
+  const token = new URL(req.url, 'http://x').searchParams.get('token')
+  const user  = verifyToken(token)
+  if (!user) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+    socket.destroy()
+    return
+  }
+  // 3. 通过，升级到 WS
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    ws.user = user    // 挂载给后续消息处理
+    wss.emit('connection', ws, req)
+  })
+})
+\`\`\`
+
+> 面试反问：如果 Origin 为空怎么办？通常是**非浏览器客户端**（curl/Postman/移动端 SDK/Node）不会带 Origin，此时策略由你定——可以允许（因为 CORS 问题只在浏览器场景才有），也可以强制要求携带自定义 Header/URL token。
+
+## 二、WS 鉴权的四种主流放法
+
+| 方案 | 放置位置 | 优点 | 缺点 |
+| --- | --- | --- | --- |
+| **URL Query** | \`wss://srv/ws?token=jwt\` | 最简单，所有浏览器都能用 | 会出现在**服务端 access log、Nginx log、URL 历史、Referer**；容易泄露；URL 有长度上限 |
+| **Cookie（HttpOnly）** | 握手请求带 Cookie | 和 Web 登录统一，无 URL 泄露 | 必须同站（First-Party）或 **SameSite=None + Secure**；跨第三方站 Chrome 默认不传 |
+| **Sec-WebSocket-Protocol** | 放进子协议头：\`new WebSocket(url, ['base64token'])\` | 握手头部，不会出现在日志 | 是**滥用子协议字段**；服务端必须回 \`Sec-WebSocket-Protocol\`（哪怕只是 echo 回来），否则浏览器会报"子协议不匹配"并自动 close |
+| **HTTP 握手 Header**（Authorization） | \`new WebSocket\` 不支持自定义 Header！⚠️ | 规范—— | **浏览器原生 WebSocket API 不允许自定义任何握手 Header**，Node 端 ws 库可以，浏览器不行 |
+
+### 第 3 种的坑（很多人踩）
+\`\`\`js
+// 前端
+const token64 = btoa(token)
+const ws = new WebSocket('wss://srv/ws', [\`token.\$\{token64}\`])
+
+// 服务端一定要回，不然浏览器"Protocol Error"强制关闭
+const proto = req.headers['sec-websocket-protocol']
+res.setHeader('Sec-WebSocket-Protocol', proto)   // 原封不动回
+\`\`\`
+
+### 生产推荐组合
+- **H5 / SPA 同域**：**HttpOnly + SameSite=Lax Cookie**（安全，零前端代码）。
+- **跨域 / 多端 SDK / 小程序**：**URL token + 短 TTL（10min）+ 一次性换取 sid**——先调一次 REST 接口拿一次性 shortToken，再用 shortToken 连 WS，shortToken 5 分钟且只能用一次，日志泄露也不怕。
+
+## 三、混合内容（Mixed Content）：HTTPS 页面不能连 ws://
+
+这是浏览器的硬限制（和"https 页面不能 http 请求资源"一样）：
+
+| 页面协议 | 连 ws:// | 连 wss:// |
+| --- | --- | --- |
+| http:// | ✅ | ✅ |
+| **https://** | ❌ **被拦（Mixed Content）** | ✅ |
+
+错误信息：
+\`\`\`
+Mixed Content: The page at 'https://foo.com' was loaded over HTTPS,
+but attempted to connect to the insecure WebSocket endpoint 'ws://bar.com/'.
+This request has been blocked; this endpoint must be available over WSS.
+\`\`\`
+
+解决：生产 **一律 wss://**。本地开发可以用 http+ws，或者让前端根据 \`location.protocol\` 自动切：
+\`\`\`js
+const wsUrl = location.protocol === 'https:'
+  ? \`wss://\$\{location.host}/ws\`
+  : \`ws://\$\{location.host}/ws\`
+\`\`\`
+
+## 四、CSP（Content-Security-Policy）的 WS 指令
+
+CSP 里控制 WebSocket 的是**connect-src**（和 fetch/XHR/SSE/EventSource 共用），没有单独的 ws-src。
+
+\`\`\`http
+Content-Security-Policy:
+  connect-src 'self'
+    wss://api.example.com
+    wss://*.thirdparty.io;
+\`\`\`
+
+- **'self'** 匹配同协议、同主机、同端口的 ws/wss。
+- 显式白名单：写 \`wss://host\`（不写默认不允许任何外部 WS）。
+- 被 CSP 拦时，浏览器控制台会报：\`Refused to connect to 'wss://x/' because it violates the following Content Security Policy directive: "connect-src ..."\`。
+
+## 五、自签证书的 wss://（本地/测试环境）
+
+浏览器访问 \`wss://192.168.1.99:8443/\` 如果证书是自签 / 内部 CA：
+
+1. **先在浏览器里打开 https://192.168.1.99:8443/ （任意同主机 HTTPS 页面）**。
+2. 在"不安全 → 继续访问"里把证书加入浏览器信任。
+3. 之后 WebSocket 到同主机就会复用这个信任。
+
+> 小程序、WebView、Electron 场景要各自加"忽略证书错误"开关或"预埋根证书"，不能用上面的办法。**生产禁止忽略证书错误**。
+
+## 六、代理 / 负载均衡下的客户端 IP
+
+握手是 HTTP 经过反代时，服务端直接看到的 \`req.socket.remoteAddress\` 是 **Nginx 的 IP**。记得在 Nginx 加：
+\`\`\`nginx
+proxy_set_header X-Forwarded-For  \$proxy_add_x_forwarded_for;
+proxy_set_header X-Real-IP        \$remote_addr;
+proxy_set_header X-Forwarded-Proto \$scheme;
+\`\`\`
+Node 服务端用 \`req.headers['x-forwarded-for']\` 拿真实客户端 IP 做风控/封禁。
+
+## 面试高频"踩坑"追问
+
+1. **new WebSocket 能不能带自定义 Header？** —— **浏览器不行**；Node 的 \`ws\` 可以。很多初学者会以为能像 fetch 那样传 \`headers: { Authorization }\`。
+2. **https 页面连 ws:// 会咋样？** —— 被浏览器直接拦，请求根本发不出去；这是 Mixed Content。
+3. **Sec-WebSocket-Protocol 放 token 的副作用？** —— 服务端必须在握手响应里**原样回写该值**，否则浏览器自动 close(1002/1008)。
+4. **Origin 校验缺了会怎么样？** —— 任何网站都能打开你 WS 连接建立消息通道，易被"跨站 WebSocket 劫持 + 伪造消息"打（类似 CSRF 但更严重，因为是双向持久通道）。`
+  },
+  {
+    id: 'network-030',
+    category: 'network',
+    title: 'WebSocket 在弱网/高并发场景的优化？消息压缩（permessage-deflate）、二进制协议、批量发送、广播风暴如何处理？',
+    difficulty: '困难',
+    tags: ['WebSocket', 'permessage-deflate', '二进制协议', '广播风暴', '背压', 'Redis Pub/Sub', '负载均衡'],
+    answer: `## 一、带宽优化：permessage-deflate 消息压缩
+
+WebSocket 有一个标准扩展（RFC 7692）叫 **permessage-deflate**——每条"数据帧"在发送前做一次 deflate（zlib）压缩。对 JSON 文本大消息能拿到 **60~80% 的压缩比**。
+
+浏览器原生 WebSocket 支持该扩展（自动在握手时协商），服务端 ws 库配置：
+\`\`\`js
+import { WebSocketServer } from 'ws'
+
+const wss = new WebSocketServer({
+  port: 8080,
+  perMessageDeflate: {
+    zlibDeflateOptions: { chunkSize: 1024, memLevel: 7, level: 3 },   // 服务端发
+    zlibInflateOptions: { chunkSize: 1024 },
+    clientNoContextTakeover: true,   // 省内存（不保留上一帧上下文字典）
+    serverNoContextTakeover: true,
+    serverMaxWindowBits: 10,
+    concurrencyLimit: 20             // 同时压缩的帧数上限（防 CPU 打爆）
+  }
+})
+\`\`\`
+
+### 什么时候开/不开？
+- ✅ **开**：JSON 聊天、通知、长消息、大 JSON 同步（协作文档快照）。
+- ❌ **不开**：小二进制心跳包、protobuf 已压缩、游戏高频小包（每帧 < 64B，压缩反而"字典头 + 更多字节"）。
+- ⚠️ **内存代价**：开启后每个连接多一份 zlib 状态（~32KB~256KB）；\`NoContextTakeover=true\` 能降到最小但压缩率下降 10~20%。
+
+## 二、协议选择：JSON 文本 vs 二进制（protobuf / msgpack / flatbuffer）
+
+| | 文本（JSON） | Protobuf | FlatBuffers | MessagePack |
+| --- | --- | --- | --- | --- |
+| 可读性 | 好（DevTools 直接看） | 差（需抓包工具+proto） | 差 | 差 |
+| 体积 | 大（字段名冗余） | 小（tag 编码） | 中 | 中 |
+| 编解码性能 | 中 | 快（3~10x JSON.parse） | 极快（零拷贝） | 中 |
+| 前后端耦合 | 无（随便加字段） | 需 .proto 契约 | 需 .fbs 契约 | 弱 |
+| 兼容性 | 自描述 | 通过字段编号向前兼容 | 可选默认值兼容 | 自描述 |
+
+### 选型经验
+- **业务消息为主 + 体积 < 10KB** → JSON + permessage-deflate（开发效率最高）。
+- **高频游戏帧 / 实时位置上报（QPS > 50/连接）** → Protobuf / FlatBuffer 二进制，**不开压缩**。
+- **混合场景**：控制协议（鉴权、加房间）JSON；实际数据流二进制（Blob/ArrayBuffer），客户端靠 \`ws.binaryType = 'arraybuffer'\` 接收。
+
+Protobuf 最简流程：
+\`\`\`proto
+// messages.proto
+syntax = "proto3";
+message Position {
+  int64 userId = 1;
+  sint32 x = 2;      // sint 有负数比 int32 省字节
+  sint32 y = 3;
+  uint32 ts = 4;     // unsigned 时间戳
+}
+\`\`\`
+\`\`\`js
+// 前端二进制收发
+ws.binaryType = 'arraybuffer'
+ws.onmessage = async e => {
+  if (e.data instanceof ArrayBuffer) {
+    const msg = Position.decode(new Uint8Array(e.data))
+  } else {
+    // 文本走别的分支
+  }
+}
+\`\`\`
+
+## 三、发送侧优化：合帧 + 限流 + 背压
+
+单连接"每秒 200 条小消息"，每条都独立发会带来大量 syscall、小包拥塞。
+
+### 1. 合帧（Nagle 风格 / Micro-batching）
+把 10~50ms 内的消息收集起来打成一个"批量帧"再发，发送次数下降 20~100x：
+\`\`\`js
+class BatchSender {
+  constructor(ws, intervalMs = 20) {
+    this.ws = ws
+    this.queue = []
+    this.timer = setInterval(() => this.flush(), intervalMs)
+  }
+  send(frame) {
+    if (this.ws.bufferedAmount > 4 * 1024 * 1024) return     // 背压：超过 4MB 丢（或降级）
+    this.queue.push(frame)
+  }
+  flush() {
+    if (this.queue.length && this.ws.readyState === 1) {
+      // 约定：一个 JSON 数组当批量包 [cmd1, cmd2, ...]
+      this.ws.send(JSON.stringify(this.queue))
+      this.queue.length = 0
+    }
+  }
+}
+\`\`\`
+
+### 2. 背压（Backpressure）
+- \`ws.bufferedAmount\`：浏览器端内核缓冲区积压的字节数。大于 1~4MB 就要**停塞**（丢、排队、压缩、合并），否则内存暴涨。
+- Node 服务端 \`ws\` 库有 \`drain\` 事件：可以暂停 → 等 drain 再继续。
+
+### 3. 接收侧：单连接限速
+服务端对每个连接做 **令牌桶**（\`rate-limiter-flexible\` 或 \`ioredis\` 背的限流器）：
+- 每秒最多 N 条入站消息；
+- 单帧最大 1MB（ws 的 \`maxPayload\` 选项）；
+- 超限直接 Close(1009 MESSAGE_TOO_BIG)，防恶意大帧打爆内存。
+
+## 四、广播风暴（Broadcast Storm）的三种解法
+
+经典坑：一个房间 1 万人，一人发言，服务端写个 \`for (const socket of room) socket.send(msg)\`——CPU 被这 1 万次 send + 序列化打爆，再叠加"所有房间都在广播"，整个实例 OOM。
+
+### 解法 1：扇出到各实例（Redis / Nats Adapter）
+多实例部署时"广播指令"通过消息队列 Pub/Sub 下发到每台实例，实例本地再做连接级扇出：
+\`\`\`
+ Client ──发言──▶ 实例 A
+                   │ publish "room-101: {msg}"
+                   ▼
+                Redis Pub/Sub
+                   │
+     ┌─────────────┼─────────────┐
+     ▼             ▼             ▼
+  实例 A          实例 B         实例 C
+  遍历本机        遍历本机       遍历本机
+  room-101 连接   room-101 连接  room-101 连接
+\`\`\`
+
+### 解法 2：序列化一次 + 直接复用
+大 JSON 消息，对 1 万人重复 \`JSON.stringify\` 是浪费。**先序列化一次**得到字符串 / Buffer，然后用同一个 Buffer 直接 \`ws.send(buf)\` 多次。\`ws\` 库底层已经支持共享 Buffer（不拷贝）。
+
+\`\`\`js
+const buf = Buffer.from(JSON.stringify(bigPayload))   // 1 次序列化
+for (const ws of roomConnections) ws.send(buf)       // N 次发送，零拷贝
+\`\`\`
+
+### 解法 3：消息丢弃（"最新值语义"）
+对于"股票行情、坐标"这种**新消息覆盖旧消息**的场景，把每连接发送队列做成"同类型只保留最新"——积压 30 帧位置，只发最后一帧，带宽占用直接砍 30 倍。
+
+## 五、服务端高并发架构建议
+
+1. **CPU 绑定**：一个 Node 进程只能用一个核。用 **PM2 cluster / Kubernetes 多 Pod**，每实例 2k~10k 连接（根据消息频率定）。
+2. **内存预算**：每个空闲 WS 连接约 2~10KB（不含缓冲区），10 万连接约几百 MB；加上业务缓冲和 zlib 字典，单机 8C32G 通常稳在 4~6 万连接。
+3. **文件句柄**：Linux 每个 TCP 连接占一个 fd，默认 ulimit -n 1024 远远不够，生产改到 **65535 或 1048576**。
+4. **健康检查**：不要"自己查自己"，用单独的 HTTP /health 端点，别让健康检查也走 WS 握手。
+5. **负载均衡算法**：**最少连接数（Least Connections）** 比轮询更适合长连接，避免某台实例连接数膨胀。
+6. **滚动发布**：先摘除（drain）新流量 → 给老连接广播 \`4002 server-shutdown please reconnect\` → 等 30s → 真正下线。配合客户端"收到 4002 立即重连"，用户几乎无感。
+
+## 优化清单（面试加分口诀）
+> 压缩（permessage-deflate）+ 二进制（Protobuf/FlatBuffer）小体积 + 合帧微批减少 syscall + 背压不塞爆 + Redis Adapter 广播 + 单帧序列化多发送 + 最新值丢帧 + ulimit 文件句柄 + LeastConn 负载均衡 + 滚动发布 drain。`
+  },
+  {
+    id: 'network-031',
+    category: 'network',
+    title: 'WebSocket 与 HTTP/2、HTTP/3 的关系？HTTP/2 Server Push 和 WebSocket 该选哪个？',
+    difficulty: '中等',
+    tags: ['WebSocket', 'HTTP/2', 'HTTP/3', 'Server Push', '多路复用', 'SSE'],
+    answer: `## HTTP/2 和 HTTP/3 **不影响 WebSocket 的协议本身**
+
+很多人会问"有了 HTTP/2 多路复用还需要 WebSocket 吗？"——**完全是两层的东西**：
+
+- HTTP/2、HTTP/3 优化的是 **"请求-响应模型"的传输效率**（多路复用、头部压缩、0-RTT）。
+- WebSocket 是**长连接 + 双向帧协议**，目的就是突破"请求-响应"模型。
+
+所以它们不是替代关系，而是：
+- HTTP/2 → 更有效率地跑**一堆请求-响应**；
+- WebSocket → **真正的双向实时**。
+
+## 能不能"在 HTTP/2 之上跑 WebSocket"？
+
+**RFC 8441（Bootstrapping WebSockets with HTTP/2）** 规定可以：把 HTTP/1.1 时代的 Upgrade 语义，用 HTTP/2 的 **CONNECT + :protocol = websocket** 伪首部替代。
+
+不过实际情况要注意：
+- Chrome/Edge/Firefox 现代版本都支持 WS over H2。
+- Safari 历史上支持度一般。
+- **Nginx 1.25 开始才原生支持 HTTP/2 WebSocket**（以前会直接 4xx）。
+- H2 是单 TCP 多路复用，**WS 流与其他 HTTP 请求仍共享 TCP 层队头阻塞**——这跟 H2 的通病一致。
+
+HTTP/3（QUIC）的 WebSocket 规范 **RFC 9220** 也有（用 H3 的 CONNECT），2024+ 逐步普及中。
+
+> 业务结论：WS 连什么协议，**对上层应用透明**。部署 HTTPS 时直接上 H2+H3，握手会自动用最高版本。不需要改任何代码。
+
+## 对比：HTTP/2 Server Push vs SSE vs WebSocket
+
+有了 HTTP/2，有人试图用 "Server Push 推实时消息"，结果很糟糕——因为 **Server Push 语义不对**。
+
+### Server Push（HTTP/2 的 PUSH_PROMISE）
+服务端在客户端**没发请求之前**，**预判客户端接下来需要什么资源**（比如 HTML 连带 CSS/JS），主动推到客户端 HTTP 缓存里。
+
+- ✅ 只适合"预取静态资源"：首屏、HTML 之后的 JS/CSS。
+- ❌ 不适合"实时事件流"：**没有长连接语义、没有显式的事件结束标记、没有重连、没有 Last-Event-ID、流控粗暴**。
+- Chrome 已在 2021 年**移除 Server Push 支持**（Chrome 106+），生态已弃用。
+
+### SSE（text/event-stream over HTTP）
+- 单向推送（服务端→客户端）。
+- 基于 HTTP Chunked，在 HTTP/1.1 / H2 / H3 上都能直接跑。
+- 浏览器内置 **自动重连 + Last-Event-ID 续传**。
+- HTTP/2 下 SSE 和其他请求**共享一条 TCP 连接**（H2 多路复用），所以"开 10 个 SSE 通道"不再有"HTTP/1.1 同域 6 连接限制"。
+
+### WebSocket
+- 全双工、帧协议；升级之后就不再是 HTTP。
+- 消息粒度更细、头部更小（帧头 2~10B vs HTTP 响应头几百 B）。
+- 原生二进制、分片、Ping/Pong 心跳协议级支持。
+
+## 四者能力对比
+
+| | HTTP/1.1 | HTTP/2 | SSE（H1/H2/H3） | WebSocket |
+| --- | --- | --- | --- | --- |
+| 通信模型 | 请求-响应 | 请求-响应（多路复用） | 服务端单向推 | 全双工双向 |
+| 连接模式 | 短/长（keep-alive） | 单长连接多路复用 | 长连接 Chunked | Upgrade 后帧长连接 |
+| 双向 | ❌ | ❌（请求-响应） | ❌ | ✅ |
+| 二进制 | ✅ 响应体 | ✅ 帧但应用层不感知 | ❌（纯文本，只能 Base64） | ✅ BINARY 帧 |
+| 多路复用 | ❌（同域 6 连接并发） | ✅（应用层无 HoL） | ✅ 在 H2/H3 上自然复用 | ❌ 一个 WS 一个逻辑通道（多通道自己多路） |
+| 自动重连 | N/A | N/A | ✅ EventSource 内置 | ❌ 自己写（或 Socket.IO） |
+| 消息续传 | N/A | N/A | ✅ Last-Event-ID | ❌ 自己实现消息 ID |
+| 心跳 | N/A | HTTP/2 PING | 发注释行 : keepalive | Ping/Pong 控制帧 |
+| 典型用途 | 常规 REST | 常规 REST + 静态资源 | 行情、通知、流式输出 | IM、协作、游戏、信令 |
+
+## 选型经验（面试速记）
+
+1. **服务端单向事件流**（股票/AI 流式返回/通知）→ **SSE**，开发最简单。
+2. **双向高频**（聊天/游戏/协作/信令）→ **WebSocket**。
+3. **不要用 HTTP/2 Server Push 做实时性**——生态已弃用（Chrome 已移除）。
+4. **不要为了 HTTP/2 优化而刻意换掉 WS**：部署端直接启 H2/H3，浏览器 WS 握手会自动走 RFC 8441，不用你改代码。
+5. **Socket.IO 客户端在 H2 下的注意点**：如果同时开了 6 条轮询 + 升级，可能跟同域其他请求竞争 H2 流窗口，监控下 stream concurrency。
+
+## WS 多路复用 vs HTTP/2 多路复用（容易被问）
+
+HTTP/2 是**一个 TCP 上多个 Stream（请求/响应）**，不用浏览器开 6 条 TCP。
+WebSocket 是**一个 TCP 上承载一种"帧协议"**，如果业务要多路（聊天、行情、通知分开），就自己在帧里加 channel 字段，比如：
+\`\`\`json
+{ "channel": "chat", "room": 101, "data": {…} }
+{ "channel": "ticker", "sym": "AAPL", "data": 193.2 }
+\`\`\`
+也可以用 Socket.IO 的 Namespace/Room——本质就是这个思路。所以说两者解决的"复用层级不同"，不冲突。
+
+一句话收尾：**HTTP/2/3 优化了"请求-响应"的高速路，SSE 是"单向送货车"，WebSocket 是真正的"双向双向六车道城市主干道"——各自解决不同的交通问题。**`
+  },
+  {
+    id: 'network-032',
+    category: 'network',
+    title: '从实战角度讲：WebSocket 的线上常见故障与排查手段（抓包、状态码、日志、监控埋点）？',
+    difficulty: '中等',
+    tags: ['WebSocket', '故障排查', '抓包', '监控', 'DevTools', 'Wireshark', '问题诊断'],
+    answer: `## 一、线上最常见的 6 类 WS 故障
+
+| 症状 | 根因分类 | 典型根因 | 快速定位 |
+| --- | --- | --- | --- |
+| 能连但几秒必断，code=1006 | 代理/超时 | Nginx \`proxy_read_timeout 60s\` 默认 | 看连接存活时长是否刚好 60s |
+| 客户端能握手但马上 close(1002/1008) | 服务端校验 | Origin 白名单、子协议回写、鉴权错 | 抓握手响应码 401/403；Sec-WebSocket-Accept 有没有 |
+| 频繁自动重连，页面一卡一卡 | 心跳缺失 + 代理空闲超时 | 30min 中间盒断会话 | 服务端 access log 看"短连比例" |
+| 消息丢失或半天才收到 | 代理缓冲 / Backpressure | Nginx 没关 \`proxy_buffering\`；客户端 bufferedAmount 高水位 | 看 Response Header 里有没有 X-Accel-Buffering: no |
+| 偶发"400 Bad Request" | 协议/传输错 | Socket.IO 客户端用原生 WS 连；或 sid 对不上 | 看请求路径 /sid 参数是否一致 |
+| 服务端 OOM 重启 | 广播/大帧 | 没开 maxPayload；一个房间 1w 人遍历 + 大 JSON | Node \`--inspect\` 抓 heap snapshot |
+
+## 二、浏览器侧快速排查（第一现场）
+
+### 1. Chrome DevTools 看 WS 帧
+DevTools → Network → 找到 \`101 Switching Protocols\` 那条请求 → 切到 **Frames / Messages** 标签：
+- 左边是**帧列表**，每一行是一个帧，方向用 ↑↓ 标记，大小、时间戳都能看。
+- 文本帧直接看内容；二进制帧显示十六进制。
+- **有没有 Ping/Pong**？完全没 Ping，基本就是代理超时问题。
+
+### 2. 控制台观察 readyState
+\`\`\`js
+// 在页面控制台执行，观察生命周期
+window.__ws = ws  // 先把 ws 对象挂出来
+console.table([
+  ['CONNECTING', 0, __ws.readyState === WebSocket.CONNECTING],
+  ['OPEN',       1, __ws.readyState === WebSocket.OPEN],
+  ['CLOSING',    2, __ws.readyState === WebSocket.CLOSING],
+  ['CLOSED',     3, __ws.readyState === WebSocket.CLOSED],
+])
+console.log('bufferedAmount =', __ws.bufferedAmount)
+\`\`\`
+
+### 3. 抓握手响应头
+DevTools → 该请求 → Headers，重点对照：
+\`\`\`
+Request:
+  GET /ws?token=xxx
+  Upgrade: websocket
+  Connection: Upgrade
+  Sec-WebSocket-Version: 13
+  Sec-WebSocket-Key: ...
+  Origin: https://...
+Response:
+  101 Switching Protocols        ← 不是 101？401/403/426/5xx 直接查原因
+  Upgrade: websocket
+  Connection: Upgrade
+  Sec-WebSocket-Accept: ...      ← 缺失/算错？浏览器马上 close
+  Sec-WebSocket-Protocol: ...    ← 如果请求里带了，响应里必须有
+\`\`\`
+
+### 4. 强制走 wss / 忽略证书
+本地调试自签服务：Chrome 里先开一次 HTTPS 页面信任证书。或者用参数启动：
+\`\`\`
+chrome --ignore-certificate-errors --unsafely-treat-insecure-origin-as-secure=https://local.test:8443
+\`\`\`
+
+## 三、服务端 Node 侧日志
+
+### 统一给每个连接一个 requestId，所有日志都带它
+\`\`\`js
+wss.on('connection', (ws, req) => {
+  ws.id = crypto.randomUUID()
+  ws.ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress
+  ws.user = req.auth?.userId ?? null
+  const L = (...a) => console.log(\`[ws \$\{ws.id} u=\$\{ws.user} ip=\$\{ws.ip}]\`, ...a)
+
+  L('connected, total=', wss.clients.size)
+  ws.on('message', (data, isBinary) => {
+    L('recv', isBinary ? 'bin=' + data.length + 'B' : data.slice(0,200))
+  })
+  ws.on('close', (code, reason) => L(\`closed code=\$\{code} reason=\$\{reason.toString()}\`))
+  ws.on('error', (e) => L('error', e))
+})
+\`\`\`
+
+### 关键告警埋点（Prometheus / StatsD）
+指标项：
+- \`ws_connections_total\`（Gauge）：总连接数 → 配合实例数做容量。
+- \`ws_msg_in_bytes\` / \`ws_msg_out_bytes\`（Counter）：进出流量。
+- \`ws_close_code_total{code="1006|1008|4000"}\`（Counter）：按关闭码计数；**1006 突增 = 代理/网络问题；1008 突增 = 鉴权/Origin 策略上线误杀**。
+- \`ws_handshake_duration_ms\`（Histogram）：握手处理耗时。
+- \`ws_broadcast_latency_ms\`（Histogram）：从 Redis Pub 收到 → 最后一个连接 send 完成的耗时。
+
+## 四、TCP / 抓包层（疑难杂症）
+
+### 1. 浏览器端无法看到 Ping/Pong 控制帧？
+DevTools **不会显示 Ping/Pong 帧**（故意隐藏）。要看就用抓包工具。
+
+### 2. Wireshark 过滤
+\`\`\`
+# 按端口
+tcp.port == 8080
+
+# WS 明文（ws://）可直接解码，
+# Wireshark 2.5+ 自动识别 Upgrade: websocket 后切换为 WS 协议。
+# 看 OpCode: Text=1 / Binary=2 / Close=8 / Ping=9 / Pong=A
+#
+# wss://（TLS 加密）需要 SSLKEYLOGFILE 才能解密：
+#   macOS/Linux: export SSLKEYLOGFILE=~/tmp/ssl.log
+#   Windows:     set SSLKEYLOGFILE=C:\\tmp\\ssl.log
+# 然后启动 Chrome，Wireshark 里 Edit→Preferences→TLS→(Pre)-Master-Secret log filename
+\`\`\`
+
+### 3. 服务端用 tcpdump 应急抓包
+\`\`\`bash
+# 抓 TCP 8080 1000 个包存文件，拿回本地 Wireshark 分析
+sudo tcpdump -i any -nn -s 0 -w ws.pcap 'tcp port 8080' -c 1000
+\`\`\`
+
+## 五、典型 Case 案例复盘话术（面试会问）
+
+> **Case A："整点活动开始，WS 连接数从 2k 升到 10k，新连接全超时。"**
+> - 排查：\`ulimit -n\` 单机 65535，实例 8 个，单实例 8192（默认从父进程继承），满了。
+> - 解决：systemd 的 \`LimitNOFILE=1048576\`，重启 Node 进程。
+>
+> **Case B："移动端用户反馈'后台切回来几分钟，WS 显示连着但收不到消息'。"**
+> - 排查：App/iOS 后台把 TCP 挂起，心跳虽然客户端以为在发其实没出。代理那边空闲超时 5min 早已 RST，服务端没收到 Close 也不知道。
+> - 解决：**服务端也启心跳**（服务端 → 客户端 Ping，30s 一次，连续 2 次没 Pong 踢），半开连接及时释放。
+>
+> **Case C："Nginx 后面的 WS，'偶发 1006 断连，刚好 60 秒'。"**
+> - 排查：\`proxy_read_timeout 60s\` 默认值，心跳周期 60s，**还没来得及发就被 Nginx 先切了**。
+> - 解决：心跳 30s，\`proxy_read_timeout 3600s\` 双保险。
+>
+> **Case D："用户 A 和用户 B 聊天，A 能发但 B 收不到。"**
+> - 排查：服务端 2 实例部署，用了 Redis Adapter；但 B 的连接在实例 1，A 的消息到了实例 2；Adapter 连接 Redis 网络抖动导致订阅丢失。
+> - 解决：Adapter 端监控 **订阅连通性**，Redis Pub/Sub 中断时自动重连并告警。
+
+排查口诀：
+> **101 先看握手头，401/403 鉴权/Origin；1006 多半是超时，检查 Nginx 代理头；1008/1002 是协议错，掩码/子协议/版本号；消息丢/延迟看缓冲，bufferedAmount 与 proxy_buffering。**`
   }
 ]
