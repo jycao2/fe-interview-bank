@@ -45,6 +45,12 @@ $RECYCLE.BIN/
 .cache
 *.tsbuildinfo
 
+# Electron build outputs
+release/
+dist_electron/
+*.exe
+*.blockmap
+
 # Temp files
 *.tmp
 *.temp

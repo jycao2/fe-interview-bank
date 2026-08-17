@@ -38,6 +38,41 @@
 
 ---
 
+## 🖼️ 运行截图
+
+<table>
+  <tr>
+    <td align="center"><strong>🏠 首页 / 分类导航 + 搜索</strong><br><img src="screenshots/home.png" width="380"></td>
+    <td align="center"><strong>🔍 关键词搜索（如：闭包）</strong><br><img src="screenshots/search.png" width="380"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>📚 分类浏览（JS / Vue / React 等）</strong><br><img src="screenshots/category.png" width="380"></td>
+    <td align="center"><strong>📄 题目详情 + 答案解析 + 代码高亮</strong><br><img src="screenshots/question-detail.png" width="380"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>📝 模拟考试 · 难度 + 分类选择</strong><br><img src="screenshots/exam-config.png" width="380"></td>
+    <td align="center"><strong>✅ 模拟考试 · 答题中</strong><br><img src="screenshots/exam-taking.png" width="380"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>📊 模拟考试 · 结果 + 分布统计</strong><br><img src="screenshots/exam-result.png" width="380"></td>
+    <td align="center"><strong>⭐ 我的收藏（localStorage 持久化）</strong><br><img src="screenshots/favorites.png" width="380"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>💻 算法实战 · 200 题三难度</strong><br><img src="screenshots/algorithm-list.png" width="380"></td>
+    <td align="center"><strong>🧪 算法实战 · 在线判题 + 题解</strong><br><img src="screenshots/algorithm-taking.png" width="380"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>❌ 统一错题集 · 选择题 Tab</strong><br><img src="screenshots/wrong-questions.png" width="380"></td>
+    <td align="center"><strong>❌ 统一错题集 · 算法 Tab</strong><br><img src="screenshots/wrong-questions-algo-tab.png" width="380"></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>📖 关于页</strong><br><img src="screenshots/about.png" width="380"></td>
+    <td align="center"><strong>🌙 深色模式全局适配</strong><br>所有页面均支持，点击右上角 🌙/☀️ 切换</td>
+  </tr>
+</table>
+
+---
+
 ## 🗂️ 题库覆盖（514 题）
 
 | 分类 | 数量 | 核心主题 |
@@ -129,9 +164,10 @@
 | Vue 3（`<script setup>` + Composition API） | UI 框架 |
 | Vite 5 | 构建工具 / 开发服务器 |
 | Pinia | 状态管理（题目、搜索、收藏、考试、算法实战、选择题错题集、算法错题集） |
-| Vue Router 4 | 路由 |
+| Vue Router 4 | 路由（开发 WebHistory / 生产 HashHistory，兼容 EXE 的 file://） |
 | Marked + highlight.js | Markdown 渲染 + 代码块语法高亮 |
 | Web Worker | 算法实战在线判题的沙箱执行环境 |
+| Electron 30 + electron-builder 24 | 打包成 Windows .exe（安装包 + 免安装便携版） |
 
 ---
 
@@ -141,6 +177,16 @@
 > ```powershell
 > Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 > ```
+>
+> 💡 **国内安装 Electron 慢**？建议前置设置镜像（只对本次命令生效，或写入 `.npmrc`）：
+> ```bash
+> # 方式 1：临时环境变量（推荐）
+> set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+> set ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
+> npm install
+> ```
+
+### 1. 浏览器模式（推荐日常使用）
 
 ```bash
 # 安装依赖
@@ -158,12 +204,41 @@ npm run preview
 
 启动后浏览器访问 **http://localhost:5173/** 即可使用。
 
+### 2. Electron 桌面 EXE 模式（Windows 可双击运行）
+
+```bash
+# ① 安装依赖（首次需要，同上）
+npm install
+
+# ② 本地开发预览：同时启动 Vite + Electron 客户端窗口
+npm run dev:electron
+
+# ③ 打包「安装版 + 免安装便携版」双产物到 release/
+npm run dist:win
+# 产物：
+#   release/前端面试题库-1.0.0-x64-win.exe        → NSIS 安装程序（可选安装目录 + 桌面快捷方式）
+#   release/前端面试题库-1.0.0-x64-portable.exe   → 免安装便携版，双击即可使用
+
+# ④ 仅打包免安装便携版
+npm run dist:win:portable
+
+# ⑤ 仅打包目录（不生成安装包，快速查看 asar 结构）
+npm run pack
+```
+
+> **注意**：打包时会自动先执行 `npm run build` 生成 `dist/`，再由 electron-builder 打包为 EXE。无需手动两步。
+
 ---
 
 ## 📁 项目结构
 
 ```
 .
+├── electron/                   # ⚡ Electron 主进程与 preload
+│   ├── main.js                 #   主进程：窗口管理 / 开发加载 Vite :5173 / 生产加载 dist
+│   └── preload.js              #   预加载：安全桥接 API
+├── build/                      # EXE 打包资源（icon.png 可放此处自定义图标）
+├── screenshots/                # 🖼️ README 运行截图
 ├── public/                     # 静态资源（favicon 等）
 ├── scripts/                    # ⚙️ 工具脚本目录
 │   ├── tests/                  #   调试与临时代码片段（git 忽略）
