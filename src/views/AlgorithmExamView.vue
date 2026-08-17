@@ -2,11 +2,13 @@
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useAlgorithmExamStore } from '@/stores/algorithmExam'
+import { useWrongQuestionsStore } from '@/stores/wrongQuestions'
 import { algorithmProblems, algorithmStats } from '@/data/algorithmExam'
 import { renderMarkdown } from '@/utils/markdown'
 import { difficulties } from '@/data/categories'
 
 const store = useAlgorithmExamStore()
+const wrongStore = useWrongQuestionsStore()
 const {
   phase, problems, currentIndex, currentProblem, currentUserCode,
   total, passedCount, attemptedCount, usedSeconds, startTime,
@@ -73,12 +75,25 @@ function handleTab(e) {
   }
   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
     e.preventDefault()
-    store.runTests(false)
+    doRun()
   }
 }
 
-// 「运行」直接跑全部用例并更新题目状态（合并原"提交评测"的能力）
-async function doRun() { await store.runTests(true) }
+// 「运行」直接跑全部用例、更新题目状态、记录到错题集（答对自动移除）
+async function doRun() {
+  const result = await store.runTests(true)
+  if (!result || !currentProblem.value) return
+  // 失败时记录到错题集，通过时 store 会自动移除
+  const p = currentProblem.value
+  const failedIdx = result.results.findIndex(r => !r.passed)
+  wrongStore.recordAttempt(p.id, {
+    passed: result.passed,
+    duration: Math.floor((Date.now() - (startTime.value || Date.now())) / 1000),
+    failedCase: failedIdx >= 0 ? failedIdx : null,
+    userCode: currentUserCode.value || p.starterCode,
+    error: result.error || null
+  })
+}
 function exit() { store.resetExam() }
 function resetCode() { store.resetCode(); showSolution.value = false }
 

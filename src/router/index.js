@@ -32,6 +32,12 @@ const routes = [
     meta: { title: '算法考试' }
   },
   {
+    path: '/wrong-questions',
+    name: 'wrong-questions',
+    component: () => import('@/views/WrongQuestionsView.vue'),
+    meta: { title: '错题集' }
+  },
+  {
     path: '/favorites',
     name: 'favorites',
     component: () => import('@/views/FavoritesView.vue'),

@@ -50,6 +50,17 @@ const route = useRoute()
             <span class="cat-count">在线判题</span>
           </RouterLink>
         </li>
+        <li>
+          <RouterLink
+            to="/wrong-questions"
+            class="cat-link"
+            :class="{ active: route.name === 'wrong-questions' }"
+          >
+            <span class="cat-icon">❌</span>
+            <span class="cat-name">算法错题集</span>
+            <span class="cat-count">本地存储</span>
+          </RouterLink>
+        </li>
       </ul>
     </div>
 

@@ -34,9 +34,18 @@ const { totalCount, filteredQuestions, keyword } = storeToRefs(store)
       <span class="exam-banner-emoji">💻</span>
       <span class="exam-banner-body">
         <strong>算法实战 · 在线判题</strong>
-        <span class="muted">45 道 LeetCode 风格手写题，浏览器内 Web Worker 沙箱运行，自动判题 →</span>
+        <span class="muted">200 道 LeetCode 风格手写题（含三难度），浏览器内 Web Worker 沙箱运行，自动判题 →</span>
       </span>
       <span class="exam-banner-cta">开始刷题</span>
+    </RouterLink>
+
+    <RouterLink to="/wrong-questions" class="exam-banner wrong-banner">
+      <span class="exam-banner-emoji">❌</span>
+      <span class="exam-banner-body">
+        <strong>算法错题集</strong>
+        <span class="muted">浏览器永久存储你的错题，附历史答题记录与题解，可从错题集生成新考试 →</span>
+      </span>
+      <span class="exam-banner-cta">查看错题</span>
     </RouterLink>
 
     <div class="cat-grid">
@@ -146,6 +155,20 @@ const { totalCount, filteredQuestions, keyword } = storeToRefs(store)
   border-radius: var(--radius-sm);
   font-size: 13px;
   font-weight: 600;
+}
+.algo-banner {
+  background: linear-gradient(135deg, var(--brand-soft), var(--bg-elevated));
+  border-color: var(--brand);
+}
+.wrong-banner {
+  background: linear-gradient(135deg, var(--hard-bg), var(--bg-elevated));
+  border-color: var(--hard);
+}
+.wrong-banner .exam-banner-cta {
+  background: var(--hard);
+}
+.wrong-banner:hover .exam-banner-cta {
+  background: #b51c25;
 }
 @media (max-width: 640px) {
   .exam-banner {

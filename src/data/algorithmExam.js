@@ -1,9 +1,15 @@
 // LeetCode 风格算法题库
 // 每道题包含：描述 / 初始代码 / 测试用例 / 解题思路 / 复杂度
 // 链表题目使用 LINKED_LIST_SETUP，树题目使用 TREE_SETUP（从 runner 导入）
-import { LINKED_LIST_SETUP, TREE_SETUP } from '@/utils/algorithmRunner'
+// 题库分为 4 个片段加载，最终合并到 algorithmProblems
+import { LINKED_LIST_SETUP, TREE_SETUP } from '../utils/algorithmRunner.js'
+import { part1Problems } from './algo_part1.js'
+import { part2Problems } from './algo_part2.js'
+import { part3Problems } from './algo_part3.js'
+import { part4Problems } from './algo_part4.js'
 
-export const algorithmProblems = [
+// 第 1 段：原 45 道（数组/字符串/数学/栈队列/二分/排序/DP/滑动窗口/链表/树）
+const baseProblems = [
   // ====================== 数组（10 道） ======================
   {
     id: 'algo-001',
@@ -2563,6 +2569,15 @@ function isSymmetric(root) {
     timeComplexity: 'O(n)',
     spaceComplexity: 'O(h)'
   }
+]
+
+// 合并 4 个片段共 200 题
+export const algorithmProblems = [
+  ...baseProblems,        // 原 45 道（algo-001 ~ algo-045）
+  ...part1Problems,       // 数组/字符串/数学（algo-046 ~ algo-091，46 道）
+  ...part2Problems,       // 栈队列/二分/排序（algo-092 ~ algo-124，33 道）
+  ...part3Problems,       // DP/滑动窗口/回溯（algo-125 ~ algo-164，40 道）
+  ...part4Problems       // 链表/树/图（algo-165 ~ algo-200，36 道）
 ]
 
 // 按难度统计
