@@ -1,10 +1,11 @@
 # 前端面试题库 · FE Interview Bank
 
-> 🐙 **GitHub**：[github.com/jycao2/fe-interview-bank](https://github.com/jycao2/fe-interview-bank) ｜ 作者：[jycao2](https://github.com/jycao2)
+> 🐙 **GitHub**：[github.com/jycao2/fe-interview-bank](https://github.com/jycao2/fe-interview-bank) ｜ 作者：[jycao2](https://github.com/jycao2) ｜ 📦 **[下载 Windows EXE（v1.0.0）](https://github.com/jycao2/fe-interview-bank/releases/tag/v1.0.0)**
 
 一个基于 **Vue 3 + Vite + Pinia + Vue Router** 的前端技术总结与面试题库项目，收录覆盖全面的前端面试题与**详尽答案解析**，支持分类浏览、全文搜索、难度筛选、收藏、深色模式，**代码块高亮 + 一键复制 / 在线运行**，**LeetCode 风格算法实战 · 在线判题（200 题三难度）**，以及 **统一错题集（模拟考试选择题 + 算法实战手写题，浏览器永久存储 / 历史记录 / 一键生成新考试）**。
 
 > 📊 当前共 **15 个分类 · 514 道题** + 模拟考试 **138 道选择题** + **算法实战 200 道手写题**（简单 / 中等 / 困难三难度），持续扩充中。
+> 📦 不想安装环境？直接下载免安装桌面版：**[前端面试题库-1.0.0-x64-portable.exe](https://github.com/jycao2/fe-interview-bank/releases/tag/v1.0.0)**（70 MB，双击即用）
 
 ---
 
