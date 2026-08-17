@@ -204,7 +204,7 @@ export function runAlgorithm(userCode, functionName, testCases, setup = '', time
 
     const cleanup = () => {
       clearTimeout(timer)
-      worker.terminate()
+      try { worker.terminate() } catch (_) {}
       URL.revokeObjectURL(url)
     }
 
@@ -223,10 +223,11 @@ export function runAlgorithm(userCode, functionName, testCases, setup = '', time
       if (data.type === 'error') {
         resolve({ passed: false, error: data.error, results: [] })
       } else {
+        const results = Array.isArray(data.results) ? data.results : []
         resolve({
-          passed: data.results.every(r => r.passed),
+          passed: results.length > 0 && results.every(r => r.passed),
           error: null,
-          results: data.results
+          results
         })
       }
     }
@@ -240,6 +241,27 @@ export function runAlgorithm(userCode, functionName, testCases, setup = '', time
       })
     }
 
-    worker.postMessage({ setup, userCode, functionName, testCases })
+    // 关键修复：testCases 来自 Pinia store 是 reactive Proxy，无法被 structured clone
+    // 必须先转成纯对象/数组才能 postMessage 到 Worker
+    let plainTestCases
+    try {
+      plainTestCases = JSON.parse(JSON.stringify(testCases))
+    } catch (e) {
+      resolve({ passed: false, error: '测试用例序列化失败: ' + e.message, results: [] })
+      cleanup()
+      return
+    }
+
+    try {
+      worker.postMessage({
+        setup: String(setup || ''),
+        userCode: String(userCode || ''),
+        functionName: String(functionName || ''),
+        testCases: plainTestCases
+      })
+    } catch (e) {
+      cleanup()
+      resolve({ passed: false, error: 'Worker 通信失败: ' + e.message, results: [] })
+    }
   })
 }

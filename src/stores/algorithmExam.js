@@ -55,21 +55,32 @@ export const useAlgorithmExamStore = defineStore('algorithmExam', () => {
     const p = currentProblem.value
     if (!p || isRunning.value) return null
     isRunning.value = true
-    const code = userCodes.value[p.id] || p.starterCode
-    // "运行"只跑前 3 个用例，"提交"跑全部
-    const testCases = submitAll
-      ? p.testCases
-      : p.testCases.slice(0, Math.min(3, p.testCases.length))
+    try {
+      const code = userCodes.value[p.id] || p.starterCode
+      // "运行"只跑前 3 个用例，"提交"跑全部
+      const testCases = submitAll
+        ? p.testCases
+        : p.testCases.slice(0, Math.min(3, p.testCases.length))
 
-    const result = await runAlgorithm(code, p.functionName, testCases, p.setup || '', 5000)
-    lastRunResult.value = { ...result, submitAll }
+      const result = await runAlgorithm(code, p.functionName, testCases, p.setup || '', 5000)
+      lastRunResult.value = { ...result, submitAll }
 
-    if (submitAll) {
-      problemStatus.value[p.id] = result.passed ? 'passed' : 'failed'
+      if (submitAll) {
+        problemStatus.value[p.id] = result.passed ? 'passed' : 'failed'
+      }
+
+      return result
+    } catch (e) {
+      lastRunResult.value = {
+        passed: false,
+        error: '运行出错: ' + (e && e.message ? e.message : String(e)),
+        results: [],
+        submitAll
+      }
+      return lastRunResult.value
+    } finally {
+      isRunning.value = false
     }
-
-    isRunning.value = false
-    return result
   }
 
   function next() {

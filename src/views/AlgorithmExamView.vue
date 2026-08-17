@@ -9,7 +9,7 @@ import { difficulties } from '@/data/categories'
 const store = useAlgorithmExamStore()
 const {
   phase, problems, currentIndex, currentProblem, currentUserCode,
-  total, passedCount, attemptedCount, usedSeconds,
+  total, passedCount, attemptedCount, usedSeconds, startTime,
   lastRunResult, isRunning, problemStatus
 } = storeToRefs(store)
 
@@ -89,6 +89,8 @@ function resetCode() { store.resetCode(); showSolution.value = false }
 let timer = null
 const displayTime = ref('00:00')
 function tick() {
+  // 仅在答题阶段计时，避免 idle 时显示一个无意义的巨大时间
+  if (phase.value !== 'taking' || !startTime.value) return
   const s = usedSeconds.value
   const m = String(Math.floor(s / 60)).padStart(2, '0')
   const ss = String(s % 60).padStart(2, '0')
@@ -224,10 +226,18 @@ const grade = computed(() => {
           </div>
 
           <!-- 参考题解（可折叠） -->
-          <details class="solution-section">
-            <summary @click="showSolution = !showSolution">📖 查看参考题解</summary>
-            <div class="solution-body markdown-body" v-html="renderedSolution"></div>
-          </details>
+          <div class="solution-section">
+            <button
+              type="button"
+              class="solution-toggle"
+              :class="{ open: showSolution }"
+              @click="showSolution = !showSolution"
+            >
+              <span class="solution-toggle-arrow">{{ showSolution ? '▼' : '▶' }}</span>
+              <span>📖 查看参考题解</span>
+            </button>
+            <div v-show="showSolution" class="solution-body markdown-body" v-html="renderedSolution"></div>
+          </div>
         </div>
 
         <!-- 右侧：代码编辑器 + 测试结果 -->
@@ -607,17 +617,39 @@ const grade = computed(() => {
   border-radius: var(--radius-sm);
   overflow: hidden;
 }
-.solution-section summary {
+.solution-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
   padding: 10px 14px;
   cursor: pointer;
   font-size: 14px;
   font-weight: 600;
   color: var(--text-soft);
   user-select: none;
-  transition: background 0.15s;
+  background: var(--bg-elevated);
+  border: none;
+  text-align: left;
+  transition: background 0.15s, color 0.15s;
 }
-.solution-section summary:hover { background: var(--bg-sunken); }
-.solution-body { padding: 12px 14px; font-size: 13px; line-height: 1.7; }
+.solution-toggle:hover { background: var(--bg-sunken); color: var(--text); }
+.solution-toggle.open { color: var(--brand); background: var(--brand-soft); }
+.solution-toggle-arrow {
+  display: inline-block;
+  width: 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: transform 0.15s;
+}
+.solution-toggle.open .solution-toggle-arrow { color: var(--brand); }
+.solution-body {
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.7;
+  border-top: 1px solid var(--border);
+  background: var(--bg-sunken);
+}
 .solution-body :deep(pre) {
   background: var(--code-bg);
   border-radius: var(--radius-sm);
