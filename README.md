@@ -189,8 +189,8 @@ npm run preview
 │       ├── exam.js             # 模拟考试选择题题库（独立结构，138 题，全部带 difficulty 难度字段）
 │       ├── algorithmExam.js    # 算法实战题库（独立结构，45 题，含测试用例与题解）
 │       └── gis.js              # GIS 地理信息分类
-├── screenshots/                # 🖼️ 系统运行截图位置（用户可手动存放展示图）
-│   ├── home.png                #   首页概览（分类卡片 + 搜索 + 题量统计）
+├── screenshots/                # 🖼️ 系统运行截图（已内置，README 中通过相对路径展示）
+│   ├── home.png                #   首页概览（分类卡片 + 搜索 + 题量统计 + Banner）
 │   ├── question-detail.png     #   题目详情页（答案解析 + 代码块复制/运行）
 │   ├── exam-config.png         #   模拟考试开始页（难度模式 + 分类选择）
 │   ├── exam-taking.png         #   答题页（题目 + 选项 + 题号导航）
@@ -204,21 +204,37 @@ npm run preview
 └── README.md
 ```
 
-### 🖼️ 系统运行截图说明
+### 🖼️ 系统运行截图
 
-项目中预留了 **`screenshots/`** 目录用于存放系统运行时的界面截图，便于在 README 或分享文档中直接引用展示：
+项目已在 **`screenshots/`** 目录内置运行截图，下方为实际渲染效果（GitHub 上可直接显示）：
 
-| 截图文件 | 说明 | 采集建议 |
-| --- | --- | --- |
-| `screenshots/home.png` | 首页概览：展示分类卡片、搜索框、总题量统计、深色模式切换等 | 顶部导航完整显示 + 至少 3 行分类卡片 |
-| `screenshots/question-detail.png` | 题目详情页：题目标题、难度 badge、Markdown 答案、代码块高亮 + 复制/运行按钮 | 展示 1-2 个代码块效果 |
-| `screenshots/exam-config.png` | 模拟考试开始页：三种难度模式卡片、10 个分类 chip 选择、规则说明 | 「均衡模式」高亮状态 |
-| `screenshots/exam-taking.png` | 答题页：进度条、分类 + 难度 badge、选项 A/B/C/D、底部题号导航 | 第 5-10 题左右的答题中间状态 |
-| `screenshots/exam-result.png` | 结果页：分数圆环、对/错/未答统计、分类/难度分布条形图、1-2 道错题解析 | 分数 70-85 分（含错题解析）最佳 |
-| `screenshots/algorithm-list.png` | 算法实战选题页：分类筛选 chip、难度 badge、题号导航 | 至少显示 6-8 道题目卡片 |
-| `screenshots/algorithm-taking.png` | 算法答题页：左侧题目描述 + 右侧代码编辑器、底部测试用例通过/失败状态 | 展示 1-2 个测试通过的题目 |
+#### 1. 首页概览
+分类卡片、考试 / 算法实战 Banner、搜索框、题量统计、深色模式切换。
+![首页概览](./screenshots/home.png)
 
-> 💡 截图建议尺寸：宽度 1400px 左右、保留顶部标题栏、配合浅色主题；如需 README 内联引用，可在下方 Markdown 表格中通过 `![首页](./screenshots/home.png)` 插入。
+#### 2. 题目详情 + 答案解析
+题目标题、难度 badge、Markdown 答案、代码块语法高亮 + 复制 / 运行按钮。
+![题目详情](./screenshots/question-detail.png)
+
+#### 3. 模拟考试 · 配置页
+三种难度模式（简单 / 均衡 / 困难）、分类 chip 选择、规则说明。
+![考试配置](./screenshots/exam-config.png)
+
+#### 4. 模拟考试 · 答题页
+进度条、分类 + 难度 badge、选项 A/B/C/D、底部题号导航。
+![考试答题](./screenshots/exam-taking.png)
+
+#### 5. 模拟考试 · 结果页
+分数圆环、对 / 错 / 未答统计、分类 + 难度分布条形图、错题解析。
+![考试结果](./screenshots/exam-result.png)
+
+#### 6. 算法实战 · 选题页
+统计行、筛选栏（难度 + 标签 + 搜索）、题目卡片网格。
+![算法选题](./screenshots/algorithm-list.png)
+
+#### 7. 算法实战 · 答题页
+左侧题目描述 + 复杂度信息，右侧代码编辑器 + 测试用例结果（通过 / 失败状态）。
+![算法答题](./screenshots/algorithm-taking.png)
 
 ---
 

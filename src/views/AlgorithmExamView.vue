@@ -77,11 +77,8 @@ function handleTab(e) {
   }
 }
 
-async function doRun() { await store.runTests(false) }
-async function doSubmit() {
-  await store.runTests(true)
-  // 如果是最后一题，自动滚动到结果
-}
+// 「运行」直接跑全部用例并更新题目状态（合并原"提交评测"的能力）
+async function doRun() { await store.runTests(true) }
 function exit() { store.resetExam() }
 function resetCode() { store.resetCode(); showSolution.value = false }
 
@@ -242,9 +239,6 @@ const grade = computed(() => {
               <button class="btn-run" @click="doRun" :disabled="isRunning">
                 {{ isRunning ? '⏳ 运行中...' : '▶ 运行' }}
               </button>
-              <button class="btn-submit" @click="doSubmit" :disabled="isRunning">
-                {{ isRunning ? '⏳...' : '✓ 提交评测' }}
-              </button>
             </div>
           </div>
 
@@ -263,7 +257,7 @@ const grade = computed(() => {
             <div class="results-header">
               <span v-if="lastRunResult.error" class="result-status error">❌ 执行错误</span>
               <span v-else-if="lastRunResult.passed" class="result-status pass">
-                ✅ {{ lastRunResult.submitAll ? '全部通过' : '样例通过' }}（{{ lastRunResult.results.filter(r => r.passed).length }}/{{ lastRunResult.results.length }}）
+                ✅ 全部通过（{{ lastRunResult.results.filter(r => r.passed).length }}/{{ lastRunResult.results.length }}）
               </span>
               <span v-else class="result-status fail">
                 ❌ 未通过（{{ lastRunResult.results.filter(r => r.passed).length }}/{{ lastRunResult.results.length }}）
@@ -309,8 +303,8 @@ const grade = computed(() => {
 
           <!-- 空状态提示 -->
           <div class="results-empty" v-else>
-            <p>💡 点击 <strong>▶ 运行</strong> 测试样例（前 3 个用例）</p>
-            <p>💡 点击 <strong>✓ 提交评测</strong> 运行全部用例</p>
+            <p>💡 点击 <strong>▶ 运行</strong> 执行代码并判题（运行全部用例）</p>
+            <p>💡 点击 <strong>📖 题解</strong> 查看参考答案</p>
             <p>💡 快捷键 <kbd>Ctrl</kbd> + <kbd>Enter</kbd> 快速运行</p>
           </div>
         </div>
