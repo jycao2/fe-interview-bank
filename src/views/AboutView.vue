@@ -69,6 +69,38 @@ npm run preview  # 预览构建产物</code></pre>
       </p>
     </section>
 
+    <section class="block">
+      <h2>项目仓库</h2>
+      <p>本项目已开源至 GitHub，欢迎 Star ⭐ / PR / Issue。</p>
+      <div class="repo-card">
+        <a
+          class="repo-link"
+          href="https://github.com/jycao2/fe-interview-bank"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <span class="repo-icon">🐙</span>
+          <span class="repo-text">
+            <span class="repo-url">github.com/jycao2/fe-interview-bank</span>
+            <span class="repo-desc">前端面试题库 · 源代码仓库</span>
+          </span>
+          <span class="repo-cta">访问仓库 →</span>
+        </a>
+        <div class="author-row">
+          <span class="author-label">作者：</span>
+          <a
+            class="author-link"
+            href="https://github.com/jycao2"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span class="author-avatar">👾</span>
+            <span class="author-name">jycao2</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
     <p class="footer muted">
       本题库内容仅供学习交流，欢迎补充与指正。
     </p>
@@ -161,6 +193,95 @@ pre code {
   font-size: 13px;
   line-height: 1.7;
 }
+
+/* 项目仓库卡片 */
+.repo-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.repo-link {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  background: linear-gradient(135deg, var(--brand-soft), var(--bg-elevated));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: var(--text);
+  transition: all 0.18s;
+}
+.repo-link:hover {
+  border-color: var(--brand);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+.repo-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+.repo-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.repo-url {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--brand);
+  font-family: 'SF Mono', 'Consolas', monospace;
+  word-break: break-all;
+}
+.repo-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.repo-cta {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.author-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--bg-sunken);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+}
+.author-label {
+  color: var(--text-muted);
+}
+.author-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  color: var(--text);
+  padding: 3px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  transition: all 0.15s;
+}
+.author-link:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+.author-avatar {
+  font-size: 16px;
+}
+.author-name {
+  font-weight: 700;
+  color: var(--brand);
+}
+
 .small {
   font-size: 13px;
 }
