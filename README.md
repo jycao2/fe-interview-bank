@@ -47,55 +47,55 @@
 
 ### 🏠 首页 · 分类导航 + 全文搜索
 
-![首页](screenshots/home.png)
+![首页](https://github.com/jycao2/fe-interview-bank/releases/download/v1.0.0/home.png)
 
 ### 🔍 关键词搜索（如：闭包）
 
-![搜索](screenshots/search.png)
+![搜索](https://github.com/jycao2/fe-interview-bank/releases/download/v1.0.0/search.png)
 
 ### 📚 分类浏览（JavaScript / Vue / React 等 15 个分类）
 
-![分类](screenshots/category.png)
+![分类](https://github.com/jycao2/fe-interview-bank/releases/download/v1.0.0/category.png)
 
 ### 📄 题目详情 · 答案解析 + 代码块高亮 + 一键复制 / 在线运行
 
-![题目详情](screenshots/question-detail.png)
+![题目详情](https://github.com/jycao2/fe-interview-bank/releases/download/v1.0.0/question-detail.png)
 
 ### 📝 模拟考试 · 难度模式 + 分类选择
 
-![考试配置](screenshots/exam-config.png)
+![考试配置](https://github.com/jycao2/fe-interview-bank/releases/download/v1.0.0/exam-config.png)
 
 ### ✅ 模拟考试 · 答题中（计时 / 题号跳转 / 标记）
 
-![考试答题](screenshots/exam-taking.png)
+![考试答题](https://github.com/jycao2/fe-interview-bank/releases/download/v1.0.0/exam-taking.png)
 
 ### 📊 模拟考试 · 结果页（分数 + 分类/难度分布统计 + 错题解析）
 
-![考试结果](screenshots/exam-result.png)
+![考试结果](https://github.com/jycao2/fe-interview-bank/releases/download/v1.0.0/exam-result.png)
 
 ### 💻 算法实战 · 200 题三难度筛选
 
-![算法列表](screenshots/algorithm-list.png)
+![算法列表](https://github.com/jycao2/fe-interview-bank/releases/download/v1.0.0/algorithm-list.png)
 
 ### 🧪 算法实战 · 在线判题（Web Worker 沙箱 + 题解 + 复杂度提示）
 
-![算法答题](screenshots/algorithm-taking.png)
+![算法答题](https://github.com/jycao2/fe-interview-bank/releases/download/v1.0.0/algorithm-taking.png)
 
 ### ❌ 统一错题集 · 选择题 Tab（选项复核 + 解析 + 历史记录）
 
-![错题集选择题](screenshots/wrong-questions.png)
+![错题集选择题](https://github.com/jycao2/fe-interview-bank/releases/download/v1.0.0/wrong-questions.png)
 
 ### ❌ 统一错题集 · 算法 Tab（题解 + 提交代码 + 错误信息）
 
-![错题集算法](screenshots/wrong-questions-algo-tab.png)
+![错题集算法](https://github.com/jycao2/fe-interview-bank/releases/download/v1.0.0/wrong-questions-algo-tab.png)
 
 ### ⭐ 我的收藏（localStorage 持久化）
 
-![收藏](screenshots/favorites.png)
+![收藏](https://github.com/jycao2/fe-interview-bank/releases/download/v1.0.0/favorites.png)
 
 ### 📖 关于页（含 GitHub 仓库地址与作者信息）
 
-![关于](screenshots/about.png)
+![关于](https://github.com/jycao2/fe-interview-bank/releases/download/v1.0.0/about.png)
 
 ### 🌙 深色模式
 
