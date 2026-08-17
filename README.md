@@ -1,5 +1,7 @@
 # 前端面试题库 · FE Interview Bank
 
+> 🐙 **GitHub**：[github.com/jycao2/fe-interview-bank](https://github.com/jycao2/fe-interview-bank) ｜ 作者：[jycao2](https://github.com/jycao2)
+
 一个基于 **Vue 3 + Vite + Pinia + Vue Router** 的前端技术总结与面试题库项目，收录覆盖全面的前端面试题与**详尽答案解析**，支持分类浏览、全文搜索、难度筛选、收藏、深色模式，**代码块高亮 + 一键复制 / 在线运行**，**LeetCode 风格算法实战 · 在线判题（200 题三难度）**，以及 **统一错题集（模拟考试选择题 + 算法实战手写题，浏览器永久存储 / 历史记录 / 一键生成新考试）**。
 
 > 📊 当前共 **15 个分类 · 514 道题** + 模拟考试 **138 道选择题** + **算法实战 200 道手写题**（简单 / 中等 / 困难三难度），持续扩充中。
@@ -90,7 +92,7 @@
 
 ![收藏](screenshots/favorites.png)
 
-### 📖 关于页
+### 📖 关于页（含 GitHub 仓库地址与作者信息）
 
 ![关于](screenshots/about.png)
 
@@ -489,6 +491,12 @@ export const algorithmProblems = [
 - 算法实战判题功能基于 **Web Worker**，用户代码运行在独立线程，5 秒超时保护，主线程不受阻塞。
 - **统一错题集**会在「模拟考试」交卷或「算法实战」运行后自动收录答错的题目，再次答对自动移除；可在右上角「错题」入口按 Tab 切换查看，也可一键生成新考试重做错题。
 - 内容仅供学习交流使用，欢迎补充与指正。
+
+## 🤝 贡献与反馈
+
+- 🐙 项目仓库：<https://github.com/jycao2/fe-interview-bank>
+- 👤 作者：<https://github.com/jycao2>
+- 📩 欢迎通过 Issue 反馈问题或提交 PR 补充题目。如本项目对您有帮助，欢迎点个 ⭐ Star！
 
 ## License
 
