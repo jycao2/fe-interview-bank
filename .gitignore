@@ -46,10 +46,10 @@ $RECYCLE.BIN/
 *.tsbuildinfo
 
 # Electron build outputs
-release/
+release/*
+!release/前端面试题库-1.0.0-x64-portable.exe
 dist_electron/
 .electron-cache/
-*.exe
 *.blockmap
 
 # Temp files
