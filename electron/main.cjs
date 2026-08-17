@@ -1,4 +1,4 @@
-// Electron 主进程（CommonJS，适配 type:module 包）
+// Electron 主进程（CommonJS 显式声明 .cjs，避免 package.json "type":"module" 冲突）
 // 开发环境：Vite 开发服务器 http://localhost:5173
 // 生产环境：加载 Vite 构建产物 dist/index.html（file:// 协议）
 const { app, BrowserWindow, shell, Menu } = require('electron')
@@ -27,11 +27,10 @@ function createWindow() {
     backgroundColor: '#1a1a1a',
     icon: getIconPath(),
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false,
-      // 允许 localStorage / IndexedDB 等本地存储
       webSecurity: true
     }
   })
@@ -76,7 +75,6 @@ function createWindow() {
   }
 }
 
-// 优先选择可用的图标；没有时 Electron 使用默认
 function getIconPath() {
   try {
     const fs = require('fs')
