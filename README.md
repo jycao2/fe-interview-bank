@@ -356,52 +356,12 @@ npm run pack
 │       ├── algo_part3.js       # 算法题片段 3：DP / 滑动窗口 / 回溯（40 题）
 │       ├── algo_part4.js       # 算法题片段 4：链表 / 树 / 图（36 题）
 │       └── gis.js              # GIS 地理信息分类
-├── screenshots/                # 🖼️ 系统运行截图（已内置，README 中通过相对路径展示）
-│   ├── home.png                #   首页概览（分类卡片 + 搜索 + 题量统计 + Banner）
-│   ├── question-detail.png     #   题目详情页（答案解析 + 代码块复制/运行）
-│   ├── exam-config.png         #   模拟考试开始页（难度模式 + 分类选择）
-│   ├── exam-taking.png         #   答题页（题目 + 选项 + 题号导航）
-│   ├── exam-result.png         #   结果页（分数 + 分布统计 + 错题解析）
-│   ├── algorithm-list.png      #   算法实战选题页（分类筛选 + 难度 badge + 题量）
-│   └── algorithm-taking.png    #   算法答题页（左右分屏 + 代码编辑器 + 测试结果）
 ├── index.html
 ├── vite.config.js
 ├── jsconfig.json
 ├── package.json
 └── README.md
 ```
-
-### 🖼️ 系统运行截图
-
-项目已在 **`screenshots/`** 目录内置运行截图，下方为实际渲染效果（GitHub 上可直接显示）：
-
-#### 1. 首页概览
-分类卡片、考试 / 算法实战 Banner、搜索框、题量统计、深色模式切换。
-![首页概览](./screenshots/home.png)
-
-#### 2. 题目详情 + 答案解析
-题目标题、难度 badge、Markdown 答案、代码块语法高亮 + 复制 / 运行按钮。
-![题目详情](./screenshots/question-detail.png)
-
-#### 3. 模拟考试 · 配置页
-三种难度模式（简单 / 均衡 / 困难）、分类 chip 选择、规则说明。
-![考试配置](./screenshots/exam-config.png)
-
-#### 4. 模拟考试 · 答题页
-进度条、分类 + 难度 badge、选项 A/B/C/D、底部题号导航。
-![考试答题](./screenshots/exam-taking.png)
-
-#### 5. 模拟考试 · 结果页
-分数圆环、对 / 错 / 未答统计、分类 + 难度分布条形图、错题解析。
-![考试结果](./screenshots/exam-result.png)
-
-#### 6. 算法实战 · 选题页
-统计行、筛选栏（难度 + 标签 + 搜索）、题目卡片网格。
-![算法选题](./screenshots/algorithm-list.png)
-
-#### 7. 算法实战 · 答题页
-左侧题目描述 + 复杂度信息，右侧代码编辑器 + 测试用例结果（通过 / 失败状态）。
-![算法答题](./screenshots/algorithm-taking.png)
 
 ---
 
