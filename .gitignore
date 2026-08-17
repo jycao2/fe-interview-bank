@@ -48,6 +48,7 @@ $RECYCLE.BIN/
 # Electron build outputs
 release/
 dist_electron/
+.electron-cache/
 *.exe
 *.blockmap
 

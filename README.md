@@ -40,36 +40,63 @@
 
 ## 🖼️ 运行截图
 
-<table>
-  <tr>
-    <td align="center"><strong>🏠 首页 / 分类导航 + 搜索</strong><br><img src="screenshots/home.png" width="380"></td>
-    <td align="center"><strong>🔍 关键词搜索（如：闭包）</strong><br><img src="screenshots/search.png" width="380"></td>
-  </tr>
-  <tr>
-    <td align="center"><strong>📚 分类浏览（JS / Vue / React 等）</strong><br><img src="screenshots/category.png" width="380"></td>
-    <td align="center"><strong>📄 题目详情 + 答案解析 + 代码高亮</strong><br><img src="screenshots/question-detail.png" width="380"></td>
-  </tr>
-  <tr>
-    <td align="center"><strong>📝 模拟考试 · 难度 + 分类选择</strong><br><img src="screenshots/exam-config.png" width="380"></td>
-    <td align="center"><strong>✅ 模拟考试 · 答题中</strong><br><img src="screenshots/exam-taking.png" width="380"></td>
-  </tr>
-  <tr>
-    <td align="center"><strong>📊 模拟考试 · 结果 + 分布统计</strong><br><img src="screenshots/exam-result.png" width="380"></td>
-    <td align="center"><strong>⭐ 我的收藏（localStorage 持久化）</strong><br><img src="screenshots/favorites.png" width="380"></td>
-  </tr>
-  <tr>
-    <td align="center"><strong>💻 算法实战 · 200 题三难度</strong><br><img src="screenshots/algorithm-list.png" width="380"></td>
-    <td align="center"><strong>🧪 算法实战 · 在线判题 + 题解</strong><br><img src="screenshots/algorithm-taking.png" width="380"></td>
-  </tr>
-  <tr>
-    <td align="center"><strong>❌ 统一错题集 · 选择题 Tab</strong><br><img src="screenshots/wrong-questions.png" width="380"></td>
-    <td align="center"><strong>❌ 统一错题集 · 算法 Tab</strong><br><img src="screenshots/wrong-questions-algo-tab.png" width="380"></td>
-  </tr>
-  <tr>
-    <td align="center"><strong>📖 关于页</strong><br><img src="screenshots/about.png" width="380"></td>
-    <td align="center"><strong>🌙 深色模式全局适配</strong><br>所有页面均支持，点击右上角 🌙/☀️ 切换</td>
-  </tr>
-</table>
+> 📌 以下截图均为本地实拍（1440×900 视口），点击可放大查看原图。
+
+### 🏠 首页 · 分类导航 + 全文搜索
+
+![首页](screenshots/home.png)
+
+### 🔍 关键词搜索（如：闭包）
+
+![搜索](screenshots/search.png)
+
+### 📚 分类浏览（JavaScript / Vue / React 等 15 个分类）
+
+![分类](screenshots/category.png)
+
+### 📄 题目详情 · 答案解析 + 代码块高亮 + 一键复制 / 在线运行
+
+![题目详情](screenshots/question-detail.png)
+
+### 📝 模拟考试 · 难度模式 + 分类选择
+
+![考试配置](screenshots/exam-config.png)
+
+### ✅ 模拟考试 · 答题中（计时 / 题号跳转 / 标记）
+
+![考试答题](screenshots/exam-taking.png)
+
+### 📊 模拟考试 · 结果页（分数 + 分类/难度分布统计 + 错题解析）
+
+![考试结果](screenshots/exam-result.png)
+
+### 💻 算法实战 · 200 题三难度筛选
+
+![算法列表](screenshots/algorithm-list.png)
+
+### 🧪 算法实战 · 在线判题（Web Worker 沙箱 + 题解 + 复杂度提示）
+
+![算法答题](screenshots/algorithm-taking.png)
+
+### ❌ 统一错题集 · 选择题 Tab（选项复核 + 解析 + 历史记录）
+
+![错题集选择题](screenshots/wrong-questions.png)
+
+### ❌ 统一错题集 · 算法 Tab（题解 + 提交代码 + 错误信息）
+
+![错题集算法](screenshots/wrong-questions-algo-tab.png)
+
+### ⭐ 我的收藏（localStorage 持久化）
+
+![收藏](screenshots/favorites.png)
+
+### 📖 关于页
+
+![关于](screenshots/about.png)
+
+### 🌙 深色模式
+
+所有页面均支持深色模式，点击右上角 🌙 / ☀️ 一键切换，CSS 变量统一换肤。
 
 ---
 
@@ -178,13 +205,7 @@
 > Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 > ```
 >
-> 💡 **国内安装 Electron 慢**？建议前置设置镜像（只对本次命令生效，或写入 `.npmrc`）：
-> ```bash
-> # 方式 1：临时环境变量（推荐）
-> set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
-> set ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
-> npm install
-> ```
+> 💡 **国内安装 / 打包慢？** Electron 二进制下载需要走国内镜像，详见下方「Electron 桌面 EXE 模式」一节的镜像配置。
 
 ### 1. 浏览器模式（推荐日常使用）
 
@@ -206,8 +227,31 @@ npm run preview
 
 ### 2. Electron 桌面 EXE 模式（Windows 可双击运行）
 
+> ⚠️ **首次打包前必读**：electron-builder 需要从镜像下载 Electron 二进制（约 110MB）与 NSIS 工具。**国内网络必须配置镜像**，否则会卡在 `github.com` 超时。
+>
+> 项目提供了一键配置脚本（设置国内镜像 + 把缓存重定向到项目内 `.electron-cache/`，避免沙箱/权限问题）：
+>
+> ```powershell
+> # Windows / PowerShell（当前会话生效）
+> .\scripts\set-electron-env.ps1
+> # 永久写入用户环境变量（重启终端仍生效）
+> .\scripts\set-electron-env.ps1 -Persist
+> ```
+>
+> ```bash
+> # macOS / Linux / Git Bash
+> source ./scripts/set-electron-env.sh
+> ```
+>
+> 等价的手动配置（如不想用脚本）：
+> ```bash
+> set ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+> set ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
+> set ELECTRON_CACHE=<项目根目录>\.electron-cache   # 可选，避免沙箱/权限问题
+> ```
+
 ```bash
-# ① 安装依赖（首次需要，同上）
+# ① 安装依赖（首次需要）
 npm install
 
 # ② 本地开发预览：同时启动 Vite + Electron 客户端窗口
@@ -219,14 +263,24 @@ npm run dist:win
 #   release/前端面试题库-1.0.0-x64-win.exe        → NSIS 安装程序（可选安装目录 + 桌面快捷方式）
 #   release/前端面试题库-1.0.0-x64-portable.exe   → 免安装便携版，双击即可使用
 
-# ④ 仅打包免安装便携版
+# ④ 仅打包免安装便携版（推荐，体积小、即开即用）
 npm run dist:win:portable
 
 # ⑤ 仅打包目录（不生成安装包，快速查看 asar 结构）
 npm run pack
 ```
 
-> **注意**：打包时会自动先执行 `npm run build` 生成 `dist/`，再由 electron-builder 打包为 EXE。无需手动两步。
+> **注意**：打包命令会自动先执行 `npm run build` 生成 `dist/`，再由 electron-builder 打包为 EXE。无需手动两步。
+
+#### ✅ 已验证产物（2026-08-17 实测）
+
+| 命令 | 产物 | 体积 | 启动测试 |
+| --- | --- | ---: | --- |
+| `npm run pack` | `release/win-unpacked/前端面试题库.exe` + 依赖目录 | 168.8 MB | ✅ 进程正常，主窗口标题"前端面试题库" |
+| `npm run dist:win:portable` | `release/前端面试题库-1.0.0-x64-portable.exe`（NSIS 自解压单文件） | 70.4 MB | ✅ 双击启动正常，多进程架构（主+GPU+渲染）均运行 |
+| `npm run dist:win` | 同时生成 NSIS 安装包 + portable | 约 70 MB+ | ✅ 同上 |
+
+> 首次打包会下载 Electron 二进制（~110MB）和 NSIS 工具（~2MB）到 `.electron-cache/`，后续打包复用缓存，速度大幅提升。
 
 ---
 
@@ -238,18 +292,21 @@ npm run pack
 │   ├── main.js                 #   主进程：窗口管理 / 开发加载 Vite :5173 / 生产加载 dist
 │   └── preload.js              #   预加载：安全桥接 API
 ├── build/                      # EXE 打包资源（icon.png 可放此处自定义图标）
-├── screenshots/                # 🖼️ README 运行截图
+├── screenshots/                # 🖼️ README 运行截图（13 张实拍）
 ├── public/                     # 静态资源（favicon 等）
 ├── scripts/                    # ⚙️ 工具脚本目录
 │   ├── tests/                  #   调试与临时代码片段（git 忽略）
 │   ├── drafts/                 #   题目草稿 txt（git 忽略）
 │   ├── legacy/                 #   历史追加脚本（git 忽略）
 │   ├── validate-data.mjs       #   🧪 题库数据校验（必跑）
+│   ├── set-electron-env.ps1    #   ⚡ Electron 国内镜像 + 缓存目录一键配置（PowerShell）
+│   ├── set-electron-env.sh     #   ⚡ 同上（Bash / macOS / Linux / Git Bash）
 │   ├── insert-vue.cjs          #   Vue 题目批量插入辅助
 │   ├── insert-react.cjs        #   React 题目批量插入辅助
 │   ├── ts-helper.mjs           #   TS 题目插入辅助
 │   ├── gen-ts-questions.mjs    #   TS 题目生成
 │   └── append-ts-questions.mjs #   TS 题目追加
+├── .electron-cache/            # Electron 二进制缓存（git 忽略，首次打包自动生成）
 ├── src/
 │   ├── main.js                 # 应用入口
 │   ├── App.vue                 # 根组件（Header + Sidebar + RouterView）
