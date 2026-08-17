@@ -30,6 +30,15 @@ const { totalCount, filteredQuestions, keyword } = storeToRefs(store)
       <span class="exam-banner-cta">开始考试</span>
     </RouterLink>
 
+    <RouterLink to="/algorithm-exam" class="exam-banner algo-banner">
+      <span class="exam-banner-emoji">💻</span>
+      <span class="exam-banner-body">
+        <strong>算法实战 · 在线判题</strong>
+        <span class="muted">45 道 LeetCode 风格手写题，浏览器内 Web Worker 沙箱运行，自动判题 →</span>
+      </span>
+      <span class="exam-banner-cta">开始刷题</span>
+    </RouterLink>
+
     <div class="cat-grid">
       <RouterLink
         v-for="c in store.categoryStats"

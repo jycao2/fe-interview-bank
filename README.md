@@ -1,8 +1,8 @@
 # 前端面试题库 · FE Interview Bank
 
-一个基于 **Vue 3 + Vite + Pinia + Vue Router** 的前端技术总结与面试题库项目，收录覆盖全面的前端面试题与**详尽答案解析**，支持分类浏览、全文搜索、难度筛选、收藏、深色模式，以及**代码块高亮 + 一键复制 / 在线运行**。
+一个基于 **Vue 3 + Vite + Pinia + Vue Router** 的前端技术总结与面试题库项目，收录覆盖全面的前端面试题与**详尽答案解析**，支持分类浏览、全文搜索、难度筛选、收藏、深色模式，**代码块高亮 + 一键复制 / 在线运行**，以及 **LeetCode 风格算法实战 · 在线判题**。
 
-> 📊 当前共 **15 个分类 · 514 道题** + 模拟考试 **138 道选择题**，持续扩充中。
+> 📊 当前共 **15 个分类 · 514 道题** + 模拟考试 **138 道选择题** + **算法实战 45 道手写题**，持续扩充中。
 
 ---
 
@@ -18,6 +18,7 @@
 - 🔗 **上下题导航 + 关联推荐**，便于连贯学习。
 - 📝 **Markdown 富文本渲染**：答案支持代码块、表格、引用、列表等。
 - 📝 **模拟考试（进阶）**：从 138 道选择题题库**按分类权重 + 难度比例**抽取 30 题，支持「简单/均衡/困难」三档模式、可选指定分类，交卷即时出分，附**分类 + 难度分布统计**、错题解析与正确答案对照。
+- 💻 **算法实战 · 在线判题（新增）**：45 道 LeetCode 风格手写算法题（数组 / 字符串 / 链表 / 树 / DP / 回溯等），浏览器内 **Web Worker 沙箱**执行用户代码，**5 秒超时保护**，自动比对测试用例并通过/失败判定，支持题解查看、复杂度提示、答题进度统计。
 
 ### 代码区增强（✨ v2）
 答案中所有代码块自带工具栏，支持：
@@ -69,6 +70,30 @@
 - 🗂️ **分类选择**：可选 1 个或多个分类重点练习（权重自动归一化）
 - 📊 **分布统计**：结果页展示「分类分布」+「难度分布」条形图，直观了解知识结构
 
+### 💻 算法实战题库（45 道手写题 · LeetCode 风格）
+
+独立的手写算法题库（结构：`no / title / difficulty / tags / desc / functionName / starterCode / setup / testCases / solution / timeComplexity / spaceComplexity`），覆盖主流算法分类，浏览器内 **Web Worker 沙箱**直接运行用户代码，无需后端：
+
+| 分类 | 题量 | 代表题目 |
+| --- | ---: | --- |
+| 数组 | 9 | 两数之和、三数之和、最大子数组和、合并区间、买卖股票最佳时机 |
+| 字符串 | 6 | 最长回文子串、有效括号、字符串相加、反转单词 |
+| 链表 | 6 | 反转链表、合并有序链表、环形链表、LRU 缓存 |
+| 树 / 二叉树 | 7 | 二叉树层序遍历、最大深度、最近公共祖先、验证二叉搜索树 |
+| 栈 / 队列 | 3 | 用栈实现队列、每日温度、最小栈 |
+| 动态规划 | 6 | 爬楼梯、零钱兑换、最长递增子序列、不同路径 |
+| 回溯 / 全排列 | 3 | 全排列、子集、N 皇后 |
+| 排序 / 查找 | 3 | 二分查找、合并两个有序数组、第 K 大元素 |
+| 设计题 | 2 | 最小栈、LRU 缓存 |
+
+**算法实战特性：**
+- 🧪 **在线判题**：用户代码在浏览器 **Web Worker** 沙箱中执行，主线程不受阻塞，5 秒超时保护。
+- ✅ **测试用例自动比对**：深比较输出与期望，逐条标记「通过/失败」，附失败输入与期望/实际对照。
+- 🔁 **输入/输出序列化**：自动处理数组 / 链表 / 二叉树等数据结构的字符串转换，无需手写 parse。
+- 📋 **题解 + 复杂度**：每题附 Markdown 思路解析、时间复杂度、空间复杂度提示。
+- 🎯 **答题进度**：状态机管理 `idle → taking → result` 三态，支持题目间切换、保存草稿、统一提交。
+- 📱 **响应式分屏**：桌面端左右分屏（题目描述 + 代码编辑器），移动端上下堆叠。
+
 ---
 
 ## 🛠️ 技术栈
@@ -77,9 +102,10 @@
 | --- | --- |
 | Vue 3（`<script setup>` + Composition API） | UI 框架 |
 | Vite 5 | 构建工具 / 开发服务器 |
-| Pinia | 状态管理（题目、搜索、收藏） |
+| Pinia | 状态管理（题目、搜索、收藏、考试、算法实战） |
 | Vue Router 4 | 路由 |
 | Marked + highlight.js | Markdown 渲染 + 代码块语法高亮 |
+| Web Worker | 算法实战在线判题的沙箱执行环境 |
 
 ---
 
@@ -126,12 +152,14 @@ npm run preview
 ├── src/
 │   ├── main.js                 # 应用入口
 │   ├── App.vue                 # 根组件（Header + Sidebar + RouterView）
-│   ├── router/index.js         # 路由配置（首页 / 分类 / 题目 / 收藏 / 考试 / 关于）
+│   ├── router/index.js         # 路由配置（首页 / 分类 / 题目 / 收藏 / 考试 / 算法实战 / 关于）
 │   ├── stores/
 │   │   ├── questions.js       # Pinia store：题目 / 搜索 / 收藏
-│   │   └── exam.js            # 考试状态管理（idle / taking / result 三态）
+│   │   ├── exam.js            # 考试状态管理（idle / taking / result 三态）
+│   │   └── algorithmExam.js   # 算法实战状态管理（题目列表 / 用户代码 / 判题结果）
 │   ├── composables/useTheme.js # 主题（深色模式）
 │   ├── utils/markdown.js       # Markdown + 代码块（高亮/复制/运行）封装
+│   ├── utils/algorithmRunner.js # Web Worker 沙箱判题器（超时保护 / 输入输出转换 / 深比较）
 │   ├── assets/styles/
 │   │   ├── main.css            # 全局样式
 │   │   └── variables.css       # CSS 变量（亮 / 暗主题）
@@ -149,6 +177,7 @@ npm run preview
 │   │   ├── QuestionView.vue    # 题目详情 + 答案解析
 │   │   ├── FavoritesView.vue   # 收藏夹
 │   │   ├── ExamView.vue        # 模拟考试（开始页 / 答题页 / 结果页）
+│   │   ├── AlgorithmExamView.vue # 算法实战（选题 / 答题 / 在线判题 / 结果）
 │   │   └── AboutView.vue       # 关于
 │   └── data/                   # 📚 题库数据（可持续扩充）
 │       ├── categories.js       # 分类元信息（id/名称/图标/简介）
@@ -157,14 +186,17 @@ npm run preview
 │       ├── browser.js · network.js · performance.js
 │       ├── engineering.js · algorithm.js · handwriting.js
 │       ├── aicode.js           # AI 编程分类
-│       ├── exam.js             # 模拟考试选择题题库（独立结构，120 题，全部带 difficulty 难度字段）
+│       ├── exam.js             # 模拟考试选择题题库（独立结构，138 题，全部带 difficulty 难度字段）
+│       ├── algorithmExam.js    # 算法实战题库（独立结构，45 题，含测试用例与题解）
 │       └── gis.js              # GIS 地理信息分类
 ├── screenshots/                # 🖼️ 系统运行截图位置（用户可手动存放展示图）
 │   ├── home.png                #   首页概览（分类卡片 + 搜索 + 题量统计）
 │   ├── question-detail.png     #   题目详情页（答案解析 + 代码块复制/运行）
 │   ├── exam-config.png         #   模拟考试开始页（难度模式 + 分类选择）
 │   ├── exam-taking.png         #   答题页（题目 + 选项 + 题号导航）
-│   └── exam-result.png         #   结果页（分数 + 分布统计 + 错题解析）
+│   ├── exam-result.png         #   结果页（分数 + 分布统计 + 错题解析）
+│   ├── algorithm-list.png      #   算法实战选题页（分类筛选 + 难度 badge + 题量）
+│   └── algorithm-taking.png    #   算法答题页（左右分屏 + 代码编辑器 + 测试结果）
 ├── index.html
 ├── vite.config.js
 ├── jsconfig.json
@@ -183,6 +215,8 @@ npm run preview
 | `screenshots/exam-config.png` | 模拟考试开始页：三种难度模式卡片、10 个分类 chip 选择、规则说明 | 「均衡模式」高亮状态 |
 | `screenshots/exam-taking.png` | 答题页：进度条、分类 + 难度 badge、选项 A/B/C/D、底部题号导航 | 第 5-10 题左右的答题中间状态 |
 | `screenshots/exam-result.png` | 结果页：分数圆环、对/错/未答统计、分类/难度分布条形图、1-2 道错题解析 | 分数 70-85 分（含错题解析）最佳 |
+| `screenshots/algorithm-list.png` | 算法实战选题页：分类筛选 chip、难度 badge、题号导航 | 至少显示 6-8 道题目卡片 |
+| `screenshots/algorithm-taking.png` | 算法答题页：左侧题目描述 + 右侧代码编辑器、底部测试用例通过/失败状态 | 展示 1-2 个测试通过的题目 |
 
 > 💡 截图建议尺寸：宽度 1400px 左右、保留顶部标题栏、配合浅色主题；如需 README 内联引用，可在下方 Markdown 表格中通过 `![首页](./screenshots/home.png)` 插入。
 
@@ -231,6 +265,39 @@ node scripts/validate-data.mjs
 ```
 校验内容：14 个数据文件能否被正确 `import`、每题的 `id/title/answer` 类型是否正确、Markdown 代码围栏是否闭合；**全部通过后再构建**。
 
+### 4. 添加算法实战题（在线判题）
+
+算法实战题库独立于问答题库，位于 [src/data/algorithmExam.js](file:///d:/code/fe-interview-bank/src/data/algorithmExam.js)，结构如下：
+
+```js
+export const algorithmProblems = [
+  {
+    id: 'algo-001',
+    no: '1',                      // 显示序号
+    title: '两数之和',
+    difficulty: '简单',            // 简单 | 中等 | 困难
+    tags: ['数组', '哈希表'],
+    desc: '题目描述（支持 Markdown）',
+    functionName: 'twoSum',       // 用户需实现的函数名
+    starterCode: 'function twoSum(nums, target) {\n  // 写你的代码\n}',
+    setup: '',                    // 可选：辅助函数 / 类型定义（如链表节点）
+    testCases: [
+      { input: [[2,7,11,15], 9], expected: [0,1] },
+      { input: [[3,2,4], 6], expected: [1,2] }
+    ],
+    solution: '### 解题思路\n\n使用哈希表存储...',  // Markdown 题解
+    timeComplexity: 'O(n)',
+    spaceComplexity: 'O(n)'
+  }
+  // ...
+]
+```
+
+**注意事项：**
+- `testCases.input` 是数组，会作为参数依次传入用户函数（如 `twoSum(...input)`）。
+- 链表 / 二叉树等复杂数据结构请在 `setup` 中提供构造函数，判题器会自动调用反序列化。
+- 判题器位于 [src/utils/algorithmRunner.js](file:///d:/code/fe-interview-bank/src/utils/algorithmRunner.js)，使用 **Web Worker** 沙箱执行，**5 秒超时保护**。
+
 ---
 
 ## 📝 说明
@@ -238,6 +305,7 @@ node scripts/validate-data.mjs
 - 题库内容为内置数据，**纯前端项目**，无后端依赖。
 - 收藏 / 主题偏好保存在浏览器 `localStorage`，清理浏览器数据会丢失。
 - 代码「在线运行」功能为浏览器内沙盒执行，JS 支持 `async/await`，HTML/CSS 在同源 iframe 预览，保证隔离性。
+- 算法实战判题功能基于 **Web Worker**，用户代码运行在独立线程，5 秒超时保护，主线程不受阻塞。
 - 内容仅供学习交流使用，欢迎补充与指正。
 
 ## License

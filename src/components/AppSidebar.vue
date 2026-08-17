@@ -26,6 +26,34 @@ const route = useRoute()
     </div>
 
     <div class="side-section">
+      <div class="side-title">实战练习</div>
+      <ul class="cat-list">
+        <li>
+          <RouterLink
+            to="/exam"
+            class="cat-link"
+            :class="{ active: route.name === 'exam' }"
+          >
+            <span class="cat-icon">📝</span>
+            <span class="cat-name">模拟考试</span>
+            <span class="cat-count">选择题</span>
+          </RouterLink>
+        </li>
+        <li>
+          <RouterLink
+            to="/algorithm-exam"
+            class="cat-link"
+            :class="{ active: route.name === 'algorithm-exam' }"
+          >
+            <span class="cat-icon">💻</span>
+            <span class="cat-name">算法实战</span>
+            <span class="cat-count">在线判题</span>
+          </RouterLink>
+        </li>
+      </ul>
+    </div>
+
+    <div class="side-section">
       <div class="side-title">分类导航</div>
       <ul class="cat-list">
         <li v-for="c in store.categoryStats" :key="c.id">

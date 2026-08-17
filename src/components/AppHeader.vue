@@ -19,6 +19,7 @@ const { theme, toggleTheme } = useTheme()
       <nav class="nav">
         <RouterLink to="/" exact-active-class="active">首页</RouterLink>
         <RouterLink to="/exam" active-class="active">考试</RouterLink>
+        <RouterLink to="/algorithm-exam" active-class="active">算法</RouterLink>
         <RouterLink to="/favorites" active-class="active">收藏</RouterLink>
         <RouterLink to="/about" active-class="active">关于</RouterLink>
       </nav>

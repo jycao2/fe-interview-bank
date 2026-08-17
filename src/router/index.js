@@ -26,6 +26,12 @@ const routes = [
     meta: { title: '模拟考试' }
   },
   {
+    path: '/algorithm-exam',
+    name: 'algorithm-exam',
+    component: () => import('@/views/AlgorithmExamView.vue'),
+    meta: { title: '算法考试' }
+  },
+  {
     path: '/favorites',
     name: 'favorites',
     component: () => import('@/views/FavoritesView.vue'),
