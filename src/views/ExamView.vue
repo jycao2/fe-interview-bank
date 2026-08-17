@@ -1,11 +1,15 @@
 <script setup>
 import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useExamStore } from '@/stores/exam'
+import { useExamWrongQuestionsStore } from '@/stores/examWrongQuestions'
 import { examQuestionCount } from '@/data/exam'
 import { categories, difficulties } from '@/data/categories'
 
+const router = useRouter()
 const store = useExamStore()
+const wrongStore = useExamWrongQuestionsStore()
 const {
   phase, questions, answers, currentIndex, total, currentQuestion,
   currentAnswer, answeredCount, progress, result, usedSeconds,
@@ -60,6 +64,8 @@ function confirmSubmit() {
 function doSubmit() {
   showConfirm.value = false
   store.submitExam()
+  // 记录到选择题错题集：答对自动移除，答错自动收录
+  wrongStore.recordExamResult(questions.value, answers.value)
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 function retry() {
@@ -68,6 +74,26 @@ function retry() {
 }
 function exit() {
   store.resetExam()
+}
+function viewWrongQuestions() {
+  router.push('/wrong-questions')
+}
+
+// 是否有选择题错题可重做
+const hasWrongQuestions = computed(() => wrongStore.count > 0)
+
+// 从选择题错题集生成新考试
+function startFromWrong() {
+  const wrongExamQuestions = wrongStore.generateExam({ limit: 30, shuffle: true })
+  if (!wrongExamQuestions.length) return
+  // 直接覆盖 store 状态进入答题阶段（绕过默认抽题）
+  store.questions = wrongExamQuestions
+  store.answers = new Array(wrongExamQuestions.length).fill(-1)
+  store.currentIndex = 0
+  store.startTime = Date.now()
+  store.endTime = 0
+  store.phase = 'taking'
+  window.scrollTo({ top: 0 })
 }
 
 // 难度模式元数据
@@ -160,6 +186,13 @@ const timeText = computed(() => {
       </div>
 
       <button class="btn-primary big" @click="start">开始考试 →</button>
+      <button
+        v-if="hasWrongQuestions"
+        class="btn-wrong-start"
+        @click="startFromWrong"
+      >
+        ❌ 从错题集重做（{{ wrongStore.count }} 题待攻克）
+      </button>
     </section>
 
     <!-- ============ 答题页 ============ -->
@@ -257,6 +290,7 @@ const timeText = computed(() => {
 
         <div class="result-actions">
           <button class="btn-primary" @click="retry">再考一次</button>
+          <button class="btn-wrong-start" @click="viewWrongQuestions">❌ 查看错题集</button>
           <button class="btn-ghost" @click="exit">返回</button>
         </div>
       </div>
@@ -519,6 +553,8 @@ const timeText = computed(() => {
 .btn-primary.big {
   padding: 14px 36px;
   font-size: 16px;
+  display: block;
+  margin: 0 auto 12px;
 }
 .btn-ghost {
   background: var(--bg-elevated);
@@ -539,6 +575,21 @@ const timeText = computed(() => {
 }
 .btn-submit:hover {
   filter: brightness(1.1);
+}
+.btn-wrong-start {
+  background: var(--bg-elevated);
+  color: var(--hard);
+  border: 1.5px solid var(--hard);
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-wrong-start:hover {
+  background: var(--hard);
+  color: #fff;
 }
 
 /* ---- 答题页 ---- */

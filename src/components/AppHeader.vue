@@ -1,8 +1,16 @@
 <script setup>
 import { RouterLink } from 'vue-router'
+import { computed } from 'vue'
 import { useTheme } from '@/composables/useTheme'
+import { useWrongQuestionsStore } from '@/stores/wrongQuestions'
+import { useExamWrongQuestionsStore } from '@/stores/examWrongQuestions'
 
 const { theme, toggleTheme } = useTheme()
+const algoWrongStore = useWrongQuestionsStore()
+const mcqWrongStore = useExamWrongQuestionsStore()
+
+// 错题总数（选择题 + 算法）
+const totalWrongCount = computed(() => algoWrongStore.count + mcqWrongStore.count)
 </script>
 
 <template>
@@ -20,7 +28,10 @@ const { theme, toggleTheme } = useTheme()
         <RouterLink to="/" exact-active-class="active">首页</RouterLink>
         <RouterLink to="/exam" active-class="active">考试</RouterLink>
         <RouterLink to="/algorithm-exam" active-class="active">算法</RouterLink>
-        <RouterLink to="/wrong-questions" active-class="active">错题</RouterLink>
+        <RouterLink to="/wrong-questions" active-class="active" class="wrong-link">
+          错题
+          <span v-if="totalWrongCount > 0" class="wrong-badge">{{ totalWrongCount }}</span>
+        </RouterLink>
         <RouterLink to="/favorites" active-class="active">收藏</RouterLink>
         <RouterLink to="/about" active-class="active">关于</RouterLink>
       </nav>
@@ -97,6 +108,30 @@ const { theme, toggleTheme } = useTheme()
   color: var(--brand);
   background: var(--brand-soft);
   font-weight: 600;
+}
+.nav a.wrong-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  position: relative;
+}
+.wrong-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: var(--hard);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
+  line-height: 1;
+}
+.nav a.wrong-link.active .wrong-badge {
+  background: var(--hard);
+  color: #fff;
 }
 .theme-btn {
   display: inline-flex;

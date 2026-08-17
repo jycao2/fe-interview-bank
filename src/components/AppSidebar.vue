@@ -50,18 +50,10 @@ const route = useRoute()
             <span class="cat-count">在线判题</span>
           </RouterLink>
         </li>
-        <li>
-          <RouterLink
-            to="/wrong-questions"
-            class="cat-link"
-            :class="{ active: route.name === 'wrong-questions' }"
-          >
-            <span class="cat-icon">❌</span>
-            <span class="cat-name">算法错题集</span>
-            <span class="cat-count">本地存储</span>
-          </RouterLink>
-        </li>
       </ul>
+      <p class="side-tip">
+        💡 答错的题目会自动收入右上角「<RouterLink to="/wrong-questions" class="tip-link">错题</RouterLink>」，可重做与查看历史。
+      </p>
     </div>
 
     <div class="side-section">
@@ -189,6 +181,22 @@ const route = useRoute()
   padding: 0 6px;
   line-height: 1.5;
 }
+.side-tip {
+  margin: 8px 6px 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-sunken);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--brand);
+  line-height: 1.6;
+}
+.tip-link {
+  color: var(--brand);
+  font-weight: 600;
+  text-decoration: none;
+}
+.tip-link:hover { text-decoration: underline; }
 @media (max-width: 900px) {
   .sidebar {
     display: none;

@@ -42,8 +42,8 @@ const { totalCount, filteredQuestions, keyword } = storeToRefs(store)
     <RouterLink to="/wrong-questions" class="exam-banner wrong-banner">
       <span class="exam-banner-emoji">❌</span>
       <span class="exam-banner-body">
-        <strong>算法错题集</strong>
-        <span class="muted">浏览器永久存储你的错题，附历史答题记录与题解，可从错题集生成新考试 →</span>
+        <strong>错题集（选择题 + 算法）</strong>
+        <span class="muted">模拟考试与算法实战的错题统一收录，浏览器永久存储，附历史记录与解析，可一键生成新考试 →</span>
       </span>
       <span class="exam-banner-cta">查看错题</span>
     </RouterLink>
