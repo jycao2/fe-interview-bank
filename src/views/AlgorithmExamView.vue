@@ -225,18 +225,9 @@ const grade = computed(() => {
             </div>
           </div>
 
-          <!-- 参考题解（可折叠） -->
-          <div class="solution-section">
-            <button
-              type="button"
-              class="solution-toggle"
-              :class="{ open: showSolution }"
-              @click="showSolution = !showSolution"
-            >
-              <span class="solution-toggle-arrow">{{ showSolution ? '▼' : '▶' }}</span>
-              <span>📖 查看参考题解</span>
-            </button>
-            <div v-show="showSolution" class="solution-body markdown-body" v-html="renderedSolution"></div>
+          <!-- 参考题解入口（移到编辑器头部按钮区，点击弹出模态框） -->
+          <div class="solution-hint">
+            💡 卡住了？点击右上方 <strong>📖 题解</strong> 按钮查看参考答案
           </div>
         </div>
 
@@ -247,6 +238,7 @@ const grade = computed(() => {
             <span class="lang-badge">JavaScript</span>
             <div class="editor-actions">
               <button class="btn-ghost" @click="resetCode" title="重置为初始代码">↺ 重置</button>
+              <button class="btn-solution" @click="showSolution = true" title="查看参考题解">📖 题解</button>
               <button class="btn-run" @click="doRun" :disabled="isRunning">
                 {{ isRunning ? '⏳ 运行中...' : '▶ 运行' }}
               </button>
@@ -323,6 +315,25 @@ const grade = computed(() => {
           </div>
         </div>
       </div>
+
+      <!-- 参考题解模态框 -->
+      <Teleport to="body">
+        <div v-if="showSolution" class="solution-modal-mask" @click.self="showSolution = false">
+          <div class="solution-modal">
+            <div class="solution-modal-header">
+              <h3>📖 参考题解 · {{ currentProblem?.title }}</h3>
+              <button class="solution-modal-close" @click="showSolution = false" title="关闭">✕</button>
+            </div>
+            <div class="solution-modal-body markdown-body" v-html="renderedSolution"></div>
+            <div class="solution-modal-footer">
+              <span class="complexity-inline">
+                ⏱ {{ currentProblem?.timeComplexity }} · 💾 {{ currentProblem?.spaceComplexity }}
+              </span>
+              <button class="btn-primary" @click="showSolution = false">关闭</button>
+            </div>
+          </div>
+        </div>
+      </Teleport>
 
       <!-- 底部导航 -->
       <div class="nav-bar">
@@ -611,53 +622,125 @@ const grade = computed(() => {
   border-radius: var(--radius-sm);
 }
 
-.solution-section {
-  margin-top: 20px;
-  border: 1px solid var(--border);
+.solution-hint {
+  margin-top: 16px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--text-muted);
+  background: var(--bg-sunken);
   border-radius: var(--radius-sm);
-  overflow: hidden;
+  border: 1px dashed var(--border);
 }
-.solution-toggle {
+.solution-hint strong { color: var(--brand); }
+
+/* 题解按钮 */
+.btn-solution {
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  color: var(--text-soft);
+  border-radius: var(--radius-sm);
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-solution:hover {
+  border-color: var(--medium);
+  color: var(--medium);
+  background: var(--medium-bg);
+}
+
+/* 题解模态框（Teleport 到 body，不受父容器 overflow/scroll 影响） */
+.solution-modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(2px);
+  z-index: 1000;
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 14px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-soft);
-  user-select: none;
+  justify-content: center;
+  padding: 24px;
+}
+.solution-modal {
   background: var(--bg-elevated);
-  border: none;
-  text-align: left;
-  transition: background 0.15s, color 0.15s;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  width: min(820px, 100%);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
-.solution-toggle:hover { background: var(--bg-sunken); color: var(--text); }
-.solution-toggle.open { color: var(--brand); background: var(--brand-soft); }
-.solution-toggle-arrow {
-  display: inline-block;
-  width: 14px;
-  font-size: 12px;
-  color: var(--text-muted);
-  transition: transform 0.15s;
+.solution-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sunken);
 }
-.solution-toggle.open .solution-toggle-arrow { color: var(--brand); }
-.solution-body {
-  padding: 12px 14px;
-  font-size: 13px;
+.solution-modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+.solution-modal-close {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.15s;
+}
+.solution-modal-close:hover {
+  background: var(--hard-bg);
+  color: var(--hard);
+  border-color: var(--hard);
+}
+.solution-modal-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  font-size: 14px;
   line-height: 1.7;
+  color: var(--text);
+}
+.solution-modal-body :deep(pre) {
+  background: var(--code-bg);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  overflow-x: auto;
+  font-size: 13px;
+  margin: 12px 0;
+}
+.solution-modal-body :deep(code) {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+}
+.solution-modal-body :deep(p) { margin: 10px 0; }
+.solution-modal-body :deep(h2) {
+  font-size: 16px;
+  margin: 16px 0 8px;
+}
+.solution-modal-body :deep(.code-block-toolbar) { display: none; }
+.solution-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
   border-top: 1px solid var(--border);
   background: var(--bg-sunken);
 }
-.solution-body :deep(pre) {
-  background: var(--code-bg);
-  border-radius: var(--radius-sm);
-  padding: 10px;
-  overflow-x: auto;
-  font-size: 12px;
+.complexity-inline {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-family: 'SF Mono', Monaco, monospace;
 }
-.solution-body :deep(.code-block-toolbar) { display: none; }
 
 /* 编辑器 */
 .editor-header {
