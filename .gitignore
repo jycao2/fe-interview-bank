@@ -48,8 +48,10 @@ $RECYCLE.BIN/
 # Electron build outputs
 release/*
 !release/前端面试题库-1.0.0-x64-portable.exe
+!release/前端面试题库-1.0.0-x64-win.exe
 dist_electron/
 .electron-cache/
+.electron-builder-cache/
 *.blockmap
 
 # Temp files

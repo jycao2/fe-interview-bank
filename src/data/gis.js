@@ -1,2936 +1,754 @@
 export const gisQuestions = [
-  {
-    id: 'gis-001',
-    category: 'gis',
-    title: '前端 GIS 开发常见技术栈与选型？',
-    difficulty: '简单',
-    tags: ['GIS', '技术栈', 'Leaflet', 'Mapbox', 'OpenLayers', 'ArcGIS'],
-    answer: `## 前端 GIS 三大主流库
-
-| 库 | 体积 | 许可 | 适用场景 | 特点 |
-| --- | --- | --- | --- | --- |
-| **Leaflet** | ~40KB | BSD-2 | 轻量地图展示、移动端 H5 | API 极简、插件生态丰富、上手快 |
-| **Mapbox GL JS** | ~600KB | 收费/Mapbox TOS | 3D、矢量切片、高度自定义样式 | WebGL 渲染、支持自定义 style spec、3D 地形/建筑 |
-| **OpenLayers** | ~200KB+（按模块） | BSD-2 | 企业级 GIS、复杂业务 | WMS/WFS/WMTS 全协议支持、功能最全面 |
-| **ArcGIS Maps SDK for JS** | 较大 | 商业/Esri | 政企、与 ArcGIS Server 深度集成 | 完整 GIS 分析能力、3D SceneView |
-| **Deck.gl** | ~300KB | MIT | 大规模地理可视化、大数据可视化 | WebGL 图层（百万级点/线/面）、常与 Mapbox/Leaflet 叠加 |
-
-## 基础概念栈
-
-- **数据格式**：GeoJSON（前端最常用）、TopoJSON、Shapefile（shp）、KML、GPX、CSV（经纬度列）。
-- **瓦片坐标系**：XYZ 瓦片（Google/OSM 方案）、TMS、WMS/WMTS。
-- **投影坐标系**：WGS84 (EPSG:4326) 经纬度；Web Mercator (EPSG:3857) 地图渲染投影；国测局 GCJ-02、百度 BD-09 加密偏移。
-- **空间分析**：Turf.js（布尔运算、缓冲、质心、距离、面积、点在面内等 100+ 方法）。
-
-## 典型选型
-
-### 1. 政府/企业内部 GIS 系统
-→ **OpenLayers + Turf.js**，或直接用 ArcGIS SDK（已有 ArcGIS Server/Portal 时）。
-- 需对接 WMS/WFS、矢量图层叠加、与业务系统深度集成。
-
-### 2. C 端 / 移动端 H5 轻量应用（轨迹、LBS）
-→ **Leaflet + 高德/腾讯瓦片**。
-- 资源受限但功能明确，Leaflet 插件生态刚好够用。
-
-### 3. 酷炫 3D、自定义样式、面向海外
-→ **Mapbox GL JS**（或基于它的 MapLibre GL JS，开源分支无需 Mapbox token）。
-- 3D 地形、挤压建筑、动画 camera、自定义 style.json。
-
-### 4. 百万级点/热图/OD 飞线大数据可视化
-→ **Deck.gl** 叠加在 Mapbox 或 Leaflet 之上。
-- WebGL 驱动，ScatterplotLayer / HeatmapLayer / ArcLayer。
-
-### 5. 纯 Cesium 数字孪生 / 三维地球
-→ **CesiumJS**，或国内 **Mars3D / ThingJS**。
-- 倾斜摄影、BIM、粒子特效、时间轴动画。
-
-## 国内地图合规注意
-
-中国地区的地图必须使用**有资质的地图供应商**：
-- 高德（AMap JS API）：文档中文全、LBS POI 强。
-- 百度地图 JS API：城市 POI 较全。
-- 腾讯地图 JS API。
-- 天地图（国家地理信息公共服务平台）：政务合规、免费 key 可商用。
-
-> 注意：用 OSM/谷歌瓦片叠加国内业务数据时，需要做**坐标偏移纠偏**（WGS84 → GCJ-02），否则数据会"飘"几百米。
-
-## 必备工具库
-
-\`\`\`bash
-npm i @turf/turf proj4  # 空间分析 + 坐标转换
-# 国内偏移
-npm i gcoord            # WGS84 / GCJ-02 / BD-09 互转
-\`\`\`
-
-\`\`\`js
-import * as turf from '@turf/turf'
-import gcoord from 'gcoord'
-
-// 点是否在面内
-const pt = turf.point([116.397, 39.908])
-const poly = turf.polygon([[[116,39],[117,39],[117,40],[116,40],[116,39]]])
-console.log(turf.booleanPointInPolygon(pt, poly)) // true/false
-
-// WGS84 → 高德 GCJ-02
-const [lng, lat] = gcoord.transform([116.397, 39.908], gcoord.WGS84, gcoord.GCJ02)
-\`\`\`
-
-## 小结
-
-- **轻量、移动端优先** → Leaflet。
-- **功能全、协议全（WMS/WFS）** → OpenLayers。
-- **3D/自定义样式** → Mapbox GL / MapLibre。
-- **三维地球/数字孪生** → Cesium。
-- **大数据可视化** → Deck.gl / L7（蚂蚁开源，封装友好）。
-- **空间分析一定加 Turf.js**，别自己写几何算法。`
-  },
-  {
-    id: 'gis-002',
-    category: 'gis',
-    title: 'GeoJSON 格式规范与常用几何类型？',
-    difficulty: '中等',
-    tags: ['GeoJSON', '数据格式', '几何类型', 'FeatureCollection'],
-    answer: `## 什么是 GeoJSON
-
-基于 JSON 的地理空间数据编码格式（RFC 7946），是前端 GIS 库最通用的"母语"：Leaflet、Mapbox、OpenLayers、Turf、Deck.gl 都原生吃 GeoJSON。
-
-核心规则：
-- 坐标顺序**永远是 [经度 lng, 纬度 lat, 可选高度 alt]**（注意和日常 "lat-lng" 反着来）。
-- 坐标参考默认 WGS84 (EPSG:4326)。
-- 数值类型用 number（不要字符串）。
-
-## 基本结构
-
-### 1. FeatureCollection（最常用）
-
-一组要素的集合，带一个数组 features。
-
-\`\`\`json
 {
-  "type": "FeatureCollection",
-  "features": [
-    {
-      "type": "Feature",
-      "geometry": { "type": "Point", "coordinates": [116.397, 39.908] },
-      "properties": { "name": "天安门", "level": 5 }
-    },
-    {
-      "type": "Feature",
-      "geometry": { "type": "LineString", "coordinates": [[116.3, 39.9], [116.4, 39.9], [116.5, 40.0]] },
-      "properties": { "routeId": "R001" }
-    }
-  ]
-}
-\`\`\`
-
-- 每个 Feature 必有：\`geometry\`（可 null）+ \`properties\`（任意 JSON 对象，存业务属性）。
-- 前端批量渲染基本都用 FeatureCollection。
-
-### 2. 几何类型一览
-
-| 类型 | 含义 | coordinates 结构 |
-| --- | --- | --- |
-| **Point** | 单点 | \`[lng, lat]\` |
-| **MultiPoint** | 多点 | \`[[lng,lat], [lng,lat]]\` |
-| **LineString** | 单条线（2+ 点） | \`[[p1],[p2],[p3]]\` |
-| **MultiLineString** | 多条线 | \`[ 线1坐标, 线2坐标 ]\` |
-| **Polygon** | 单个面（可含内环洞） | \`[外环, 内环1, 内环2]\`，每个环首尾坐标相同 |
-| **MultiPolygon** | 多个面 | \`[ 面1坐标, 面2坐标 ]\` |
-| **GeometryCollection** | 混合几何 | \`geometries: [ {type:'Point',...}, {type:'LineString',...} ]\` |
-
-### Polygon 的坑：外环方向 + 闭合
-
-- **外环逆时针、内环顺时针**（RFC 推荐，但大多数库会兼容，校验用可忽略）。
-- **必须闭合**：最后一个点 = 第一个点（数组里显式写相同坐标）。
-- **有"洞"**：多个数组，第一个外环，后面都是洞。
-
-\`\`\`json
+  "id": "gis-001",
+  "category": "gis",
+  "title": "前端 GIS 开发常见技术栈与选型？",
+  "difficulty": "简单",
+  "tags": [
+    "GIS",
+    "技术栈",
+    "Leaflet",
+    "Mapbox",
+    "OpenLayers",
+    "ArcGIS"
+  ],
+  "answer": "## 前端 GIS 三大主流库\n\n| 库 | 体积 | 许可 | 适用场景 | 特点 |\n| --- | --- | --- | --- | --- |\n| **Leaflet** | ~40KB | BSD-2 | 轻量地图展示、移动端 H5 | API 极简、插件生态丰富、上手快 |\n| **Mapbox GL JS** | ~600KB | 收费/Mapbox TOS | 3D、矢量切片、高度自定义样式 | WebGL 渲染、支持自定义 style spec、3D 地形/建筑 |\n| **OpenLayers** | ~200KB+（按模块） | BSD-2 | 企业级 GIS、复杂业务 | WMS/WFS/WMTS 全协议支持、功能最全面 |\n| **ArcGIS Maps SDK for JS** | 较大 | 商业/Esri | 政企、与 ArcGIS Server 深度集成 | 完整 GIS 分析能力、3D SceneView |\n| **Deck.gl** | ~300KB | MIT | 大规模地理可视化、大数据可视化 | WebGL 图层（百万级点/线/面）、常与 Mapbox/Leaflet 叠加 |\n\n## 基础概念栈\n\n- **数据格式**：GeoJSON（前端最常用）、TopoJSON、Shapefile（shp）、KML、GPX、CSV（经纬度列）。\n- **瓦片坐标系**：XYZ 瓦片（Google/OSM 方案）、TMS、WMS/WMTS。\n- **投影坐标系**：WGS84 (EPSG:4326) 经纬度；Web Mercator (EPSG:3857) 地图渲染投影；国测局 GCJ-02、百度 BD-09 加密偏移。\n- **空间分析**：Turf.js（布尔运算、缓冲、质心、距离、面积、点在面内等 100+ 方法）。\n\n## 典型选型\n\n### 1. 政府/企业内部 GIS 系统\n→ **OpenLayers + Turf.js**，或直接用 ArcGIS SDK（已有 ArcGIS Server/Portal 时）。\n- 需对接 WMS/WFS、矢量图层叠加、与业务系统深度集成。\n\n### 2. C 端 / 移动端 H5 轻量应用（轨迹、LBS）\n→ **Leaflet + 高德/腾讯瓦片**。\n- 资源受限但功能明确，Leaflet 插件生态刚好够用。\n\n### 3. 酷炫 3D、自定义样式、面向海外\n→ **Mapbox GL JS**（或基于它的 MapLibre GL JS，开源分支无需 Mapbox token）。\n- 3D 地形、挤压建筑、动画 camera、自定义 style.json。\n\n### 4. 百万级点/热图/OD 飞线大数据可视化\n→ **Deck.gl** 叠加在 Mapbox 或 Leaflet 之上。\n- WebGL 驱动，ScatterplotLayer / HeatmapLayer / ArcLayer。\n\n### 5. 纯 Cesium 数字孪生 / 三维地球\n→ **CesiumJS**，或国内 **Mars3D / ThingJS**。\n- 倾斜摄影、BIM、粒子特效、时间轴动画。\n\n## 国内地图合规注意\n\n中国地区的地图必须使用**有资质的地图供应商**：\n- 高德（AMap JS API）：文档中文全、LBS POI 强。\n- 百度地图 JS API：城市 POI 较全。\n- 腾讯地图 JS API。\n- 天地图（国家地理信息公共服务平台）：政务合规、免费 key 可商用。\n\n> 注意：用 OSM/谷歌瓦片叠加国内业务数据时，需要做**坐标偏移纠偏**（WGS84 → GCJ-02），否则数据会\"飘\"几百米。\n\n## 必备工具库\n\n```bash\nnpm i @turf/turf proj4  # 空间分析 + 坐标转换\n# 国内偏移\nnpm i gcoord            # WGS84 / GCJ-02 / BD-09 互转\n```\n\n```js\nimport * as turf from '@turf/turf'\nimport gcoord from 'gcoord'\n\n// 点是否在面内\nconst pt = turf.point([116.397, 39.908])\nconst poly = turf.polygon([[[116,39],[117,39],[117,40],[116,40],[116,39]]])\nconsole.log(turf.booleanPointInPolygon(pt, poly)) // true/false\n\n// WGS84 → 高德 GCJ-02\nconst [lng, lat] = gcoord.transform([116.397, 39.908], gcoord.WGS84, gcoord.GCJ02)\n```\n\n## 小结\n\n- **轻量、移动端优先** → Leaflet。\n- **功能全、协议全（WMS/WFS）** → OpenLayers。\n- **3D/自定义样式** → Mapbox GL / MapLibre。\n- **三维地球/数字孪生** → Cesium。\n- **大数据可视化** → Deck.gl / L7（蚂蚁开源，封装友好）。\n- **空间分析一定加 Turf.js**，别自己写几何算法。\n## 在线 Demo（页面可直接运行）\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<link href=\"https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css\" rel=\"stylesheet\" />\n<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/ol@9.2.4/ol.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<script src=\"https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js\"></script>\n<script src=\"https://cdn.jsdelivr.net/npm/ol@9.2.4/dist/ol.js\"></script>\n<div style=\"display:flex;gap:6px;margin-bottom:4px\">\n  <label><input type=\"radio\" name=\"lib\" value=\"leaflet\" checked/>🟢 Leaflet (SVG DOM)</label>\n  <label><input type=\"radio\" name=\"lib\" value=\"maplibre\"/>🔵 MapLibre (WebGL 矢量)</label>\n  <label><input type=\"radio\" name=\"lib\" value=\"ol\"/>🟡 OpenLayers (Canvas/SVG)</label>\n</div>\n<div id=\"map\" style=\"height:260px\"></div>\n<div id=\"tag\" style=\"padding:4px 8px;font-size:12px;background:#000;color:#0f0;font-family:Consolas,monospace\">当前: Leaflet</div>\n<script>\nvar lib='leaflet', mapObj=null, ctr=[39.908,116.397]\nfunction build(t){\n  var host=document.getElementById('map')\n  host.innerHTML='<div id=\"inner\" style=\"width:100%;height:100%\"></div>'\n  document.getElementById('tag').textContent='当前: '+\n    ({leaflet:'Leaflet (SVG DOM 渲染, Marker = <div>)',\n      maplibre:'MapLibre (WebGL 矢量瓦片 / 样式驱动)',\n      ol:'OpenLayers (Canvas 默认 + WMS/WFS/WMTS 全家桶)'})[t]\n  if(t==='leaflet'){\n    mapObj=L.map('inner').setView(ctr,12)\n    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapObj)\n    L.marker(ctr).addTo(mapObj).bindPopup('🏯 天安门 — Leaflet 原生 Marker = div').openPopup()\n    L.circle(ctr,{radius:800,color:'#0a6',fillColor:'#0c6',fillOpacity:.2}).addTo(mapObj)\n  } else if(t==='maplibre'){\n    mapObj=new maplibregl.Map({container:'inner',\n      style:'https://demotiles.maplibre.org/style.json',\n      center:[ctr[1],ctr[0]], zoom:11})\n    mapObj.on('load',()=>{\n      mapObj.addSource('s',{type:'geojson',data:{type:'FeatureCollection',\n        features:[{type:'Feature',geometry:{type:'Point',coordinates:[ctr[1],ctr[0]]},\n          properties:{t:'🏯 天安门'}}]}})\n      mapObj.addLayer({id:'p',type:'symbol',source:'s',\n        layout:{'text-field':'{t}','text-size':12,'text-offset':[0,-1.8]},\n        paint:{'text-color':'#000'}})\n      mapObj.addLayer({id:'pt',type:'circle',source:'s',\n        paint:{'circle-radius':6,'circle-color':'#e33','circle-stroke-color':'#fff','circle-stroke-width':2}})\n    })\n  } else {\n    mapObj=new ol.Map({target:'inner',\n      layers:[new ol.layer.Tile({source:new ol.source.OSM()})],\n      view:new ol.View({center:ol.proj.fromLonLat([ctr[1],ctr[0]]), zoom:11})})\n    var v=new ol.layer.Vector({source:new ol.source.Vector({\n      features:[new ol.Feature({geometry:new ol.geom.Point(ol.proj.fromLonLat([ctr[1],ctr[0]]))})]}),\n      style:new ol.style.Style({image:new ol.style.Circle({radius:6,\n        fill:new ol.style.Fill({color:'#e33'}),stroke:new ol.style.Stroke({color:'#fff',width:2})}),\n        text:new ol.style.Text({text:'🏯 天安门',offsetY:-12,font:'bold 12px sans-serif',\n          fill:new ol.style.Fill({color:'#000'}),stroke:new ol.style.Stroke({color:'#fff',width:3})})})})\n    mapObj.addLayer(v)\n  }\n}\ndocument.querySelectorAll('input[name=lib]').forEach(el=>el.onchange=e=>build(e.target.value))\nbuild('leaflet')\n</script>\n```\n"
+},
 {
-  "type": "Polygon",
-  "coordinates": [
-    [[0,0],[10,0],[10,10],[0,10],[0,0]],
-    [[2,2],[2,4],[4,4],[4,2],[2,2]]
-  ]
-}
-\`\`\`
-
-## 常见前端操作
-
-### 解析 / 校验
-
-\`\`\`bash
-npm i @turf/helpers @turf/boolean-valid geojson-validation
-\`\`\`
-
-### 构造 GeoJSON
-
-\`\`\`js
-import { featureCollection, point, lineString, polygon } from '@turf/helpers'
-
-const fc = featureCollection([
-  point([116.397, 39.908], { name: '天安门' }),
-  lineString([[116.3, 39.9], [116.4, 39.9]], { id: 'L1' }),
-  polygon([[[116, 39], [117, 39], [117, 40], [116, 40], [116, 39]]], { type: 'A' })
-])
-\`\`\`
-
-### 读取 CSV/普通数组 → GeoJSON
-
-\`\`\`js
-const rows = [
-  { name: 'BJ', lng: 116.397, lat: 39.908, value: 100 },
-  { name: 'SH', lng: 121.473, lat: 31.230, value: 120 }
-]
-const fc = {
-  type: 'FeatureCollection',
-  features: rows.map(r => ({
-    type: 'Feature',
-    geometry: { type: 'Point', coordinates: [Number(r.lng), Number(r.lat)] },
-    properties: { name: r.name, value: r.value }
-  }))
-}
-\`\`\`
-
-## 优化：大数据场景
-
-1. **抽稀（简化）**：线/面节点过多时，用 \`@turf/simplify\` 简化。
-2. **切片化**：点超 1w+ 时，考虑转成矢量瓦片 (PMTiles / MVT)。
-3. **TopoJSON**：共享边界（省界、街道）存储更省，加载后转 GeoJSON 再渲染。
-4. **压缩**：网络传输 gzip 或 Protocol Buffer（Geobuf）。
-
-## 常见坑
-
-1. **经纬度反了**：GeoJSON 是 [lng, lat]，不少后端返回 [lat, lng]，加载后数据跑到几内亚湾（0,0）附近就是这个原因。
-2. **多边形未闭合**：首尾不一致导致渲染失败或"面变线"。
-3. **字符串坐标**：后端返回字符串形式数字，需要 map 成 Number。
-4. **自相交多边形**：布尔运算和 union 会出错，用 Turf 先 cleanCoords / simplify。
-5. **国内坐标偏移**：高德/百度底图下的业务数据要从 WGS84 转到对应坐标系。
-
-## 校验工具
-
-- https://geojsonlint.com ：在线校验、可视化。
-- https://mapshaper.org ：shp/GeoJSON 互转、简化、合并、裁剪。
-- QGIS / ArcGIS Pro：可视化 + 修复拓扑。`
-  },
-  {
-    id: 'gis-003',
-    category: 'gis',
-    title: '瓦片地图原理与 XYZ / WMTS / WMS 协议？',
-    difficulty: '中等',
-    tags: ['瓦片', 'XYZ', 'WMTS', 'WMS', '切片', '分辨率'],
-    answer: `## 为什么用"瓦片"
-
-世界地图（缩放 0~18）如果一张整图：一张是 262144×262144 像素（约 1.4GB PNG），浏览器根本扛不住。
-
-**解决思路：金字塔切片**。每个缩放级别（zoom，z）把整张地图切成 256×256（或 512×512）像素的小方块（tile），前端根据当前视口只请求可视范围内的瓦片。
-
-## XYZ 瓦片（最常用，OSM/谷歌/高德/Mapbox 方案）
-
-### 编号规则
-
-- **z**：缩放级别（0 = 全球一张；1 = 2×2；... 最大一般 18~22）。
-- **x**：横向瓦片编号，从 0 到 2^z - 1（从西往东）。
-- **y**：纵向瓦片编号，从 0 到 2^z - 1（从上往下，**左上角原点**）。
-
-URL 模板：
-\`\`\`
-https://tile.openstreetmap.org/{z}/{x}/{y}.png
-https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}
-\`\`\`
-
-加载顺序：低 z 先出（模糊），高 z 后补（清晰）。前端四叉树按视口范围算 x/y 范围再并发请求。
-
-### 分辨率与层级换算
-
-在 256×256 瓦片、Web Mercator (EPSG:3857) 下：
-
-| z | 约地图精度 | 每像素代表距离（赤道） |
-| --- | --- | --- |
-| 0 | 世界 | 156 km |
-| 4 | 国家 | ~10 km |
-| 10 | 城市 | ~150 m |
-| 16 | 街区 | ~2.4 m |
-| 19 | 建筑 | ~0.3 m |
-
-### TMS：Y 轴反着来（OSGeo 标准）
-
-Y 轴从**下往上**（左下角原点），使用较少。转换：\`y_tms = (2^z - 1) - y_xyz\`。
-
-## WMS（Web Map Service，OGC 标准）
-
-服务端**动态渲染**一张图片，不是切片。URL 参数：
-
-\`\`\`
-?SERVICE=WMS
-&VERSION=1.1.1
-&REQUEST=GetMap
-&LAYERS=roads,water          要渲染的图层名
-&SRS=EPSG:4326               坐标系
-&BBOX=minx,miny,maxx,maxy    要渲染的地理范围（四至）
-&WIDTH=1024&HEIGHT=768       出图像素
-&FORMAT=image/png            出图格式
-&TRANSPARENT=TRUE
-\`\`\`
-
-- 优点：**矢量后端动态出图**，能按用户权限/时间/属性实时过滤、样式灵活。
-- 缺点：**服务端压力大**，不能像瓦片那样缓存；前端移动/缩放时每次都要重请求，体验差。
-- 适用：政务内网、小范围专题图、实时叠加业务数据。
-
-## WMTS（Web Map Tile Service，OGC 标准）
-
-WMS 的"预切瓦片版"。服务端事先把所有 z/x/y 切好，前端按瓦片拿（本质和 XYZ 一样，只是元数据 / URL schema 更标准，支持多种 TileMatrixSet）。
-
-两种请求方式：
-- **KVP**：KEY=VALUE。
-- **RESTful**：\`layer/{style}/{tileMatrixSet}/{tileMatrix}/{tileRow}/{tileCol}\`。
-
-- 优点：兼容 GIS Server（GeoServer、MapServer、ArcGIS）。
-- 前端使用：OpenLayers 有 \`ol/source/WMTS\` 原生支持；Leaflet 用插件。
-
-## 矢量瓦片 (Vector Tiles) = MVT / PMTiles
-
-XYZ 的现代升级：瓦片里传的是**压缩的几何数据 (protobuf)**，不是图片。**前端拿到后用 WebGL 按 style.json 绘制**。
-
-\`\`\`
-https://api.maptiler.com/tiles/v3/{z}/{x}/{y}.pbf?key=xxx
-\`\`\`
-
-优点：
-1. **一张瓦片多种样式**：白天/夜间模式、用户自定义配色，不用换瓦片。
-2. **体积更小**：PBF + gzip，通常 < 50KB/张。
-3. **可交互查询**：矢量几何保留，鼠标悬浮/点击可拿到要素属性。
-4. **3D 挤压建筑、符号化**：完全客户端决定。
-
-缺点：
-- 前端渲染压力大（低配置机器卡顿）。
-- 切片成本比栅格高（Mapbox/OpenMapTiles 工具链）。
-
-## 前端加载瓦片的代码
-
-### Leaflet（XYZ）
-
-\`\`\`js
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 19,
-  attribution: '© OpenStreetMap'
-}).addTo(map)
-\`\`\`
-
-### OpenLayers（WMS + WMTS）
-
-\`\`\`js
-import TileLayer from 'ol/layer/Tile'
-import WMS from 'ol/source/TileWMS'
-import WMTS from 'ol/source/WMTS'
-
-// 动态 WMS
-new TileLayer({
-  source: new WMS({
-    url: 'https://example.com/geoserver/ows',
-    params: { LAYERS: 'topp:states', TILED: true }
-  })
-})
-\`\`\`
-
-### Mapbox GL（矢量瓦片样式）
-
-\`\`\`js
-map.on('load', () => {
-  map.addSource('buildings', {
-    type: 'vector',
-    url: 'pmtiles://.../buildings.json'   // TileJSON
-  })
-  map.addLayer({
-    id: 'buildings-fill',
-    type: 'fill-extrusion',
-    source: 'buildings',
-    'source-layer': 'buildings',
-    paint: {
-      'fill-extrusion-height': ['get', 'height'],
-      'fill-extrusion-color': '#aaa'
-    }
-  })
-})
-\`\`\`
-
-## 选型建议
-
-| 需求 | 方案 |
-| --- | --- |
-| 在线展示、C 端地图 | XYZ 栅格（高德/OSM）或 MVT 矢量 |
-| 政务对接 GeoServer/ArcGIS Server | WMS（动态）+ WMTS（静态底图） |
-| 需要离线包 | XYZ 打包 mbtiles / PMTiles |
-| 3D、多皮肤样式、百万级 POI | 矢量瓦片 + Mapbox GL / MapLibre |
-| 高性能栅格（卫星影像） | 云端 COG + TiTiler（按需切） |
-
-## 关键坑
-
-1. **跨域**：瓦片域名通配，要给瓦片源加 CORS，或用 Nginx 反向代理。
-2. **缓存**：瓦片是天然静态资源，CDN 缓存 + HTTP Cache 拉满。
-3. **层级越界**：请求超出 maxZoom 会 404，要正确设置地图 min/maxZoom。
-4. **分辨率单位混淆**：前端不要直接用"每像素多少米"做业务换算，统一用 Turf 的 distance/area 经纬度计算。`
-  },
-  {
-    id: 'gis-004',
-    category: 'gis',
-    title: '国内坐标系（WGS84、GCJ-02、BD-09）偏移与纠偏？',
-    difficulty: '中等',
-    tags: ['坐标系', 'GCJ-02', 'BD-09', 'WGS84', '纠偏', '国测局'],
-    answer: `## 国内为什么有三套坐标
-
-国家安全要求：地图服务必须对真实地理坐标（WGS84）做**非线性加密偏移**。不同厂商偏移算法不同 → 同一份经纬度在不同底图上位置不一样。
-
-## 三种核心坐标系
-
-| 缩写 | 名称 | 使用方 | 特点 |
-| --- | --- | --- | --- |
-| **WGS84** (EPSG:4326) | 世界大地坐标系 1984 | GPS 芯片、Google Earth、国际通用底图 | 真实坐标，国际标准 |
-| **GCJ-02** | 国测局 02（火星坐标） | 高德（AMap）、腾讯地图、阿里云 DataV、Google Maps CN | 国家强制偏移加密，所有境内公开出版地图必须使用 |
-| **BD-09** | 百度坐标系 | 百度地图 | 在 GCJ-02 基础上**再偏一次**（百度自有的 BD-09ll；BD-09mc 是 Web Mercator 米制） |
-
-经验数据：偏移大概在 **300~500 米**量级，城市里肉眼可见错位。
-
-## 你会碰到的坑
-
-### 坑 1：GPS 点飘在海里 / 马路外面
-
-真实场景：后端从 GPS 拿到 WGS84 点，前端直接叠到高德地图上 → 点整体向西南方向偏了几百米。
-
-**解决**：业务数据坐标一定要和**底图坐标**一致。
-
-| 底图 | 前端业务数据应使用 |
-| --- | --- |
-| 高德地图 | GCJ-02 |
-| 腾讯地图 | GCJ-02 |
-| 百度地图 | BD-09（或把底图切 GCJ-02，不太推荐） |
-| OpenStreetMap / Mapbox 国际版 | WGS84 |
-| 天地图（官方） | CGCS2000 ≈ WGS84（差异厘米级，前端忽略） |
-
-### 坑 2：用户上传 KML/SHP/CSV 坐标到底是哪套？
-
-**无法从数值本身判断**，只能结合来源：
-- 手持 GPS / RTK / 航迹文件 → 通常 WGS84。
-- 高德 Web 服务 API 返回 → GCJ-02。
-- 百度地图 API 返回 → BD-09。
-- 来自某省/市政务 GIS → 通常 CGCS2000（和 WGS84 差异可忽略）。
-
-拿不准就用可视化工具对比（QGIS 加载三份底图叠加看哪个最贴合）。
-
-## 前端转换工具
-
-### 推荐：gcoord（纯 JS，无外部依赖）
-
-\`\`\`bash
-npm i gcoord
-\`\`\`
-
-\`\`\`js
-import gcoord from 'gcoord'
-
-// 单点转换：输入 [lng, lat]，源 → 目标
-const gcj = gcoord.transform(
-  [116.397428, 39.90923],   // WGS84 坐标（天安门）
-  gcoord.WGS84,
-  gcoord.GCJ02
-)
-// GCJ-02 输出，约偏移 300~500m
-
-const bd = gcoord.transform(gcj, gcoord.GCJ02, gcoord.BD09)
-\`\`\`
-
-支持的常量：\`WGS84 / GCJ02 / BD09 / BD09MC / EPSG3857 / CGCS2000\`。
-
-### 批量转 GeoJSON
-
-\`\`\`js
-function transformFC(fc, from, to) {
-  function walkCoords(geom, fn) {
-    if (!geom) return geom
-    switch (geom.type) {
-      case 'Point':
-        return { ...geom, coordinates: fn(geom.coordinates) }
-      case 'LineString': case 'MultiPoint':
-        return { ...geom, coordinates: geom.coordinates.map(fn) }
-      case 'Polygon': case 'MultiLineString':
-        return { ...geom, coordinates: geom.coordinates.map(ring => ring.map(fn)) }
-      case 'MultiPolygon':
-        return { ...geom, coordinates: geom.coordinates.map(poly => poly.map(ring => ring.map(fn))) }
-      default: return geom
-    }
-  }
-  return {
-    ...fc,
-    features: fc.features.map(f => ({
-      ...f,
-      geometry: walkCoords(f.geometry, c => gcoord.transform(c, from, to))
-    }))
-  }
-}
-
-const gcjFC = transformFC(wgsFC, gcoord.WGS84, gcoord.GCJ02)
-\`\`\`
-
-## 不同平台 API 注意
-
-### 1. 高德地图 Web JS API
-
-- \`AMap.convertFrom(lnglat, type, cb)\`：官方提供批量转换（type=3：GPS → 高德，type=5：百度 → 高德）。
-- **优先用高德 SDK 自带转换**，比前端自己算更准（包含最新保密参数）。
-
-\`\`\`js
-AMap.convertFrom([[116.3, 39.9]], 'gps', (status, result) => {
-  if (status === 'complete') console.log(result.locations)
-})
-\`\`\`
-
-### 2. 百度地图 JS API
-
-- 有 \`BMap.Convertor.translate(points, 2, 0, cb)\`（2 表示从 WGS-84 转到 BD-09）。
-- 也支持 GCJ → BD。
-
-### 3. 后端预转换（推荐）
-
-前端纠偏是"兜底"，**最好后端入库/出接口时统一成目标坐标系**，前端直接渲染，避免首屏抖动和交互不一致。
-
-## 逆向转换（火星 → 真坐标）注意
-
-- GCJ-02 → WGS84 **不存在官方算法**，只有第三方的近似迭代反解（gcoord 里已经实现了近似反解）。
-- 精度大概 1~5 米，绝大多数业务够用但不能当测绘用。
-- 法律合规：公开场景不要大规模做火星→真实坐标反解。
-
-## 合规提示
-
-- 国内公开地图应用：必须选择**有甲级互联网地图服务资质**的供应商（高德、百度、腾讯、天地图等）做底图，**不能直接用 Google Maps / OSM 叠加境内业务**并公开上线。
-- 业务数据应在服务端统一存 GCJ-02，输出给对应前端即可。
-- 涉及高精度测绘数据必须脱密后才能上线。
-
-## 工程化建议
-
-1. **建一个 coord 模块**封装所有转换，业务代码禁止直接调用 gcoord，方便未来统一切算法。
-2. **后端接口声明坐标系**：接口文档必须写清楚返回是哪套，避免前端瞎猜。
-3. **可视化自查工具**：在开发模式叠加同坐标 POI 到三张底图上，看哪个"贴合实际道路"。
-4. **Web Mercator (EPSG:3857)**：是"投影坐标"，单位米；前端地图库内部一般自动帮你转，写业务代码统一用经纬度即可。`
-  },
-  {
-    id: 'gis-005',
-    category: 'gis',
-    framework: 'turf',
-    title: 'Turf.js 空间分析常用方法与实战？',
-    difficulty: '中等',
-    tags: ['Turf.js', '空间分析', '点在面内', '距离', '缓冲区'],
-    answer: `## Turf.js 是什么
-
-浏览器 / Node 通用的 **JavaScript 空间分析库**，相当于 GIS 领域的 Lodash。100+ 纯函数，输入输出都是 GeoJSON。
-
-\`\`\`bash
-npm i @turf/turf              # 全量
-npm i @turf/helpers @turf/distance @turf/boolean-point-in-polygon   # 按需装单包，体积更小
-\`\`\`
-
-## 必备：Helper 构造
-
-\`\`\`js
-import { point, lineString, polygon, featureCollection, feature } from '@turf/helpers'
-
-const pt = point([116.397, 39.908], { name: '天安门' })
-const line = lineString([[116.3,39.9],[116.4,39.95],[116.5,39.9]])
-const poly = polygon([
-  [[116,39],[117,39],[117,40],[116,40],[116,39]]  // 外环必须闭合
-])
-const fc = featureCollection([pt, point([116.4, 39.92])])
-\`\`\`
-
-## Top 10 高频方法
-
-### 1. 两点距离 distance / bearing
-
-\`\`\`js
-import distance from '@turf/distance'
-import bearing from '@turf/bearing'
-
-// 返回单位：默认 kilometers，也能 miles/degrees
-const d = distance(point([116.3, 39.9]), point([116.5, 39.95]), { units: 'km' })
-console.log(d)  // ~ 23 km
-
-// 方位角（0 = 北，90 = 东）
-const brng = bearing(point([116.3, 39.9]), point([116.5, 39.95]))
-\`\`\`
-
-### 2. 点是否在面内 booleanPointInPolygon（地理围栏核心）
-
-\`\`\`js
-import booleanPointInPolygon from '@turf/boolean-point-in-polygon'
-import booleanPointInLineString from '@turf/boolean-point-on-line'
-
-const pt = point([116.4, 39.5])
-const poly = polygon([[[116,39],[117,39],[117,40],[116,40],[116,39]]])
-
-console.log(booleanPointInPolygon(pt, poly))     // true
-console.log(booleanPointInPolygon(pt, poly, { ignoreBoundary: true }))  // 边界上是否算 false
-\`\`\`
-
-业务用：判断用户 GPS 是否在电子围栏/配送范围/禁行区内。
-
-### 3. 缓冲区 buffer（点/线/面扩张 n 米）
-
-\`\`\`js
-import buffer from '@turf/buffer'
-
-const station = point([116.397, 39.908])
-const range500m = buffer(station, 500, { units: 'meters' })  // 500 米范围（圆形多边形）
-
-// 配送范围：道路 2 公里沿线
-const road = lineString([[116.3,39.9],[116.4,39.9],[116.5,39.95]])
-const delivery = buffer(road, 2, { units: 'kilometers' })
-\`\`\`
-
-业务：站点辐射、POI 搜索半径、洪水/火灾扩散、噪声范围。
-
-### 4. 面面积 area / 线长度 length
-
-\`\`\`js
-import area from '@turf/area'
-import length from '@turf/length'
-
-console.log(area(poly))           // 平方米，约 111km×111km ≈ 1.23e10
-console.log(length(line))         // 度，需要 {units:'kilometers'} 转
-console.log(length(line, { units: 'kilometers' }))
-\`\`\`
-
-### 5. 质心 centroid / 内点 pointOnFeature
-
-\`\`\`js
-import centroid from '@turf/centroid'
-import pointOnFeature from '@turf/point-on-feature'
-
-const labelPt = centroid(poly)    // 数学质心（可能在凹多边形外面）
-const labelOn = pointOnFeature(poly)  // 保证在要素内部（贴标签必用）
-\`\`\`
-
-### 6. 交集/并集/差集：intersect / union / difference / xor
-
-\`\`\`js
-import intersect from '@turf/intersect'
-import union from '@turf/union'
-import difference from '@turf/difference'
-
-const polyA = polygon([[[0,0],[10,0],[10,10],[0,10],[0,0]]])
-const polyB = polygon([[[5,5],[15,5],[15,15],[5,15],[5,5]]])
-
-const and = intersect(polyA, polyB)     // 重叠区 5~10,5~10
-const or  = union(polyA, polyB)         // 合并
-const sub = difference(polyA, polyB)    // A 去掉 B
-\`\`\`
-
-业务：多个商圈合并、两个地块求重叠、禁行区从配送范围里扣掉。
-
-### 7. 最近点 nearestPoint / 点到线距离 pointToLineDistance
-
-\`\`\`js
-import nearestPoint from '@turf/nearest-point'
-import pointToLineDistance from '@turf/point-to-line-distance'
-
-const candidates = featureCollection([
-  point([116.3, 39.9], { id: 'A' }),
-  point([116.5, 39.95], { id: 'B' })
-])
-console.log(nearestPoint(point([116.4, 39.92]), candidates))  // 返回最接近的 feature
-
-// 用户到地铁线路的垂直距离
-const distM = pointToLineDistance(
-  point([116.401, 39.91]),
-  lineString([[116.39,39.90],[116.41,39.92]]),
-  { units: 'meters' }
-)
-\`\`\`
-
-### 8. 沿线插值 along / 线切分 lineSlice
-
-\`\`\`js
-import along from '@turf/along'
-import lineSlice from '@turf/line-slice'
-
-// 从起点走 5 公里到的点
-const pos = along(line, 5, { units: 'kilometers' })
-
-// 切下起止两点间的线段
-const start = point([116.3, 39.9])
-const stop  = point([116.4, 39.95])
-const subLine = lineSlice(start, stop, line)
-\`\`\`
-
-业务：轨迹回放取某一时刻位置、路径分段展示。
-
-### 9. 抽稀 simplify（大数据减点）
-
-\`\`\`js
-import simplify from '@turf/simplify'
-
-// tolerance 越大越简
-const lightLine = simplify(line, { tolerance: 0.001, highQuality: true, mutate: false })
-\`\`\`
-
-10 万节点的省界线 simplify 后变 300 节点，渲染性能显著提升。
-
-### 10. 外包框 bbox / bboxPolygon / 裁剪 bboxClip
-
-\`\`\`js
-import bbox from '@turf/bbox'
-import bboxPolygon from '@turf/bbox-polygon'
-import bboxClip from '@turf/bbox-clip'
-
-const box = bbox(fc)  // [minX, minY, maxX, maxY]
-const rect = bboxPolygon(box)
-const onlyBeijing = bboxClip(bigPoly, [115.5, 39.5, 117.5, 41])
-\`\`\`
-
-## 实战：LBS 附近门店查询
-
-\`\`\`js
-import * as turf from '@turf/turf'
-
-function findNearby(user, storesFC, radiusKm = 3, limit = 10) {
-  const range = turf.circle(user, radiusKm, { units: 'kilometers', steps: 32 })
-  const inRange = storesFC.features.filter(
-    f => turf.booleanPointInPolygon(f, range)
-  )
-  return inRange
-    .map(f => ({
-      ...f.properties,
-      dist: turf.distance(user, f, { units: 'kilometers' })
-    }))
-    .sort((a, b) => a.dist - b.dist)
-    .slice(0, limit)
-}
-\`\`\`
-
-## 性能注意
-
-1. 超大数据量（> 10w 要素）：
-   - 先做**空间索引**再做 booleanPointInPolygon。Turf 有 \`@turf/rbush\` 或用第三方 \`geokdbush\`。
-   - 先粗筛（bbox 比较）再细算（真正几何运算）。
-2. 频繁调用 buffer/intersect：放 Web Worker 中跑，避免主线程卡顿。
-3. 单位陷阱：distance/length 默认 degrees，一定要传 units。
-4. 非法自相交面求 union 会抛错，先 \`simplify\` 或 \`@turf/clean-coords\`。
-
-## 生态
-
-- 浏览器 / Node 通用。
-- 与 @turf/turf-sync（同步替代，Web Worker 友好）、RBush（R 树空间索引）搭配能扛百万级数据。
-- 地图前端基本都要引入 Turf，把它放公共 chunk。`
-  },
-  {
-    id: 'gis-006',
-    category: 'gis',
-    title: '前端地图渲染性能优化手段（10w+ POI / 轨迹）？',
-    difficulty: '困难',
-    tags: ['性能优化', 'WebGL', 'Canvas', '聚合', '抽稀', '虚拟列表'],
-    answer: `## 性能瓶颈在哪
-
-前端地图主要有三种渲染路径：
-1. **DOM（SVG）**：Leaflet 的 circleMarker / polyline 默认 DOM。优点交互好，**> 1000 个 DOM 就卡**。
-2. **Canvas 2D**：Leaflet canvas renderer / L7 早期。~5w 点还行，超过掉帧。
-3. **WebGL**：Mapbox GL / Deck.gl / L7 / MapLibre。百万级点起步，是大数据的唯一解。
-
-优化总思路：**降数量 + 换渲染器 + 降更新频率**。
-
-## 一、减少要素数量（最有效）
-
-### 1. 聚合 / 抽稀 / 热力，而不是把原始数据一股脑扔上去
-
-#### 点聚合（Cluster）
-
-Leaflet：\`leaflet.markercluster\` 插件（DOM 聚合气泡）。
-Mapbox GL / Deck.gl：内置 supercluster 算法（k-d 树）。
-
-\`\`\`js
-// Mapbox GL 内置聚合
-map.addSource('pois', {
-  type: 'geojson',
-  data: fc,
-  cluster: true,
-  clusterRadius: 50,
-  clusterMaxZoom: 14
-})
-// 聚合点显示数字、散开显示点
-\`\`\`
-
-效果：低层级全国 10w 点 → 只渲染几十个聚合圆。
-
-#### 线/面抽稀 simplify
-
-长轨迹 10w 个点 → Turf simplify 减到 3000 个点（视觉几乎无差异）。
-
-\`\`\`js
-import simplify from '@turf/simplify'
-const light = simplify(heavyLine, { tolerance: 0.0005, highQuality: true })
-\`\`\`
-
-tolerance 按 zoom 变：z 小 tolerance 大；z 大 tolerance 小。
-
-#### 视口内过滤
-
-只渲染可视区 bbox 内的要素。超出范围的不渲染。
-
-\`\`\`js
-function renderInView(map, fc) {
-  const [minX, minY, maxX, maxY] = map.getBounds().toArray().flat()
-  const inView = fc.features.filter(f => {
-    const [x, y] = f.geometry.coordinates
-    return x >= minX && x <= maxX && y >= minY && y <= maxY
-  })
-  source.setData(featureCollection(inView))
-}
-map.on('moveend', () => renderInView(map, allFC))
-\`\`\`
-
-大数据场景配**空间索引**（RBush / KDBush / geokdbush）：\`O(log n)\` 查范围内点，不是线性扫。
-
-## 二、换 WebGL 渲染器
-
-### 选 Deck.gl 叠加 Mapbox / MapLibre
-
-Deck.gl 按层组织：
-
-\`\`\`js
-import { MapboxOverlay } from '@deck.gl/mapbox'
-import {
-  ScatterplotLayer, HeatmapLayer, ArcLayer, PathLayer, PolygonLayer, TextLayer
-} from '@deck.gl/layers'
-import { DataFilterExtension } from '@deck.gl/extensions'
-
-const overlay = new MapboxOverlay({
-  layers: [
-    new ScatterplotLayer({
-      id: 'poi',
-      data: pois,      // 数组（百万级）
-      getPosition: d => [d.lng, d.lat],
-      getRadius: 3,
-      getFillColor: d => d.type === 'A' ? [255, 0, 0] : [0, 200, 0],
-      pickable: true,
-      radiusMinPixels: 2,
-      radiusMaxPixels: 12
-    }),
-    new HeatmapLayer({
-      id: 'heat',
-      data: pois,
-      getPosition: d => [d.lng, d.lat],
-      getWeight: d => d.value,
-      radiusPixels: 40
-    })
-  ]
-})
-map.addControl(overlay)
-\`\`\`
-
-常用 Layer：
-- 点：ScatterplotLayer / IconLayer（带图标的点，用 Sprite Atlas）。
-- 线：PathLayer / LineLayer / ArcLayer（飞线/OD，自动弯曲）。
-- 面：PolygonLayer / FillExtrusionLayer（3D 挤压）。
-- 文本：TextLayer（SDF 字体）。
-- 轨迹动画：TripsLayer（按时间维度运动的线）。
-
-扩展：
-- \`DataFilterExtension\`：前端实时滑杆筛选（时间、数值），GPU 内过滤，不重建数据。
-
-### 备选：L7（蚂蚁开源，封装友好）
-
-\`\`\`js
-import { Scene, PointLayer } from '@antv/l7'
-import { GaodeMap } from '@antv/l7-maps'
-
-const scene = new Scene({
-  id: 'map',
-  map: new GaodeMap({ style: 'light', center: [116.39, 39.9], zoom: 11 })
-})
-new PointLayer().source(data, { parser: { type: 'json', x: 'lng', y: 'lat' } })
-  .shape('circle')
-  .size(5)
-  .color('type', ['#f00','#0f0','#00f'])
-  .active(true).addTo(scene)
-\`\`\`
-
-中文生态好，新手友好。
-
-## 三、渲染层级优化
-
-### 1. 批量 setData，频繁小数据改成节流更新
-
-\`\`\`js
-import throttle from 'lodash.throttle'
-const update = throttle(() => source.setData(newFC), 200)
-\`\`\`
-
-### 2. 避免重绘全量数据
-
-- Mapbox GL：source 里的 feature 尽量用 \`setFeatureState\` 改属性，而不是整个 setData。
-- 选中高亮：两个 Layer（正常层 + 高亮层，数据只有被选中 ID），不要重画整个层。
-
-### 3. 资源复用
-
-- 图标：用 sprite atlas 合成一张大图，避免千个 icon 千个 img。
-- 文字：Mapbox 用 SDF glyphs，大小自适应、清晰、体积小。
-
-## 四、数据与网络
-
-### 1. 分级加载
-
-z ≤ 6 → 省界聚合；z 7~10 → 市界 + 聚合；z ≥ 11 → 真实点数据。
-
-### 2. 矢量瓦片 (MVT / PMTiles)
-
-把 GeoJSON 预切成瓦片，按需加载。当前视口一次只拿 20~50 张 pbf。
-
-- 后端切图工具：tippecanoe（GeoJSON → mbtiles）、PMTiles 工具链。
-- 前端用 maplibre-gl 直接加载 PMTiles，无需服务器，S3/OSS 直读。
-
-### 3. 传输压缩
-
-- 响应体 gzip/brotli。
-- 大数组转 Float32Array → Binary + protobuf（deck.gl Binary Data Access 快 2~5x）。
-
-## 五、交互与主线程不阻塞
-
-### 1. 计算移到 Worker
-
-Turf 布尔运算、simplify、聚类、坐标转换、按时间回放插值都放 Worker。
-
-\`\`\`js
-// worker.js
-import * as turf from '@turf/turf'
-self.onmessage = ({ data }) => {
-  const result = turf.simplify(data.line, { tolerance: data.t })
-  self.postMessage(result)  // Transferable 对象更快
-}
-\`\`\`
-
-### 2. 鼠标 hover 用 gpu-picking
-
-WebGL 库（Deck、Mapbox、L7）都支持 \`pickable: true\`，GPU 颜色编码点拣，O(1)。**不要自己遍历要素数组找最近点**（O(n) 10w 次直接卡）。
-
-### 3. 动画 60fps 秘籍
-
-- 轨迹回放用 TripsLayer / 改 shader uniform，而不是每秒改整个 GeoJSON。
-- camera.animateTo / flyTo 用 easing，避免频繁 moveend。
-- 频繁动画使用 \`requestAnimationFrame\` 不要 setInterval。
-
-## 六、常见优化 Checklist
-
-1. **层级越低 → 展示越少**：聚合 / 抽样 / 省界，不要在 z=3 放 10 万个点。
-2. **DOM 渲染器换 Canvas / WebGL**：Leaflet 默认 DOM，3000 点以上必换。
-3. **大数据用 Deck.gl / L7，不用手写 Canvas**：你写的 Canvas 挑不过 WebGL。
-4. **moveend 回调节流 + 空间索引粗筛**：避免每次拖动全量过滤。
-5. **复杂计算 Worker 化**：Turf/simplify/buffer/cluster 别占主线程。
-6. **渲染属性按层级动**：小 zoom 大半径少细节，大 zoom 才精绘。
-7. **观察 Chrome Performance / WebGL Inspector**：看是 CPU（坐标转换）还是 GPU（绘制）瓶颈，对症下药。
-
-## 典型配置推荐
-
-| 数据量 | 地图库 | 渲染方案 | 关键优化 |
-| --- | --- | --- | --- |
-| < 1k 点 | 任意 | 随便写 | - |
-| 1k~1w | Leaflet / OpenLayers | Canvas renderer + markercluster | 聚合、抽稀 |
-| 1w~50w | Mapbox GL / L7 | GeoJSON source + cluster | 聚合、分级加载、FeatureState |
-| 50w~500w | Deck.gl / L7 | WebGL 二进制数组 DataFilterExt | Worker 预处理、Binary、飞线用 ArcLayer |
-| 百万级 + 全国分发 | 矢量瓦片 | PMTiles / MVT + Deck.gl TileLayer | 切片、CDN、按需加载 |
-
-一句话心法：**不要让浏览器渲染你看不到的数据**（视口、聚合、抽稀、分级），剩下的交给 WebGL。`
-  },
-  {
-    id: 'gis-007',
-    category: 'gis',
-    framework: 'mapbox',
-    title: 'Mapbox GL JS 的矢量瓦片与 style spec 原理？',
-    difficulty: '中等',
-    tags: ['Mapbox', '矢量瓦片', 'style spec', 'WebGL', 'MVT'],
-    answer: `## 为什么 Mapbox 能又快又好看
-
-Mapbox GL JS 的核心是**矢量瓦片（Vector Tile, MVT）+ WebGL 渲染 + style spec**三位一体：
-1. **数据端**：服务端把 GeoJSON/Shapefile 预切成 MVT 矢量瓦片（PBF 编码），按 \`z/x/y\` 分级存储在 CDN。
-2. **渲染端**：浏览器用 WebGL 拉取瓦片 → 解码成几何 → **在 GPU 上实时绘制**（不是贴图片）。
-3. **样式端**：一份 JSON（style spec）描述"每个图层怎么画"。
-
-## 和栅格瓦片的根本区别
-
-| 维度 | 栅格瓦片（XYZ PNG） | 矢量瓦片（MVT） |
-| --- | --- | --- |
-| 服务端做什么 | 切成图片 | 切成几何数据 |
-| 样式 | 写死在图片里 | 浏览器实时渲染，可动态切换 |
-| 旋转/倾斜 | 图片会模糊 | 矢量重投影，无失真 |
-| 文字标注 | 易重叠 | 可碰撞检测、避让 |
-| 体积 | 较大（PNG） | 较小（PBF 压缩） |
-| 交互 | 只能命中像素 | 可查询要素属性 |
-
-## style spec 核心结构
-
-\`\`\`json
+  "id": "gis-002",
+  "category": "gis",
+  "title": "GeoJSON 格式规范与常用几何类型？",
+  "difficulty": "中等",
+  "tags": [
+    "GeoJSON",
+    "数据格式",
+    "几何类型",
+    "FeatureCollection"
+  ],
+  "answer": "## 什么是 GeoJSON\n\n基于 JSON 的地理空间数据编码格式（RFC 7946），是前端 GIS 库最通用的\"母语\"：Leaflet、Mapbox、OpenLayers、Turf、Deck.gl 都原生吃 GeoJSON。\n\n核心规则：\n- 坐标顺序**永远是 [经度 lng, 纬度 lat, 可选高度 alt]**（注意和日常 \"lat-lng\" 反着来）。\n- 坐标参考默认 WGS84 (EPSG:4326)。\n- 数值类型用 number（不要字符串）。\n\n## 基本结构\n\n### 1. FeatureCollection（最常用）\n\n一组要素的集合，带一个数组 features。\n\n```json\n{\n  \"type\": \"FeatureCollection\",\n  \"features\": [\n    {\n      \"type\": \"Feature\",\n      \"geometry\": { \"type\": \"Point\", \"coordinates\": [116.397, 39.908] },\n      \"properties\": { \"name\": \"天安门\", \"level\": 5 }\n    },\n    {\n      \"type\": \"Feature\",\n      \"geometry\": { \"type\": \"LineString\", \"coordinates\": [[116.3, 39.9], [116.4, 39.9], [116.5, 40.0]] },\n      \"properties\": { \"routeId\": \"R001\" }\n    }\n  ]\n}\n```\n\n- 每个 Feature 必有：`geometry`（可 null）+ `properties`（任意 JSON 对象，存业务属性）。\n- 前端批量渲染基本都用 FeatureCollection。\n\n### 2. 几何类型一览\n\n| 类型 | 含义 | coordinates 结构 |\n| --- | --- | --- |\n| **Point** | 单点 | `[lng, lat]` |\n| **MultiPoint** | 多点 | `[[lng,lat], [lng,lat]]` |\n| **LineString** | 单条线（2+ 点） | `[[p1],[p2],[p3]]` |\n| **MultiLineString** | 多条线 | `[ 线1坐标, 线2坐标 ]` |\n| **Polygon** | 单个面（可含内环洞） | `[外环, 内环1, 内环2]`，每个环首尾坐标相同 |\n| **MultiPolygon** | 多个面 | `[ 面1坐标, 面2坐标 ]` |\n| **GeometryCollection** | 混合几何 | `geometries: [ {type:'Point',...}, {type:'LineString',...} ]` |\n\n### Polygon 的坑：外环方向 + 闭合\n\n- **外环逆时针、内环顺时针**（RFC 推荐，但大多数库会兼容，校验用可忽略）。\n- **必须闭合**：最后一个点 = 第一个点（数组里显式写相同坐标）。\n- **有\"洞\"**：多个数组，第一个外环，后面都是洞。\n\n```json\n{\n  \"type\": \"Polygon\",\n  \"coordinates\": [\n    [[0,0],[10,0],[10,10],[0,10],[0,0]],\n    [[2,2],[2,4],[4,4],[4,2],[2,2]]\n  ]\n}\n```\n\n## 常见前端操作\n\n### 解析 / 校验\n\n```bash\nnpm i @turf/helpers @turf/boolean-valid geojson-validation\n```\n\n### 构造 GeoJSON\n\n```js\nimport { featureCollection, point, lineString, polygon } from '@turf/helpers'\n\nconst fc = featureCollection([\n  point([116.397, 39.908], { name: '天安门' }),\n  lineString([[116.3, 39.9], [116.4, 39.9]], { id: 'L1' }),\n  polygon([[[116, 39], [117, 39], [117, 40], [116, 40], [116, 39]]], { type: 'A' })\n])\n```\n\n### 读取 CSV/普通数组 → GeoJSON\n\n```js\nconst rows = [\n  { name: 'BJ', lng: 116.397, lat: 39.908, value: 100 },\n  { name: 'SH', lng: 121.473, lat: 31.230, value: 120 }\n]\nconst fc = {\n  type: 'FeatureCollection',\n  features: rows.map(r => ({\n    type: 'Feature',\n    geometry: { type: 'Point', coordinates: [Number(r.lng), Number(r.lat)] },\n    properties: { name: r.name, value: r.value }\n  }))\n}\n```\n\n## 优化：大数据场景\n\n1. **抽稀（简化）**：线/面节点过多时，用 `@turf/simplify` 简化。\n2. **切片化**：点超 1w+ 时，考虑转成矢量瓦片 (PMTiles / MVT)。\n3. **TopoJSON**：共享边界（省界、街道）存储更省，加载后转 GeoJSON 再渲染。\n4. **压缩**：网络传输 gzip 或 Protocol Buffer（Geobuf）。\n\n## 常见坑\n\n1. **经纬度反了**：GeoJSON 是 [lng, lat]，不少后端返回 [lat, lng]，加载后数据跑到几内亚湾（0,0）附近就是这个原因。\n2. **多边形未闭合**：首尾不一致导致渲染失败或\"面变线\"。\n3. **字符串坐标**：后端返回字符串形式数字，需要 map 成 Number。\n4. **自相交多边形**：布尔运算和 union 会出错，用 Turf 先 cleanCoords / simplify。\n5. **国内坐标偏移**：高德/百度底图下的业务数据要从 WGS84 转到对应坐标系。\n\n## 校验工具\n\n- https://geojsonlint.com ：在线校验、可视化。\n- https://mapshaper.org ：shp/GeoJSON 互转、简化、合并、裁剪。\n- QGIS / ArcGIS Pro：可视化 + 修复拓扑。\n## 在线 Demo（页面可直接运行）\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<div id=\"map\" style=\"height:260px\"></div>\n<div id=\"st\" style=\"padding:6px;font-size:12px\">点击任一要素查看 GeoJSON type + properties</div>\n<script>\nvar map=L.map('map').setView([39.91,116.4],11)\nL.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map)\nvar geo={type:'FeatureCollection',features:[\n  {type:'Feature',geometry:{type:'Point',coordinates:[116.397,39.908]},properties:{name:'天安门 Point'}},\n  {type:'Feature',geometry:{type:'MultiPoint',coordinates:[[116.41,39.92],[116.42,39.915],[116.405,39.925]]},properties:{name:'3 个 MultiPoint'}},\n  {type:'Feature',geometry:{type:'LineString',coordinates:[[116.37,39.92],[116.40,39.922],[116.42,39.91],[116.43,39.90]]},properties:{name:'长安街 LineString'}},\n  {type:'Feature',geometry:{type:'MultiLineString',coordinates:[[[116.36,39.90],[116.44,39.905]],[[116.37,39.89],[116.43,39.885]]]},properties:{name:'两条路 MultiLineString'}},\n  {type:'Feature',geometry:{type:'Polygon',coordinates:[[[116.42,39.93],[116.44,39.93],[116.44,39.915],[116.42,39.915],[116.42,39.93]]]},properties:{name:'Polygon 望京'}},\n  {type:'Feature',geometry:{type:'MultiPolygon',coordinates:[[[[116.34,39.92],[116.36,39.92],[116.36,39.905],[116.34,39.905],[116.34,39.92]]],[[[116.355,39.88],[116.375,39.88],[116.375,39.87],[116.355,39.87],[116.355,39.88]]]]},properties:{name:'MultiPolygon 两块'}},\n  {type:'Feature',geometry:{type:'GeometryCollection',geometries:[\n    {type:'Point',coordinates:[116.385,39.89]},{type:'LineString',coordinates:[[116.38,39.88],[116.40,39.875]]}\n  ]},properties:{name:'GeometryCollection 混合'}}\n]}\nfunction style(f){\n  switch(f.geometry.type){\n    case 'LineString': case 'MultiLineString': return {color:'#06c',weight:4}\n    case 'Polygon': case 'MultiPolygon': return {color:'#a30',weight:3,fillColor:'#ea6',fillOpacity:.4,dashArray:'6 4'}\n    default: return null\n  }\n}\nL.geoJSON(geo,{style,pointToLayer:(f,ll)=>{\n  var col={Point:'#e33',MultiPoint:'#093'}[f.geometry.type]||'#60c'\n  return L.circleMarker(ll,{radius:7,color:'#fff',weight:2,fillColor:col,fillOpacity:1})\n}}).bindPopup(function(l){var g=l.feature.geometry,p=l.feature.properties\n  return '<b>'+p.name+'</b><br>type = <code>'+g.type+'</code><br><pre style=\"font-size:11px;margin:0\">'+JSON.stringify(g.coordinates||g.geometries).substring(0,180)+'</pre>'}).addTo(map)\nmap.fitBounds(L.geoJSON(geo).getBounds(),{padding:[16,16]})\n</script>\n```\n"
+},
 {
-  "version": 8,
-  "sources": {
-    "osm": {
-      "type": "vector",
-      "tiles": ["https://cdn.example.com/{z}/{x}/{y}.pbf"],
-      "minzoom": 0,
-      "maxzoom": 14
-    }
-  },
-  "layers": [
-    {
-      "id": "water",
-      "type": "fill",
-      "source": "osm",
-      "source-layer": "water",
-      "paint": { "fill-color": "#0ff" }
-    },
-    {
-      "id": "road-label",
-      "type": "symbol",
-      "source": "osm",
-      "source-layer": "road",
-      "layout": {
-        "text-field": "{name}",
-        "text-size": 12
-      }
-    }
-  ]
+  "id": "gis-003",
+  "category": "gis",
+  "title": "瓦片地图原理与 XYZ / WMTS / WMS 协议？",
+  "difficulty": "中等",
+  "tags": [
+    "瓦片",
+    "XYZ",
+    "WMTS",
+    "WMS",
+    "切片",
+    "分辨率"
+  ],
+  "answer": "## 为什么用\"瓦片\"\n\n世界地图（缩放 0~18）如果一张整图：一张是 262144×262144 像素（约 1.4GB PNG），浏览器根本扛不住。\n\n**解决思路：金字塔切片**。每个缩放级别（zoom，z）把整张地图切成 256×256（或 512×512）像素的小方块（tile），前端根据当前视口只请求可视范围内的瓦片。\n\n## XYZ 瓦片（最常用，OSM/谷歌/高德/Mapbox 方案）\n\n### 编号规则\n\n- **z**：缩放级别（0 = 全球一张；1 = 2×2；... 最大一般 18~22）。\n- **x**：横向瓦片编号，从 0 到 2^z - 1（从西往东）。\n- **y**：纵向瓦片编号，从 0 到 2^z - 1（从上往下，**左上角原点**）。\n\nURL 模板：\n```\nhttps://tile.openstreetmap.org/{z}/{x}/{y}.png\nhttps://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}\n```\n\n加载顺序：低 z 先出（模糊），高 z 后补（清晰）。前端四叉树按视口范围算 x/y 范围再并发请求。\n\n### 分辨率与层级换算\n\n在 256×256 瓦片、Web Mercator (EPSG:3857) 下：\n\n| z | 约地图精度 | 每像素代表距离（赤道） |\n| --- | --- | --- |\n| 0 | 世界 | 156 km |\n| 4 | 国家 | ~10 km |\n| 10 | 城市 | ~150 m |\n| 16 | 街区 | ~2.4 m |\n| 19 | 建筑 | ~0.3 m |\n\n### TMS：Y 轴反着来（OSGeo 标准）\n\nY 轴从**下往上**（左下角原点），使用较少。转换：`y_tms = (2^z - 1) - y_xyz`。\n\n## WMS（Web Map Service，OGC 标准）\n\n服务端**动态渲染**一张图片，不是切片。URL 参数：\n\n```\n?SERVICE=WMS\n&VERSION=1.1.1\n&REQUEST=GetMap\n&LAYERS=roads,water          要渲染的图层名\n&SRS=EPSG:4326               坐标系\n&BBOX=minx,miny,maxx,maxy    要渲染的地理范围（四至）\n&WIDTH=1024&HEIGHT=768       出图像素\n&FORMAT=image/png            出图格式\n&TRANSPARENT=TRUE\n```\n\n- 优点：**矢量后端动态出图**，能按用户权限/时间/属性实时过滤、样式灵活。\n- 缺点：**服务端压力大**，不能像瓦片那样缓存；前端移动/缩放时每次都要重请求，体验差。\n- 适用：政务内网、小范围专题图、实时叠加业务数据。\n\n## WMTS（Web Map Tile Service，OGC 标准）\n\nWMS 的\"预切瓦片版\"。服务端事先把所有 z/x/y 切好，前端按瓦片拿（本质和 XYZ 一样，只是元数据 / URL schema 更标准，支持多种 TileMatrixSet）。\n\n两种请求方式：\n- **KVP**：KEY=VALUE。\n- **RESTful**：`layer/{style}/{tileMatrixSet}/{tileMatrix}/{tileRow}/{tileCol}`。\n\n- 优点：兼容 GIS Server（GeoServer、MapServer、ArcGIS）。\n- 前端使用：OpenLayers 有 `ol/source/WMTS` 原生支持；Leaflet 用插件。\n\n## 矢量瓦片 (Vector Tiles) = MVT / PMTiles\n\nXYZ 的现代升级：瓦片里传的是**压缩的几何数据 (protobuf)**，不是图片。**前端拿到后用 WebGL 按 style.json 绘制**。\n\n```\nhttps://api.maptiler.com/tiles/v3/{z}/{x}/{y}.pbf?key=xxx\n```\n\n优点：\n1. **一张瓦片多种样式**：白天/夜间模式、用户自定义配色，不用换瓦片。\n2. **体积更小**：PBF + gzip，通常 < 50KB/张。\n3. **可交互查询**：矢量几何保留，鼠标悬浮/点击可拿到要素属性。\n4. **3D 挤压建筑、符号化**：完全客户端决定。\n\n缺点：\n- 前端渲染压力大（低配置机器卡顿）。\n- 切片成本比栅格高（Mapbox/OpenMapTiles 工具链）。\n\n## 前端加载瓦片的代码\n\n### Leaflet（XYZ）\n\n```js\nL.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {\n  maxZoom: 19,\n  attribution: '© OpenStreetMap'\n}).addTo(map)\n```\n\n### OpenLayers（WMS + WMTS）\n\n```js\nimport TileLayer from 'ol/layer/Tile'\nimport WMS from 'ol/source/TileWMS'\nimport WMTS from 'ol/source/WMTS'\n\n// 动态 WMS\nnew TileLayer({\n  source: new WMS({\n    url: 'https://example.com/geoserver/ows',\n    params: { LAYERS: 'topp:states', TILED: true }\n  })\n})\n```\n\n### Mapbox GL（矢量瓦片样式）\n\n```js\nmap.on('load', () => {\n  map.addSource('buildings', {\n    type: 'vector',\n    url: 'pmtiles://.../buildings.json'   // TileJSON\n  })\n  map.addLayer({\n    id: 'buildings-fill',\n    type: 'fill-extrusion',\n    source: 'buildings',\n    'source-layer': 'buildings',\n    paint: {\n      'fill-extrusion-height': ['get', 'height'],\n      'fill-extrusion-color': '#aaa'\n    }\n  })\n})\n```\n\n## 选型建议\n\n| 需求 | 方案 |\n| --- | --- |\n| 在线展示、C 端地图 | XYZ 栅格（高德/OSM）或 MVT 矢量 |\n| 政务对接 GeoServer/ArcGIS Server | WMS（动态）+ WMTS（静态底图） |\n| 需要离线包 | XYZ 打包 mbtiles / PMTiles |\n| 3D、多皮肤样式、百万级 POI | 矢量瓦片 + Mapbox GL / MapLibre |\n| 高性能栅格（卫星影像） | 云端 COG + TiTiler（按需切） |\n\n## 关键坑\n\n1. **跨域**：瓦片域名通配，要给瓦片源加 CORS，或用 Nginx 反向代理。\n2. **缓存**：瓦片是天然静态资源，CDN 缓存 + HTTP Cache 拉满。\n3. **层级越界**：请求超出 maxZoom 会 404，要正确设置地图 min/maxZoom。\n4. **分辨率单位混淆**：前端不要直接用\"每像素多少米\"做业务换算，统一用 Turf 的 distance/area 经纬度计算。\n## 在线 Demo（页面可直接运行）\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<div id=\"map\" style=\"height:260px\"></div>\n<div style=\"display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:4px;font-size:12px\">\n  <label>协议:\n    <select id=\"src\"><option value=\"osm\">XYZ (OSM 默认)</option>\n    <option value=\"topo\">XYZ (OpenTopoMap 地形)</option>\n    <option value=\"wms\">WMS (NASA BlueMarble)</option></select>\n  </label>\n  <button id=\"toggleGrid\">🔳 瓦片网格 XYZ 开关</button>\n  <span id=\"st\" style=\"font-family:Consolas,monospace;background:#000;color:#0f0;padding:2px 8px\">x=- y=- z=-</span>\n</div>\n<script>\nvar map=L.map('map').setView([39.9,116.4],11)\nvar base={\n  osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png'),\n  topo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png'),\n  wms: L.tileLayer.wms('https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?',{\n    layers:'BlueMarble_NextGeneration_BMNG',format:'image/png',transparent:false,version:'1.3.0',crs:L.CRS.EPSG4326})\n}\nbase.osm.addTo(map)\ndocument.getElementById('src').onchange = e => {\n  Object.values(base).forEach(b=>map.removeLayer(b))\n  base[e.target.value].addTo(map)\n}\nvar grid=L.layerGroup()\nfunction tileXY(lat,lng,z){var n=2**z;return{x:Math.floor((lng+180)/360*n),\n  y:Math.floor((1-Math.log(Math.tan(lat*Math.PI/180)+1/Math.cos(lat*Math.PI/180))/Math.PI)/2*n)}}\nfunction bbox(x,y,z){var n=2**z;var lng1=x/n*360-180,lng2=(x+1)/n*360-180\n  var y1=Math.atan(Math.sinh(Math.PI*(1-2*y/n)))*180/Math.PI\n  var y2=Math.atan(Math.sinh(Math.PI*(1-2*(y+1)/n)))*180/Math.PI\n  return [[y2,lng1],[y1,lng2]]}\nfunction drawGrid(){\n  grid.clearLayers()\n  var z=map.getZoom(), b=map.getBounds()\n  var sw=tileXY(b.getSouth(),b.getWest(),z), ne=tileXY(b.getNorth(),b.getEast(),z)\n  for(var x=sw.x;x<=ne.x;x++)for(var y=ne.y;y<=sw.y;y++){\n    const bb=bbox(x,y,z)\n    L.rectangle(bb,{color:'#e33',weight:1,fill:false,dashArray:'3 3'}).bindTooltip('x='+x+' y='+y+' z='+z,{permanent:true,direction:'center',className:'tilelabel',opacity:.9}).addTo(grid)\n  }\n  var c=tileXY(map.getCenter().lat,map.getCenter().lng,z)\n  document.getElementById('st').textContent='中心瓦片 x='+c.x+' y='+c.y+' z='+z\n}\nvar on=false\ndocument.getElementById('toggleGrid').onclick=()=>{on=!on;if(on){map.addLayer(grid);drawGrid()}else{map.removeLayer(grid)}}\nmap.on('moveend',()=>{if(on)drawGrid()})\nmap.on('mousemove',e=>{var t=tileXY(e.latlng.lat,e.latlng.lng,map.getZoom());\n  document.getElementById('st').textContent='悬停 x='+t.x+' y='+t.y+' z='+map.getZoom()})\ndrawGrid()\n</script>\n<style>.tilelabel{background:rgba(255,255,0,.7);color:#a00;font-weight:bold;border:none;padding:1px 3px!important;font-size:10px}</style>\n```\n"
+},
+{
+  "id": "gis-004",
+  "category": "gis",
+  "title": "国内坐标系（WGS84、GCJ-02、BD-09）偏移与纠偏？",
+  "difficulty": "中等",
+  "tags": [
+    "坐标系",
+    "GCJ-02",
+    "BD-09",
+    "WGS84",
+    "纠偏",
+    "国测局"
+  ],
+  "answer": "## 国内为什么有三套坐标\n\n国家安全要求：地图服务必须对真实地理坐标（WGS84）做**非线性加密偏移**。不同厂商偏移算法不同 → 同一份经纬度在不同底图上位置不一样。\n\n## 三种核心坐标系\n\n| 缩写 | 名称 | 使用方 | 特点 |\n| --- | --- | --- | --- |\n| **WGS84** (EPSG:4326) | 世界大地坐标系 1984 | GPS 芯片、Google Earth、国际通用底图 | 真实坐标，国际标准 |\n| **GCJ-02** | 国测局 02（火星坐标） | 高德（AMap）、腾讯地图、阿里云 DataV、Google Maps CN | 国家强制偏移加密，所有境内公开出版地图必须使用 |\n| **BD-09** | 百度坐标系 | 百度地图 | 在 GCJ-02 基础上**再偏一次**（百度自有的 BD-09ll；BD-09mc 是 Web Mercator 米制） |\n\n经验数据：偏移大概在 **300~500 米**量级，城市里肉眼可见错位。\n\n## 你会碰到的坑\n\n### 坑 1：GPS 点飘在海里 / 马路外面\n\n真实场景：后端从 GPS 拿到 WGS84 点，前端直接叠到高德地图上 → 点整体向西南方向偏了几百米。\n\n**解决**：业务数据坐标一定要和**底图坐标**一致。\n\n| 底图 | 前端业务数据应使用 |\n| --- | --- |\n| 高德地图 | GCJ-02 |\n| 腾讯地图 | GCJ-02 |\n| 百度地图 | BD-09（或把底图切 GCJ-02，不太推荐） |\n| OpenStreetMap / Mapbox 国际版 | WGS84 |\n| 天地图（官方） | CGCS2000 ≈ WGS84（差异厘米级，前端忽略） |\n\n### 坑 2：用户上传 KML/SHP/CSV 坐标到底是哪套？\n\n**无法从数值本身判断**，只能结合来源：\n- 手持 GPS / RTK / 航迹文件 → 通常 WGS84。\n- 高德 Web 服务 API 返回 → GCJ-02。\n- 百度地图 API 返回 → BD-09。\n- 来自某省/市政务 GIS → 通常 CGCS2000（和 WGS84 差异可忽略）。\n\n拿不准就用可视化工具对比（QGIS 加载三份底图叠加看哪个最贴合）。\n\n## 前端转换工具\n\n### 推荐：gcoord（纯 JS，无外部依赖）\n\n```bash\nnpm i gcoord\n```\n\n```js\nimport gcoord from 'gcoord'\n\n// 单点转换：输入 [lng, lat]，源 → 目标\nconst gcj = gcoord.transform(\n  [116.397428, 39.90923],   // WGS84 坐标（天安门）\n  gcoord.WGS84,\n  gcoord.GCJ02\n)\n// GCJ-02 输出，约偏移 300~500m\n\nconst bd = gcoord.transform(gcj, gcoord.GCJ02, gcoord.BD09)\n```\n\n支持的常量：`WGS84 / GCJ02 / BD09 / BD09MC / EPSG3857 / CGCS2000`。\n\n### 批量转 GeoJSON\n\n```js\nfunction transformFC(fc, from, to) {\n  function walkCoords(geom, fn) {\n    if (!geom) return geom\n    switch (geom.type) {\n      case 'Point':\n        return { ...geom, coordinates: fn(geom.coordinates) }\n      case 'LineString': case 'MultiPoint':\n        return { ...geom, coordinates: geom.coordinates.map(fn) }\n      case 'Polygon': case 'MultiLineString':\n        return { ...geom, coordinates: geom.coordinates.map(ring => ring.map(fn)) }\n      case 'MultiPolygon':\n        return { ...geom, coordinates: geom.coordinates.map(poly => poly.map(ring => ring.map(fn))) }\n      default: return geom\n    }\n  }\n  return {\n    ...fc,\n    features: fc.features.map(f => ({\n      ...f,\n      geometry: walkCoords(f.geometry, c => gcoord.transform(c, from, to))\n    }))\n  }\n}\n\nconst gcjFC = transformFC(wgsFC, gcoord.WGS84, gcoord.GCJ02)\n```\n\n## 不同平台 API 注意\n\n### 1. 高德地图 Web JS API\n\n- `AMap.convertFrom(lnglat, type, cb)`：官方提供批量转换（type=3：GPS → 高德，type=5：百度 → 高德）。\n- **优先用高德 SDK 自带转换**，比前端自己算更准（包含最新保密参数）。\n\n```js\nAMap.convertFrom([[116.3, 39.9]], 'gps', (status, result) => {\n  if (status === 'complete') console.log(result.locations)\n})\n```\n\n### 2. 百度地图 JS API\n\n- 有 `BMap.Convertor.translate(points, 2, 0, cb)`（2 表示从 WGS-84 转到 BD-09）。\n- 也支持 GCJ → BD。\n\n### 3. 后端预转换（推荐）\n\n前端纠偏是\"兜底\"，**最好后端入库/出接口时统一成目标坐标系**，前端直接渲染，避免首屏抖动和交互不一致。\n\n## 逆向转换（火星 → 真坐标）注意\n\n- GCJ-02 → WGS84 **不存在官方算法**，只有第三方的近似迭代反解（gcoord 里已经实现了近似反解）。\n- 精度大概 1~5 米，绝大多数业务够用但不能当测绘用。\n- 法律合规：公开场景不要大规模做火星→真实坐标反解。\n\n## 合规提示\n\n- 国内公开地图应用：必须选择**有甲级互联网地图服务资质**的供应商（高德、百度、腾讯、天地图等）做底图，**不能直接用 Google Maps / OSM 叠加境内业务**并公开上线。\n- 业务数据应在服务端统一存 GCJ-02，输出给对应前端即可。\n- 涉及高精度测绘数据必须脱密后才能上线。\n\n## 工程化建议\n\n1. **建一个 coord 模块**封装所有转换，业务代码禁止直接调用 gcoord，方便未来统一切算法。\n2. **后端接口声明坐标系**：接口文档必须写清楚返回是哪套，避免前端瞎猜。\n3. **可视化自查工具**：在开发模式叠加同坐标 POI 到三张底图上，看哪个\"贴合实际道路\"。\n4. **Web Mercator (EPSG:3857)**：是\"投影坐标\"，单位米；前端地图库内部一般自动帮你转，写业务代码统一用经纬度即可。\n## 在线 Demo（页面可直接运行）\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<script src=\"https://unpkg.com/gcoord@0.3.0/dist/gcoord.js\"></script>\n<div id=\"map\" style=\"height:260px\"></div>\n<div style=\"padding:4px;display:flex;gap:10px;flex-wrap:wrap;font-size:12px\">\n  <label>源坐标:\n    <select id=\"src\"><option value=\"WGS84\">WGS84 (GPS)</option>\n    <option value=\"GCJ02\">GCJ-02 (高德)</option>\n    <option value=\"BD09\">BD-09 (百度)</option></select>\n  </label>\n  <label>(lng,lat):\n    <input id=\"lng\" style=\"width:90px\" value=\"116.397428\"/>,\n    <input id=\"lat\" style=\"width:90px\" value=\"39.90923\"/>\n  </label>\n  <button id=\"go\">🎯 三坐标映射</button>\n</div>\n<table id=\"tbl\" border=\"1\" style=\"margin-top:4px;border-collapse:collapse;font-size:12px;text-align:right\"></table>\n<script>\nvar map=L.map('map').setView([39.909,116.397],16)\nL.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map)\nvar lg=L.layerGroup().addTo(map)\nvar COLORS={WGS84:'#000',GCJ02:'#e00',BD09:'#06c'}\nfunction hav(a,b){const R=6371000;const x=[a[1],a[0]].map(v=>v*Math.PI/180);const y=[b[1],b[0]].map(v=>v*Math.PI/180)\n  return 2*R*Math.asin(Math.sqrt(Math.sin((y[0]-x[0])/2)**2+Math.cos(x[0])*Math.cos(y[0])*Math.sin((y[1]-x[1])/2)**2))}\nfunction run(){\n  lg.clearLayers()\n  const src=document.getElementById('src').value\n  const lng=+document.getElementById('lng').value,lat=+document.getElementById('lat').value\n  const orig=[lng,lat]\n  var rows=['<tr><th>坐标系</th><th>lng</th><th>lat</th><th>相对源偏移</th></tr>']\n  const arr=['WGS84','GCJ02','BD09'],pts=[]\n  arr.forEach(tgt=>{\n    const p=gcoord.transform(orig,gcoord[src],gcoord[tgt])\n    const d=hav(orig,p)\n    rows.push('<tr><td><b style=\"color:'+COLORS[tgt]+'\">● '+tgt+'</b></td><td>'+p[0].toFixed(7)+'</td><td>'+p[1].toFixed(7)+'</td><td>'+d.toFixed(1)+' 米</td></tr>')\n    pts.push({tgt,p})\n  })\n  document.getElementById('tbl').innerHTML=rows.join('')\n  pts.forEach(q=>{\n    L.circleMarker([q.p[1],q.p[0]],{radius:6,color:COLORS[q.tgt],fillColor:COLORS[q.tgt],fillOpacity:.9}).addTo(lg)\n      .bindTooltip(q.tgt,{permanent:true,direction:'right',offset:[6,0]}).openTooltip()\n  })\n  var poly=L.polygon(pts.map(q=>[q.p[1],q.p[0]]),{color:'#a0a',fillColor:'#f0f',fillOpacity:.15,weight:2,dashArray:'5 4'}).addTo(lg)\n  map.fitBounds(poly.getBounds().pad(.25))\n}\ndocument.getElementById('go').onclick=run\nrun()\n</script>\n```\n"
+},
+{
+  "id": "gis-005",
+  "category": "gis",
+  "framework": "turf",
+  "title": "Turf.js 空间分析常用方法与实战？",
+  "difficulty": "中等",
+  "tags": [
+    "Turf.js",
+    "空间分析",
+    "点在面内",
+    "距离",
+    "缓冲区"
+  ],
+  "answer": "## Turf.js 是什么\n\n浏览器 / Node 通用的 **JavaScript 空间分析库**，相当于 GIS 领域的 Lodash。100+ 纯函数，输入输出都是 GeoJSON。\n\n```bash\nnpm i @turf/turf              # 全量\nnpm i @turf/helpers @turf/distance @turf/boolean-point-in-polygon   # 按需装单包，体积更小\n```\n\n## 必备：Helper 构造\n\n```js\nimport { point, lineString, polygon, featureCollection, feature } from '@turf/helpers'\n\nconst pt = point([116.397, 39.908], { name: '天安门' })\nconst line = lineString([[116.3,39.9],[116.4,39.95],[116.5,39.9]])\nconst poly = polygon([\n  [[116,39],[117,39],[117,40],[116,40],[116,39]]  // 外环必须闭合\n])\nconst fc = featureCollection([pt, point([116.4, 39.92])])\n```\n\n## Top 10 高频方法\n\n### 1. 两点距离 distance / bearing\n\n```js\nimport distance from '@turf/distance'\nimport bearing from '@turf/bearing'\n\n// 返回单位：默认 kilometers，也能 miles/degrees\nconst d = distance(point([116.3, 39.9]), point([116.5, 39.95]), { units: 'km' })\nconsole.log(d)  // ~ 23 km\n\n// 方位角（0 = 北，90 = 东）\nconst brng = bearing(point([116.3, 39.9]), point([116.5, 39.95]))\n```\n\n### 2. 点是否在面内 booleanPointInPolygon（地理围栏核心）\n\n```js\nimport booleanPointInPolygon from '@turf/boolean-point-in-polygon'\nimport booleanPointInLineString from '@turf/boolean-point-on-line'\n\nconst pt = point([116.4, 39.5])\nconst poly = polygon([[[116,39],[117,39],[117,40],[116,40],[116,39]]])\n\nconsole.log(booleanPointInPolygon(pt, poly))     // true\nconsole.log(booleanPointInPolygon(pt, poly, { ignoreBoundary: true }))  // 边界上是否算 false\n```\n\n业务用：判断用户 GPS 是否在电子围栏/配送范围/禁行区内。\n\n### 3. 缓冲区 buffer（点/线/面扩张 n 米）\n\n```js\nimport buffer from '@turf/buffer'\n\nconst station = point([116.397, 39.908])\nconst range500m = buffer(station, 500, { units: 'meters' })  // 500 米范围（圆形多边形）\n\n// 配送范围：道路 2 公里沿线\nconst road = lineString([[116.3,39.9],[116.4,39.9],[116.5,39.95]])\nconst delivery = buffer(road, 2, { units: 'kilometers' })\n```\n\n业务：站点辐射、POI 搜索半径、洪水/火灾扩散、噪声范围。\n\n### 4. 面面积 area / 线长度 length\n\n```js\nimport area from '@turf/area'\nimport length from '@turf/length'\n\nconsole.log(area(poly))           // 平方米，约 111km×111km ≈ 1.23e10\nconsole.log(length(line))         // 度，需要 {units:'kilometers'} 转\nconsole.log(length(line, { units: 'kilometers' }))\n```\n\n### 5. 质心 centroid / 内点 pointOnFeature\n\n```js\nimport centroid from '@turf/centroid'\nimport pointOnFeature from '@turf/point-on-feature'\n\nconst labelPt = centroid(poly)    // 数学质心（可能在凹多边形外面）\nconst labelOn = pointOnFeature(poly)  // 保证在要素内部（贴标签必用）\n```\n\n### 6. 交集/并集/差集：intersect / union / difference / xor\n\n```js\nimport intersect from '@turf/intersect'\nimport union from '@turf/union'\nimport difference from '@turf/difference'\n\nconst polyA = polygon([[[0,0],[10,0],[10,10],[0,10],[0,0]]])\nconst polyB = polygon([[[5,5],[15,5],[15,15],[5,15],[5,5]]])\n\nconst and = intersect(polyA, polyB)     // 重叠区 5~10,5~10\nconst or  = union(polyA, polyB)         // 合并\nconst sub = difference(polyA, polyB)    // A 去掉 B\n```\n\n业务：多个商圈合并、两个地块求重叠、禁行区从配送范围里扣掉。\n\n### 7. 最近点 nearestPoint / 点到线距离 pointToLineDistance\n\n```js\nimport nearestPoint from '@turf/nearest-point'\nimport pointToLineDistance from '@turf/point-to-line-distance'\n\nconst candidates = featureCollection([\n  point([116.3, 39.9], { id: 'A' }),\n  point([116.5, 39.95], { id: 'B' })\n])\nconsole.log(nearestPoint(point([116.4, 39.92]), candidates))  // 返回最接近的 feature\n\n// 用户到地铁线路的垂直距离\nconst distM = pointToLineDistance(\n  point([116.401, 39.91]),\n  lineString([[116.39,39.90],[116.41,39.92]]),\n  { units: 'meters' }\n)\n```\n\n### 8. 沿线插值 along / 线切分 lineSlice\n\n```js\nimport along from '@turf/along'\nimport lineSlice from '@turf/line-slice'\n\n// 从起点走 5 公里到的点\nconst pos = along(line, 5, { units: 'kilometers' })\n\n// 切下起止两点间的线段\nconst start = point([116.3, 39.9])\nconst stop  = point([116.4, 39.95])\nconst subLine = lineSlice(start, stop, line)\n```\n\n业务：轨迹回放取某一时刻位置、路径分段展示。\n\n### 9. 抽稀 simplify（大数据减点）\n\n```js\nimport simplify from '@turf/simplify'\n\n// tolerance 越大越简\nconst lightLine = simplify(line, { tolerance: 0.001, highQuality: true, mutate: false })\n```\n\n10 万节点的省界线 simplify 后变 300 节点，渲染性能显著提升。\n\n### 10. 外包框 bbox / bboxPolygon / 裁剪 bboxClip\n\n```js\nimport bbox from '@turf/bbox'\nimport bboxPolygon from '@turf/bbox-polygon'\nimport bboxClip from '@turf/bbox-clip'\n\nconst box = bbox(fc)  // [minX, minY, maxX, maxY]\nconst rect = bboxPolygon(box)\nconst onlyBeijing = bboxClip(bigPoly, [115.5, 39.5, 117.5, 41])\n```\n\n## 实战：LBS 附近门店查询\n\n```js\nimport * as turf from '@turf/turf'\n\nfunction findNearby(user, storesFC, radiusKm = 3, limit = 10) {\n  const range = turf.circle(user, radiusKm, { units: 'kilometers', steps: 32 })\n  const inRange = storesFC.features.filter(\n    f => turf.booleanPointInPolygon(f, range)\n  )\n  return inRange\n    .map(f => ({\n      ...f.properties,\n      dist: turf.distance(user, f, { units: 'kilometers' })\n    }))\n    .sort((a, b) => a.dist - b.dist)\n    .slice(0, limit)\n}\n```\n\n## 性能注意\n\n1. 超大数据量（> 10w 要素）：\n   - 先做**空间索引**再做 booleanPointInPolygon。Turf 有 `@turf/rbush` 或用第三方 `geokdbush`。\n   - 先粗筛（bbox 比较）再细算（真正几何运算）。\n2. 频繁调用 buffer/intersect：放 Web Worker 中跑，避免主线程卡顿。\n3. 单位陷阱：distance/length 默认 degrees，一定要传 units。\n4. 非法自相交面求 union 会抛错，先 `simplify` 或 `@turf/clean-coords`。\n\n## 生态\n\n- 浏览器 / Node 通用。\n- 与 @turf/turf-sync（同步替代，Web Worker 友好）、RBush（R 树空间索引）搭配能扛百万级数据。\n- 地图前端基本都要引入 Turf，把它放公共 chunk。\n## 在线 Demo（页面可直接运行）\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/@turf/turf@6.5.0/turf.min.js\"></script>\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<style>#map{height:270px}</style>\n<div id=\"map\"></div>\n<div style=\"font-size:12px;margin-top:2px\">\n  <button id=\"intersect\">🔀 A ∩ B 交集</button>\n  <button id=\"union\">🔗 A ∪ B 联集</button>\n  <button id=\"diffA\">➖ A \\ B</button>\n  <button id=\"diffB\">➖ B \\ A</button>\n  <button id=\"buffer\">🔵 buffer 200m 两块</button>\n  <button id=\"reset\">🔄 重置</button>\n  <span id=\"st\" style=\"margin-left:10px;font-family:Consolas,monospace;background:#000;color:#0f0;padding:0 8px\">-</span>\n</div>\n<script>\nconst A = turf.polygon([[[116.385,39.920],[116.405,39.920],[116.405,39.905],[116.385,39.905],[116.385,39.920]]])\nconst B = turf.polygon([[[116.395,39.927],[116.415,39.927],[116.415,39.912],[116.395,39.912],[116.395,39.927]]])\nvar map=L.map('map').setView([39.915,116.40],12)\nL.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map)\nvar lA=L.geoJSON(A,{style:{color:'#06c',fillColor:'#6cf',fillOpacity:.4,weight:3}}).bindTooltip('A').addTo(map)\nvar lB=L.geoJSON(B,{style:{color:'#a30',fillColor:'#fc6',fillOpacity:.4,weight:3}}).bindTooltip('B').addTo(map)\nvar lRes=L.geoJSON(null,{style:{color:'#080',fillColor:'#0c6',fillOpacity:.55,weight:3}}).addTo(map)\nfunction setInfo(r,label){\n  var txt=label+'：类型 = '+(r&&r.geometry&&r.geometry.type||r||'空 ∅')\n  if(r&&r.geometry&&r.geometry.type.startsWith('Poly')) txt += '  面积 = '+(turf.area(r)/1e6).toFixed(4)+' km²'\n  if(r&&r.geometry&&r.geometry.type==='LineString') txt += '  长度 = '+(turf.length(r,{units:'km'})).toFixed(3)+' km'\n  document.getElementById('st').innerHTML=txt\n}\nfunction reset(){\n  lRes.clearLayers();lA.setStyle({color:'#06c',fillColor:'#6cf',fillOpacity:.4,weight:3})\n  lB.setStyle({color:'#a30',fillColor:'#fc6',fillOpacity:.4,weight:3})\n  setInfo({geometry:{type:'两个 Polygon'}},'原始 A,B：有一块明显重叠区')\n  map.fitBounds(lA.getBounds().extend(lB.getBounds()))\n}\ndocument.getElementById('reset').onclick=reset\ndocument.getElementById('intersect').onclick=()=>{const r=turf.intersect(A,B);lRes.clearLayers();if(r)lRes.addData(r);setInfo(r,'A ∩ B')}\ndocument.getElementById('union').onclick=()=>{const r=turf.union(A,B);lRes.clearLayers();if(r)lRes.addData(r);setInfo(r,'A ∪ B')}\ndocument.getElementById('diffA').onclick=()=>{const r=turf.difference(A,B);lRes.clearLayers();if(r)lRes.addData(r);setInfo(r,'A 减 B')}\ndocument.getElementById('diffB').onclick=()=>{const r=turf.difference(B,A);lRes.clearLayers();if(r)lRes.addData(r);setInfo(r,'B 减 A')}\ndocument.getElementById('buffer').onclick=()=>{\n  const bA=turf.buffer(A,.2,{units:'kilometers'}),bB=turf.buffer(B,.2,{units:'kilometers'})\n  lRes.clearLayers();lRes.addData(bA);lRes.addData(bB)\n  lA.setStyle({opacity:.2,fillOpacity:.1});lB.setStyle({opacity:.2,fillOpacity:.1})\n  setInfo({geometry:{type:'两个 Polygon'}},'各 buffer 200m，总面积 ≈ '+(turf.area(turf.union(bA,bB))/1e6).toFixed(3)+' km²')\n}\nreset()\n</script>\n```\n"
+},
+{
+  "id": "gis-006",
+  "category": "gis",
+  "title": "前端地图渲染性能优化手段（10w+ POI / 轨迹）？",
+  "difficulty": "困难",
+  "tags": [
+    "性能优化",
+    "WebGL",
+    "Canvas",
+    "聚合",
+    "抽稀",
+    "虚拟列表"
+  ],
+  "answer": "## 性能瓶颈在哪\n\n前端地图主要有三种渲染路径：\n1. **DOM（SVG）**：Leaflet 的 circleMarker / polyline 默认 DOM。优点交互好，**> 1000 个 DOM 就卡**。\n2. **Canvas 2D**：Leaflet canvas renderer / L7 早期。~5w 点还行，超过掉帧。\n3. **WebGL**：Mapbox GL / Deck.gl / L7 / MapLibre。百万级点起步，是大数据的唯一解。\n\n优化总思路：**降数量 + 换渲染器 + 降更新频率**。\n\n## 一、减少要素数量（最有效）\n\n### 1. 聚合 / 抽稀 / 热力，而不是把原始数据一股脑扔上去\n\n#### 点聚合（Cluster）\n\nLeaflet：`leaflet.markercluster` 插件（DOM 聚合气泡）。\nMapbox GL / Deck.gl：内置 supercluster 算法（k-d 树）。\n\n```js\n// Mapbox GL 内置聚合\nmap.addSource('pois', {\n  type: 'geojson',\n  data: fc,\n  cluster: true,\n  clusterRadius: 50,\n  clusterMaxZoom: 14\n})\n// 聚合点显示数字、散开显示点\n```\n\n效果：低层级全国 10w 点 → 只渲染几十个聚合圆。\n\n#### 线/面抽稀 simplify\n\n长轨迹 10w 个点 → Turf simplify 减到 3000 个点（视觉几乎无差异）。\n\n```js\nimport simplify from '@turf/simplify'\nconst light = simplify(heavyLine, { tolerance: 0.0005, highQuality: true })\n```\n\ntolerance 按 zoom 变：z 小 tolerance 大；z 大 tolerance 小。\n\n#### 视口内过滤\n\n只渲染可视区 bbox 内的要素。超出范围的不渲染。\n\n```js\nfunction renderInView(map, fc) {\n  const [minX, minY, maxX, maxY] = map.getBounds().toArray().flat()\n  const inView = fc.features.filter(f => {\n    const [x, y] = f.geometry.coordinates\n    return x >= minX && x <= maxX && y >= minY && y <= maxY\n  })\n  source.setData(featureCollection(inView))\n}\nmap.on('moveend', () => renderInView(map, allFC))\n```\n\n大数据场景配**空间索引**（RBush / KDBush / geokdbush）：`O(log n)` 查范围内点，不是线性扫。\n\n## 二、换 WebGL 渲染器\n\n### 选 Deck.gl 叠加 Mapbox / MapLibre\n\nDeck.gl 按层组织：\n\n```js\nimport { MapboxOverlay } from '@deck.gl/mapbox'\nimport {\n  ScatterplotLayer, HeatmapLayer, ArcLayer, PathLayer, PolygonLayer, TextLayer\n} from '@deck.gl/layers'\nimport { DataFilterExtension } from '@deck.gl/extensions'\n\nconst overlay = new MapboxOverlay({\n  layers: [\n    new ScatterplotLayer({\n      id: 'poi',\n      data: pois,      // 数组（百万级）\n      getPosition: d => [d.lng, d.lat],\n      getRadius: 3,\n      getFillColor: d => d.type === 'A' ? [255, 0, 0] : [0, 200, 0],\n      pickable: true,\n      radiusMinPixels: 2,\n      radiusMaxPixels: 12\n    }),\n    new HeatmapLayer({\n      id: 'heat',\n      data: pois,\n      getPosition: d => [d.lng, d.lat],\n      getWeight: d => d.value,\n      radiusPixels: 40\n    })\n  ]\n})\nmap.addControl(overlay)\n```\n\n常用 Layer：\n- 点：ScatterplotLayer / IconLayer（带图标的点，用 Sprite Atlas）。\n- 线：PathLayer / LineLayer / ArcLayer（飞线/OD，自动弯曲）。\n- 面：PolygonLayer / FillExtrusionLayer（3D 挤压）。\n- 文本：TextLayer（SDF 字体）。\n- 轨迹动画：TripsLayer（按时间维度运动的线）。\n\n扩展：\n- `DataFilterExtension`：前端实时滑杆筛选（时间、数值），GPU 内过滤，不重建数据。\n\n### 备选：L7（蚂蚁开源，封装友好）\n\n```js\nimport { Scene, PointLayer } from '@antv/l7'\nimport { GaodeMap } from '@antv/l7-maps'\n\nconst scene = new Scene({\n  id: 'map',\n  map: new GaodeMap({ style: 'light', center: [116.39, 39.9], zoom: 11 })\n})\nnew PointLayer().source(data, { parser: { type: 'json', x: 'lng', y: 'lat' } })\n  .shape('circle')\n  .size(5)\n  .color('type', ['#f00','#0f0','#00f'])\n  .active(true).addTo(scene)\n```\n\n中文生态好，新手友好。\n\n## 三、渲染层级优化\n\n### 1. 批量 setData，频繁小数据改成节流更新\n\n```js\nimport throttle from 'lodash.throttle'\nconst update = throttle(() => source.setData(newFC), 200)\n```\n\n### 2. 避免重绘全量数据\n\n- Mapbox GL：source 里的 feature 尽量用 `setFeatureState` 改属性，而不是整个 setData。\n- 选中高亮：两个 Layer（正常层 + 高亮层，数据只有被选中 ID），不要重画整个层。\n\n### 3. 资源复用\n\n- 图标：用 sprite atlas 合成一张大图，避免千个 icon 千个 img。\n- 文字：Mapbox 用 SDF glyphs，大小自适应、清晰、体积小。\n\n## 四、数据与网络\n\n### 1. 分级加载\n\nz ≤ 6 → 省界聚合；z 7~10 → 市界 + 聚合；z ≥ 11 → 真实点数据。\n\n### 2. 矢量瓦片 (MVT / PMTiles)\n\n把 GeoJSON 预切成瓦片，按需加载。当前视口一次只拿 20~50 张 pbf。\n\n- 后端切图工具：tippecanoe（GeoJSON → mbtiles）、PMTiles 工具链。\n- 前端用 maplibre-gl 直接加载 PMTiles，无需服务器，S3/OSS 直读。\n\n### 3. 传输压缩\n\n- 响应体 gzip/brotli。\n- 大数组转 Float32Array → Binary + protobuf（deck.gl Binary Data Access 快 2~5x）。\n\n## 五、交互与主线程不阻塞\n\n### 1. 计算移到 Worker\n\nTurf 布尔运算、simplify、聚类、坐标转换、按时间回放插值都放 Worker。\n\n```js\n// worker.js\nimport * as turf from '@turf/turf'\nself.onmessage = ({ data }) => {\n  const result = turf.simplify(data.line, { tolerance: data.t })\n  self.postMessage(result)  // Transferable 对象更快\n}\n```\n\n### 2. 鼠标 hover 用 gpu-picking\n\nWebGL 库（Deck、Mapbox、L7）都支持 `pickable: true`，GPU 颜色编码点拣，O(1)。**不要自己遍历要素数组找最近点**（O(n) 10w 次直接卡）。\n\n### 3. 动画 60fps 秘籍\n\n- 轨迹回放用 TripsLayer / 改 shader uniform，而不是每秒改整个 GeoJSON。\n- camera.animateTo / flyTo 用 easing，避免频繁 moveend。\n- 频繁动画使用 `requestAnimationFrame` 不要 setInterval。\n\n## 六、常见优化 Checklist\n\n1. **层级越低 → 展示越少**：聚合 / 抽样 / 省界，不要在 z=3 放 10 万个点。\n2. **DOM 渲染器换 Canvas / WebGL**：Leaflet 默认 DOM，3000 点以上必换。\n3. **大数据用 Deck.gl / L7，不用手写 Canvas**：你写的 Canvas 挑不过 WebGL。\n4. **moveend 回调节流 + 空间索引粗筛**：避免每次拖动全量过滤。\n5. **复杂计算 Worker 化**：Turf/simplify/buffer/cluster 别占主线程。\n6. **渲染属性按层级动**：小 zoom 大半径少细节，大 zoom 才精绘。\n7. **观察 Chrome Performance / WebGL Inspector**：看是 CPU（坐标转换）还是 GPU（绘制）瓶颈，对症下药。\n\n## 典型配置推荐\n\n| 数据量 | 地图库 | 渲染方案 | 关键优化 |\n| --- | --- | --- | --- |\n| < 1k 点 | 任意 | 随便写 | - |\n| 1k~1w | Leaflet / OpenLayers | Canvas renderer + markercluster | 聚合、抽稀 |\n| 1w~50w | Mapbox GL / L7 | GeoJSON source + cluster | 聚合、分级加载、FeatureState |\n| 50w~500w | Deck.gl / L7 | WebGL 二进制数组 DataFilterExt | Worker 预处理、Binary、飞线用 ArcLayer |\n| 百万级 + 全国分发 | 矢量瓦片 | PMTiles / MVT + Deck.gl TileLayer | 切片、CDN、按需加载 |\n\n一句话心法：**不要让浏览器渲染你看不到的数据**（视口、聚合、抽稀、分级），剩下的交给 WebGL。\n## 在线 Demo（页面可直接运行）\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<script src=\"https://unpkg.com/deck.gl@9.0.32/dist.min.js\"></script>\n<div id=\"wrap\" style=\"display:flex;gap:4px;height:310px\">\n  <div style=\"flex:1;border:1px solid #ccc;position:relative\">\n    <div id=\"m1\" style=\"width:100%;height:100%\"></div>\n    <div style=\"position:absolute;left:0;top:0;background:rgba(0,0,0,.7);color:#fff;padding:2px 6px;font-size:12px\">① 3k DOM Marker</div>\n  </div>\n  <div style=\"flex:1;border:1px solid #ccc;position:relative\">\n    <div id=\"m2\" style=\"width:100%;height:100%\"></div>\n    <div style=\"position:absolute;left:0;top:0;background:rgba(0,0,0,.7);color:#fff;padding:2px 6px;font-size:12px\">② 3k Leaflet Canvas</div>\n  </div>\n  <div style=\"flex:1;border:1px solid #ccc;position:relative\">\n    <div id=\"m3\" style=\"width:100%;height:100%\"></div>\n    <div style=\"position:absolute;left:0;top:0;background:rgba(0,0,0,.7);color:#fff;padding:2px 6px;font-size:12px\">③ Deck 10w Scatter</div>\n  </div>\n</div>\n<div style=\"font-family:Consolas,monospace;font-size:12px;margin-top:4px\">\n  ① 3k DOM = <span id=\"r1\">-</span> ms &nbsp;\n  ② 3k Canvas = <span id=\"r2\">-</span> ms &nbsp;\n  ③ 10w WebGL = <span id=\"r3\">-</span> ms\n</div>\n<script>\nconst N=3000,pts=[]\nfor(let i=0;i<N;i++) pts.push([39.9+(Math.random()-.5)*.8,116.4+(Math.random()-.5)*.8])\n// DOM\nlet t=performance.now()\nvar m1=L.map('m1',{zoomControl:false,attributionControl:false}).setView([39.9,116.4],11)\nL.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(m1)\nfor(let i=0;i<N;i++) L.circleMarker(pts[i],{radius:2,color:'#e33',weight:0,fillOpacity:.7}).addTo(m1)\ndocument.getElementById('r1').textContent=(performance.now()-t).toFixed(0)\n// Canvas\nt=performance.now()\nvar m2=L.map('m2',{zoomControl:false,attributionControl:false,renderer:L.canvas()}).setView([39.9,116.4],11)\nL.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(m2)\nfor(let i=0;i<N;i++) L.circleMarker(pts[i],{radius:2,color:'#06c',weight:0,fillOpacity:.85}).addTo(m2)\ndocument.getElementById('r2').textContent=(performance.now()-t).toFixed(0)\n// Deck 10w\nt=performance.now()\nconst d=[]\nfor(let i=0;i<100000;i++) d.push([116.4+(Math.random()-.5)*.8,39.9+(Math.random()-.5)*.8,5])\nvar deck=new deck.DeckGL({\n  container:'m3', controller:true,\n  mapStyle:'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',\n  initialViewState:{longitude:116.4,latitude:39.9,zoom:11},\n  layers:[new deck.ScatterplotLayer({id:'s',data:d,\n    getPosition:p=>[p[0],p[1]],getRadius:p=>p[2],radiusMinPixels:1,radiusScale:2,\n    getFillColor:[60,160,80,200],getLineColor:[255,255,255,80],getLineWidth:.3})]\n})\ndocument.getElementById('r3').textContent=(performance.now()-t).toFixed(0)\n</script>\n```\n"
+},
+{
+  "id": "gis-007",
+  "category": "gis",
+  "framework": "mapbox",
+  "title": "Mapbox GL JS 的矢量瓦片与 style spec 原理？",
+  "difficulty": "中等",
+  "tags": [
+    "Mapbox",
+    "矢量瓦片",
+    "style spec",
+    "WebGL",
+    "MVT"
+  ],
+  "answer": "## 为什么 Mapbox 能又快又好看\n\nMapbox GL JS 的核心是**矢量瓦片（Vector Tile, MVT）+ WebGL 渲染 + style spec**三位一体：\n1. **数据端**：服务端把 GeoJSON/Shapefile 预切成 MVT 矢量瓦片（PBF 编码），按 `z/x/y` 分级存储在 CDN。\n2. **渲染端**：浏览器用 WebGL 拉取瓦片 → 解码成几何 → **在 GPU 上实时绘制**（不是贴图片）。\n3. **样式端**：一份 JSON（style spec）描述\"每个图层怎么画\"。\n\n## 和栅格瓦片的根本区别\n\n| 维度 | 栅格瓦片（XYZ PNG） | 矢量瓦片（MVT） |\n| --- | --- | --- |\n| 服务端做什么 | 切成图片 | 切成几何数据 |\n| 样式 | 写死在图片里 | 浏览器实时渲染，可动态切换 |\n| 旋转/倾斜 | 图片会模糊 | 矢量重投影，无失真 |\n| 文字标注 | 易重叠 | 可碰撞检测、避让 |\n| 体积 | 较大（PNG） | 较小（PBF 压缩） |\n| 交互 | 只能命中像素 | 可查询要素属性 |\n\n## style spec 核心结构\n\n```json\n{\n  \"version\": 8,\n  \"sources\": {\n    \"osm\": {\n      \"type\": \"vector\",\n      \"tiles\": [\"https://cdn.example.com/{z}/{x}/{y}.pbf\"],\n      \"minzoom\": 0,\n      \"maxzoom\": 14\n    }\n  },\n  \"layers\": [\n    {\n      \"id\": \"water\",\n      \"type\": \"fill\",\n      \"source\": \"osm\",\n      \"source-layer\": \"water\",\n      \"paint\": { \"fill-color\": \"#0ff\" }\n    },\n    {\n      \"id\": \"road-label\",\n      \"type\": \"symbol\",\n      \"source\": \"osm\",\n      \"source-layer\": \"road\",\n      \"layout\": {\n        \"text-field\": \"{name}\",\n        \"text-size\": 12\n      }\n    }\n  ]\n}\n```\n\n关键字段：\n- **sources**：数据源（vector / raster / geojson / image / video）。geojson source 用于前端临时数据，不走瓦片。\n- **layers**：渲染图层。每层有 type（fill / line / symbol / circle / fill-extrusion / heatmap / hillshade / raster / background）。\n- **paint** vs **layout**：paint 可平滑插值动画（如 fill-color），layout 改变布局需重排（如 text-field）。\n- **表达式**：`[\"match\", [\"get\", \"class\"], \"motorway\", \"#f00\", \"#ccc\"]` 实现\"按属性动态着色\"。\n\n## 数据驱动画画（Data-Driven Styling）\n\n```js\n// 按人口密度给区块上色\nmap.setPaintProperty('population', 'fill-color', [\n  'interpolate',\n  ['linear'],\n  ['get', 'density'],\n  0, '#fff',\n  1000, '#f00',\n  5000, '#800'\n])\n```\n\n这是矢量瓦片最大的威力：**数据不重新拉取，样式实时改**。\n\n## 前端代码骨架\n\n```js\nimport mapboxgl from 'mapbox-gl'\nmapboxgl.accessToken = 'pk.xxxx'\n\nconst map = new mapboxgl.Map({\n  container: 'map',\n  style: './style.json',     // 可托管自己的 style JSON\n  center: [116.39, 39.91],\n  zoom: 10,\n  hash: true\n})\n\nmap.on('load', () => {\n  // 动态加一个 GeoJSON 图层\n  map.addSource('route', { type: 'geojson', data: geojson })\n  map.addLayer({\n    id: 'route-line',\n    type: 'line',\n    source: 'route',\n    paint: { 'line-color': '#38f', 'line-width': 4 }\n  })\n})\n```\n\n## 离线 / 自建瓦片\n\n- **MapLibre GL JS**：Mapbox GL JS 的开源 fork（Mapbox v2 改协议后社区分叉），完全开源免费，style spec 兼容。\n- 自建瓦片：Tippecanoe（命令行切 MVT）、Martin（Rust server）、postgis + pg_tileserv。\n- 瓦片存储：MBTiles（SQLite 单文件）/ PMTiles（云原生平铺文件，无需 server）。\n\n## 易错点\n\n- **source-layer 写错**：MVT 内部按 source-layer 分组，写错图层空白但不报错。\n- **zoom 范围**：`minzoom/maxzoom` 控制可见，矢量瓦片切到 z14，再放大需要 `maxzoom` + 内插。\n- **图层顺序**：layers 数组顺序 = z-index，先画的在下面，symbol 类一般放最后。\n- **raster vs vector 混用**：底图栅格 + 业务矢量是常见组合，注意 source 类型别混。\n## 在线 Demo（页面可直接运行）\n\n```html\n<link href=\"https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css\" rel=\"stylesheet\" />\n<script src=\"https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js\"></script>\n<div id=\"map\" style=\"height:260px\"></div>\n<div style=\"display:flex;gap:12px;padding:4px;font-size:12px;align-items:center;flex-wrap:wrap\">\n  <label>背景: <input type=\"color\" id=\"bg\" value=\"#f8efe0\"/></label>\n  <label>水色: <input type=\"color\" id=\"water\" value=\"#6aa9ff\"/></label>\n  <label>道路色: <input type=\"color\" id=\"road\" value=\"#ff9\"/></label>\n  <label>文字透明度: <input type=\"range\" id=\"op\" min=\"0\" max=\"1\" step=\"0.05\" value=\"1\"/></label>\n  <span id=\"summary\" style=\"margin-left:auto;font-family:Consolas,monospace;background:#000;color:#0f0;padding:0 6px\">-</span>\n</div>\n<script>\nvar map=new maplibregl.Map({container:'map',style:'https://demotiles.maplibre.org/style.json',center:[14.41,50.09],zoom:4})\nmap.on('load',()=>{\n  const src=Object.keys(map.getStyle().sources).length\n  const layers=map.getStyle().layers.length\n  document.getElementById('summary').textContent=src+' sources · '+layers+' layers'\n})\ndocument.getElementById('bg').oninput=e=>map.setPaintProperty('background','background-color',e.target.value)\ndocument.getElementById('water').oninput=e=>{\n  try{map.setPaintProperty('water','fill-color',e.target.value)}catch(_){}\n  try{map.setPaintProperty('waterway','line-color',e.target.value)}catch(_){}\n}\ndocument.getElementById('road').oninput=e=>{\n  ['road','road_major','motorway','trunk'].forEach(k=>{try{map.setPaintProperty(k,'line-color',e.target.value)}catch(_){}})\n}\ndocument.getElementById('op').oninput=e=>{\n  const v=+e.target.value\n  map.getStyle().layers.filter(l=>l.type==='symbol').forEach(l=>{\n    try{map.setLayoutProperty(l.id,'visibility',v===0?'none':'visible');map.setPaintProperty(l.id,'text-opacity',v)}catch(_){}\n  })\n}\n</script>\n```\n"
+},
+{
+  "id": "gis-008",
+  "category": "gis",
+  "framework": "leaflet",
+  "title": "Leaflet 的图层体系与常用插件？",
+  "difficulty": "中等",
+  "tags": [
+    "Leaflet",
+    "图层",
+    "插件",
+    "L.LayerGroup",
+    "Marker"
+  ],
+  "answer": "## Leaflet 图层抽象\n\nLeaflet 把一切可视元素抽象为 `L.Layer`，统一通过 `map.addLayer/removeLayer` 管理。\n\n```\nL.Layer（基类）\n├── L.TileLayer        底图瓦片\n│   └── L.TileLayer.WMS\n├── L.Path             矢量图形（线/面）\n│   ├── L.Polyline / L.Polygon / L.Rectangle / L.Circle\n│   └── L.GeoJSON      （解析 GeoJSON 自动分发到上面）\n├── L.Marker           点标记（DOM）\n├── L.LayerGroup       图层组（批量操作）\n│   └── L.FeatureGroup （带事件 + bindPopup 的增强组）\n├── L.ImageOverlay     图片叠加\n├── L.VideoOverlay     视频叠加\n└── L.Popup / L.Tooltip 弹窗/提示\n```\n\n## 常用 API\n\n```js\nconst map = L.map('map').setView([39.91, 116.39], 10)\n\n// 1. 底图瓦片\nL.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {\n  maxZoom: 19,\n  attribution: '© OpenStreetMap'\n}).addTo(map)\n\n// 2. GeoJSON 业务数据\nconst layer = L.geoJSON(geojson, {\n  style: f => ({ color: f.properties.color || '#38f' }),\n  pointToLayer: (f, latlng) => L.marker(latlng, { icon: myIcon }),\n  onEachFeature: (f, lyr) => lyr.bindPopup(f.properties.name)\n}).addTo(map)\n\n// 3. 图层组：批量切换\nconst group = L.layerGroup([m1, m2, m3]).addTo(map)\ngroup.clearLayers()\n\n// 4. 控件：图层显隐\nL.control.layers(null, {\n  '业务图层': layer,\n  '热力图': heatLayer\n}).addTo(map)\n```\n\n## 必装插件\n\n| 插件 | 用途 | 备注 |\n| --- | --- | --- |\n| **leaflet.markercluster** | 海量点聚合 | 1k+ marker 必装，替代方案 Leaflet.CanvasLayer |\n| **Leaflet.heat** | 热力图 | 基于 canvas，性能不错 |\n| **leaflet-draw** | 绘制点/线/面 | 测距、框选、采集 |\n| **Proj4Leaflet** | 自定义投影 | 国内 CGCS2000、局域投影必备 |\n| **Leaflet.VectorGrid** | 矢量瓦片 | 渲染 MVT/PBF，性能接近 Mapbox |\n| **Leaflet.Mask** | 区域外遮罩 | 突出某一行政区 |\n| **leaflet-measure-path** | 测距测面 | 直接显示在图形上 |\n| **Leaflet.Sleep** | 滚动不抢占滚轮 | 内嵌页面时防误触 |\n\n## 渲染器选择\n\n```js\n// 默认 SVG，1k+ 要素切 Canvas\nL.Map.addInitHook(function () {\n  this.options.preferCanvas = true   // 全局用 Canvas 渲染器\n})\n```\n\n- **SVG**：每个要素独立 DOM 节点，事件好绑，500 以内最佳。\n- **Canvas**：所有要素画一张 canvas，性能强，事件需空间索引命中检测，1000~5w 适用。\n- 超过 5w → 上 VectorGrid（MVT）或换 Mapbox/Deck.gl。\n\n## 坑\n\n- **`L.geoJSON` 坐标顺序**：GeoJSON 是 `[lng, lat]`，Leaflet API 是 `[lat, lng]`，但 `L.geoJSON` 内部自动转换，**直接传 GeoJSON 不要手动翻转**。\n- **markercluster 性能**：`disableClusteringAtZoom` 防止高 zoom 仍聚合；`removeOutsideVisibleBounds` 必开。\n- **图层 zIndex**：TileLayer 默认 200，矢量默认 400，业务数据可用 pane 提层。\n- ** CRS**：默认 EPSG:3857，要做 EPSG:4326 底图需 `L.CRS.EPSG4326` + tile 源支持。\n## 在线 Demo（页面可直接运行）\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css\" />\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<script src=\"https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js\"></script>\n<script src=\"https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js\"></script>\n<div id=\"map\" style=\"height:280px\"></div>\n<script>\nvar map=L.map('map').setView([39.9,116.4],10)\nvar osm=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'OSM'}).addTo(map)\nvar topo=L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{attribution:'Topo'})\nvar nasa=L.tileLayer.wms('https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?',{\n  layers:'BlueMarble_NextGeneration_BMNG',format:'image/png',version:'1.3.0',crs:L.CRS.EPSG4326,attribution:'NASA'})\nvar dist=L.geoJSON({type:'FeatureCollection',features:[\n  {type:'Feature',geometry:{type:'Polygon',coordinates:[[[116.30,39.86],[116.50,39.86],[116.50,39.98],[116.30,39.98],[116.30,39.86]]]},properties:{name:'北京范围'}},\n  {type:'Feature',geometry:{type:'Polygon',coordinates:[[[116.37,39.86],[116.42,39.86],[116.42,39.93],[116.37,39.93],[116.37,39.86]]]},properties:{name:'内城子区'}}\n]},{style:f=>({color:f.properties.name==='北京范围'?'#a30':'#06c',dashArray:f.properties.name==='北京范围'?'6 4':null,\n  fillColor:f.properties.name==='北京范围'?'#ea6':'#6cf',fillOpacity:.18,weight:2})}).bindPopup(f=>f.feature.properties.name)\nvar mc=L.markerClusterGroup()\nfor(var i=0;i<500;i++){\n  var p=[39.9+(Math.random()-.5)*.7,116.4+(Math.random()-.5)*.7]\n  L.marker(p).bindPopup('POI #'+i+'<br>'+p[0].toFixed(5)+', '+p[1].toFixed(5)).addTo(mc)\n}\nvar heat=L.heatLayer(Array.from({length:200},()=>[39.9+(Math.random()-.5)*.6,116.4+(Math.random()-.5)*.6,Math.random()]),{radius:18,blur:12,maxZoom:12})\nvar base={'OSM 街道':osm,'OpenTopoMap 地形':topo,'NASA WMS':nasa}\nvar over={'🟡 行政区 GeoJSON':dist,'🟠 500 点 MarkerCluster':mc,'🔥 200 点 Heatmap':heat}\nL.control.layers(base,over,{collapsed:false}).addTo(map)\ndist.addTo(map);mc.addTo(map)\n</script>\n```\n"
+},
+{
+  "id": "gis-009",
+  "category": "gis",
+  "title": "地图交互事件体系与坐标转换（屏幕/经纬度/投影）？",
+  "difficulty": "中等",
+  "tags": [
+    "事件",
+    "坐标转换",
+    "project",
+    "unproject",
+    "epsg"
+  ],
+  "answer": "## 三套坐标\n\n前端地图交互必须搞清楚三套坐标系：\n\n| 坐标系 | 单位 | 用途 | 例子 |\n| --- | --- | --- | --- |\n| **地理坐标** (lng/lat) | 度 | 数据存储、API 通信 | [116.39, 39.91] |\n| **投影坐标** (x/y) | 米 | 渲染、距离计算 | [12958200, 4852000] |\n| **像素坐标** (px) | px | DOM 事件、交互 | [320, 240] |\n| **屏幕坐标** (clientX/Y) | px | 鼠标事件 | [820, 540] |\n\nWeb Mercator (EPSG:3857) 是 Web 地图事实标准：x = lng × R × π/180，y = R × ln(tan(π/4 + lat/2))。\n\n## 事件体系（以 Mapbox 为例）\n\n```js\nmap.on('click', e => {\n  // e.point      像素坐标（相对地图容器）\n  // e.lngLat     经纬度（自动 unproject）\n  console.log(e.point, e.lngLat)\n})\n\nmap.on('mousemove', 'route-layer', e => {\n  // 命中要素：e.features\n  const f = e.features[0]\n  popup.setLngLat(e.lngLat).setHTML(f.properties.name).addTo(map)\n})\n```\n\n事件类型：\n- **地图事件**：click / dblclick / mousemove / mouseout / contextmenu / zoom / move / rotate / pitch / load / idle。\n- **图层事件**：`map.on('click', 'layerId', fn)`，命中检测由渲染器内部空间索引完成，性能远好于遍历要素。\n- **要素状态**：`setFeatureState` 改 hover 态不重渲染图层。\n\n## 坐标转换核心方法\n\n```js\n// Mapbox / MapLibre\nmap.project([lng, lat])      // → {x, y} 像素坐标\nmap.unproject({x, y})        // → {lng, lat}\nmap.getBounds()              // → LngLatBounds（视口经纬度范围）\nmap.queryRenderedFeatures()  // 查询视口内要素\n\n// Leaflet\nmap.latLngToLayerPoint(latlng)    // → Point（像素）\nmap.layerPointToLatLng(point)\nmap.project(latlng, zoom)         // → 任意 zoom 的像素\nmap.unproject(point, zoom)\nmap.getBounds().toBBoxString()    // → \"west,south,east,north\" 给 WMS\n```\n\n## 投影转换：proj4\n\n```js\nimport proj4 from 'proj4'\nproj4.defs('EPSG:4490', '+proj=longlat +ellps=GRS80 +no_defs')\n\n// WGS84 → Web Mercator\nconst [x, y] = proj4('EPSG:4326', 'EPSG:3857', [116.39, 39.91])\n\n// Web Mercator → 国测局 GCJ-02（需 gcoord）\nimport gcoord from 'gcoord'\nconst gcj = gcoord.transform([116.39, 39.91], gcoord.WGS84, gcoord.GCJ02)\n```\n\n## 实战：点击地图测距\n\n```js\nlet line = []\nmap.on('click', e => {\n  line.push([e.lngLat.lng, e.lngLat.lat])\n  if (line.length >= 2) {\n    const dist = turf.length(turf.lineString(line), { units: 'kilometers' })\n    popup.setLngLat(e.lngLat).setHTML(`距离: ${dist.toFixed(2)} km`).addTo(map)\n  }\n})\n```\n\n## 常见坑\n\n- **lng/lat 顺序**：Turf、GeoJSON 是 [lng, lat]；Leaflet API、高德/百度 SDK 是 [lat, lng]，混用必出 bug。\n- **投影 EPSG**：底图 EPSG:3857，业务数据 EPSG:4326，库会自动转，但 WMS 自定义投影要显式声明 CRS。\n- **Web Mercator 纬度上限**：约 ±85.05°，再高拉不到极地，极地要用其他投影。\n- **像素坐标 zoom 相关**：`project(lnglat)` 是当前 zoom 像素，换 zoom 需 `project(lnglat, targetZoom)`。\n- **拖拽 vs 点击**：用户拖拽后会触发 click，用 `map.on('mousedown') + mouseup + 未移动` 判断真点击，或 `moveend` 设置标志位。\n## 在线 Demo（页面可直接运行）\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<div id=\"map\" style=\"height:270px\"></div>\n<div id=\"tip\" style=\"margin:4px 0;background:#000;color:#0f0;font-family:Consolas,monospace;font-size:12px;padding:6px\">\n  鼠标悬停看三种坐标；手动改像素 xy 会反推经纬度。\n</div>\n<div style=\"display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:12px\">\n  <div style=\"border:1px solid #ccc;padding:6px\"><b>① containerPoint (容器像素)</b><br>\n    x:<input id=\"px\" style=\"width:70px\" value=\"100\"/> y:<input id=\"py\" style=\"width:70px\" value=\"100\"/>\n    <button id=\"p2g\">→ 反推经纬度</button>\n  </div>\n  <div style=\"border:1px solid #ccc;padding:6px\"><b>② lat / lng (WGS84)</b><br>\n    lat:<input id=\"olat\" style=\"width:90px\"/> lng:<input id=\"olng\" style=\"width:90px\"/>\n  </div>\n  <div style=\"border:1px solid #ccc;padding:6px\"><b>③ layerPoint</b><br>\n    <span id=\"layerp\">-, -</span>\n  </div>\n</div>\n<script>\nvar map=L.map('map').setView([39.9,116.4],12)\nL.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map)\nvar pxMark=L.circleMarker([39.9,116.4],{radius:5,color:'#e33',fillColor:'#f66',fillOpacity:1}).addTo(map)\nmap.on('mousemove',e=>{\n  const ll=e.latlng\n  const cp=map.latLngToContainerPoint(ll)\n  const lp=map.latLngToLayerPoint(ll)\n  document.getElementById('px').value=Math.round(cp.x)\n  document.getElementById('py').value=Math.round(cp.y)\n  document.getElementById('olat').value=ll.lat.toFixed(6)\n  document.getElementById('olng').value=ll.lng.toFixed(6)\n  document.getElementById('layerp').textContent=lp.x.toFixed(0)+' , '+lp.y.toFixed(0)\n})\ndocument.getElementById('p2g').onclick=()=>{\n  const x=+document.getElementById('px').value,y=+document.getElementById('py').value\n  const ll=map.containerPointToLatLng(L.point(x,y))\n  pxMark.setLatLng(ll).bindPopup('像素 ('+x+','+y+') ↔ 经纬度 '+ll.lat.toFixed(6)+', '+ll.lng.toFixed(6)).openPopup()\n  map.panTo(ll)\n}\n</script>\n```\n"
+},
+{
+  "id": "gis-010",
+  "category": "gis",
+  "title": "热力图、飞线图、聚类图等可视化图层如何实现？",
+  "difficulty": "中等",
+  "tags": [
+    "热力图",
+    "飞线",
+    "聚类",
+    "可视化",
+    "Deck.gl",
+    "Turf"
+  ],
+  "answer": "## 1. 热力图（Heatmap）\n\n**原理**：每个点贡献一个高斯核，叠加成密度场，按阈值映射颜色。\n\n```js\n// Mapbox 内置 heatmap 图层\nmap.addLayer({\n  id: 'heat',\n  type: 'heatmap',\n  source: 'points',\n  paint: {\n    'heatmap-weight': ['interpolate', ['linear'], ['get', 'value'], 0, 0, 100, 1],\n    'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 0, 1, 9, 3],\n    'heatmap-color': [\n      'interpolate', ['linear'], ['heatmap-density'],\n      0, 'rgba(0,0,0,0)',\n      0.2, '#00f', 0.4, '#0f0', 0.6, '#ff0', 0.8, '#f00', 1, '#fff'\n    ],\n    'heatmap-radius': 30,\n    'heatmap-opacity': 0.7\n  }\n})\n```\n\n适用：连续型密度（人口、订单、事故）。**不适合**离散型分类（用聚类图）。\n\n## 2. 飞线图（迁徙图）\n\n**原理**：两点之间画弧线（贝塞尔/大圆弧），沿路径动画流光。\n\n```js\n// Deck.gl ArcLayer\nnew ArcLayer({\n  id: 'flight',\n  data: flights,   // [{from: [lng,lat], to: [lng,lat], count}]\n  getSourcePosition: d => d.from,\n  getTargetPosition: d => d.to,\n  getSourceColor: [0, 200, 255],\n  getTargetColor: [255, 60, 0],\n  getWidth: d => Math.sqrt(d.count) / 10,\n  greatCircle: true,             // 大圆弧\n  pickable: true\n})\n\n// 流光动画：用 TripsLayer 或在 Mapbox 用 line-gradient + 实时改 paint\nmap.setPaintProperty('flight', 'line-gradient', [\n  'interpolate', ['linear'], ['line-progress'],\n  0, 'rgba(0,200,255,0)', 0.5, '#0cf', 1, 'rgba(0,200,255,0)'\n])\n```\n\n要点：\n- 弧线高度 = 距离函数，太低看不清，太高喧宾夺主。\n- 流光用 `line-dasharray` + `dasharray-step` 动画，或 canvas 自绘纹理。\n\n## 3. 聚类图（Cluster）\n\n**原理**：相邻点合并成大圆，zoom 增大再展开。\n\n```js\n// Mapbox 内置 cluster\nmap.addSource('points', {\n  type: 'geojson',\n  data,\n  cluster: true,\n  clusterRadius: 50,\n  clusterMaxZoom: 14\n})\n\n// 聚合圆\nmap.addLayer({\n  id: 'cluster', type: 'circle', source: 'points', filter: ['has', 'point_count'],\n  paint: {\n    'circle-radius': ['step', ['get', 'point_count'], 15, 50, 20, 100, 25],\n    'circle-color': ['step', ['get', 'point_count'], '#0f0', 50, '#ff0', 100, '#f00']\n  }\n})\n\n// 点击展开\nmap.on('click', 'cluster', e => {\n  const id = e.features[0].properties.cluster_id\n  source.getClusterExpansionZoom(id).then(z => map.easeTo({ center: e.lngLat, zoom: z }))\n})\n```\n\n适用：1k~50w POI，能保持交互流畅。\n\n## 4. 六边形网格（Hexbin）\n\n把点按六边形单元聚合，比聚类的\"圆形\"更稳定，适合密度对比。\n\n```js\n// Turf 生成网格\nconst grid = turf.hexGrid(bbox, 0.5, { units: 'kilometers' })\nconst counted = turf.collect(grid, points, 'value', 'sum')\n```\n\nDeck.gl 的 `HexagonLayer` 直接 GPU 聚合，百万点实时。\n\n## 5. 等值面/分级填色（Choropleth）\n\n```js\nmap.setPaintProperty('province', 'fill-color', [\n  'interpolate', ['linear'], ['get', 'gdp'],\n  0, '#fff', 1000, '#fdd', 5000, '#f88', 10000, '#800'\n])\n```\n\n数据驱动 + 颜色阶梯，最常见的政务地图可视化。\n\n## 选型速查\n\n| 场景 | 推荐方案 |\n| --- | --- |\n| 人口密度、热区 | Heatmap（内置） |\n| 50w+ 点密度 | Hexbin / 3D 热力图（Deck.gl） |\n| 迁徙、流向 | ArcLayer（Deck.gl） |\n| POI 分布 | Cluster（内置） |\n| 区域指标 | Choropleth |\n| 时序轨迹 | TripsLayer（Deck.gl） |\n| 3D 柱状 | FillExtrusionLayer（内置） / ColumnLayer |\n\n## 性能心法\n\n- 1w 以内用 Mapbox 原生图层 + GeoJSON source。\n- 1w~50w 开 `cluster` 或转 MVT。\n- 50w+ 必上 Deck.gl（WebGL + 二进制）或矢量瓦片。\n## 在线 Demo（页面可直接运行）\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<script src=\"https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js\"></script>\n<script src=\"https://unpkg.com/@turf/turf@6.5.0/turf.min.js\"></script>\n<style>.tab button{margin:2px;padding:4px 10px;border:1px solid #999;background:#f2f2f2;font-size:12px}\n  .tab .on{background:#22aaff;color:#fff;border-color:#22aaff}</style>\n<div class=\"tab\"><button id=\"b1\" class=\"on\">🔥 Heat 500</button><button id=\"b2\">🧩 Cluster 1500</button><button id=\"b3\">✈️ Arc 飞线 40</button></div>\n<div id=\"map\" style=\"height:270px\"></div>\n<script>\nvar map=L.map('map').setView([39.9,116.4],10)\nvar base=L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png').addTo(map)\nvar layers={\n  heat:L.heatLayer(Array.from({length:500},()=>[39.9+(Math.random()-.5)*.7,116.4+(Math.random()-.5)*.7,Math.random()+.3]),{radius:20,blur:16}),\n  clust:(()=>{\n    if(L && L.markerClusterGroup){\n      var mc=L.markerClusterGroup()\n      for(var i=0;i<1500;i++) L.marker([39.9+(Math.random()-.5)*.7,116.4+(Math.random()-.5)*.7]).bindTooltip('#'+i).addTo(mc)\n      return mc\n    }\n    var g=L.layerGroup()\n    for(var i=0;i<1500;i++) L.circleMarker([39.9+(Math.random()-.5)*.7,116.4+(Math.random()-.5)*.7],{radius:1,color:'#06c',weight:0,fillOpacity:.7}).addTo(g)\n    return g\n  })(),\n  arcs:(()=>{\n    var g=L.layerGroup()\n    var cities={北京:[116.4,39.9],上海:[121.5,31.2],广州:[113.3,23.1],成都:[104.07,30.67],\n      西安:[108.95,34.27],武汉:[114.31,30.52],杭州:[120.15,30.28],深圳:[114.05,22.54]}\n    var cs=Object.keys(cities)\n    for(let i=0;i<40;i++){\n      var a=cities[cs[i%cs.length]],b=cities[cs[(i*3+1)%cs.length]]\n      if(a===b)continue\n      var line=turf.greatCircle(a,b,{npoints:30})\n      var coords=line.geometry.coordinates.map((c,k)=>{\n        var t=k/(line.geometry.coordinates.length-1)\n        return [c[1]+Math.sin(t*Math.PI)*Math.hypot(a[0]-b[0],a[1]-b[1])*.5, c[0]]\n      })\n      var col=['#e33','#06c','#0a6','#a80','#c0c','#08a','#088'][i%7]\n      L.polyline(coords,{color:col,weight:2,opacity:.85}).addTo(g)\n    }\n    Object.values(cities).forEach(p=>L.circleMarker([p[1],p[0]],{radius:6,color:'#fff',weight:2,fillColor:'#000',fillOpacity:.85}).addTo(g))\n    return g\n  })()\n}\nfunction show(name){\n  Object.keys(layers).forEach(k=>map.removeLayer(layers[k]))\n  layers[name].addTo(map)\n  ;['b1','b2','b3'].forEach((id,i)=>document.getElementById(id).classList.toggle('on',['heat','clust','arcs'][i]===name))\n}\ndocument.getElementById('b1').onclick=()=>show('heat')\ndocument.getElementById('b2').onclick=()=>show('clust')\ndocument.getElementById('b3').onclick=()=>show('arcs')\nshow('heat')\n</script>\n```\n"
+},
+{
+  "id": "gis-011",
+  "category": "gis",
+  "title": "前端如何实现海量轨迹回放与轨迹纠偏？",
+  "difficulty": "困难",
+  "tags": [
+    "轨迹回放",
+    "Turf",
+    "插值",
+    "requestAnimationFrame",
+    "纠偏"
+  ],
+  "answer": "## 轨迹回放的核心问题\n\n1. **数据量大**：一辆车一天 1w+ 点，1k 辆车 = 千万级。\n2. **流畅播放**：60fps 下每帧画 1k 条线 + 时间窗口。\n3. **时间对齐**：不同车采样间隔不同，要按\"虚拟时钟\"对齐推进。\n4. **轨迹质量**：GPS 漂移、跳点、信号丢失，要纠偏/插值。\n\n## 单车回放（基础版）\n\n```js\nconst coords = track.map(p => [p.lng, p.lat])\nconst line = turf.lineString(coords)\nconst totalLen = turf.length(line, { units: 'kilometers' })\n\nlet progress = 0\nfunction step() {\n  progress += 0.001  // 每帧前进 1m\n  if (progress > totalLen) return\n  const pt = turf.along(line, progress, { units: 'kilometers' })\n  marker.setLngLat(pt.geometry.coordinates)\n  requestAnimationFrame(step)\n}\nstep()\n```\n\n要点：用 `turf.along` 沿线取点，**比按数组索引推进更平滑**（采样不均也能匀速）。\n\n## 多车同步回放（关键：虚拟时钟）\n\n```js\nconst tracks = [...]  // 每条轨迹: { points: [{t, lng, lat}], id }\nconst startTime = Math.min(...tracks.map(t => t.points[0].t))\nconst endTime = Math.max(...tracks.map(t => t.points.at(-1).t))\nconst speed = 100   // 倍速\n\nlet virtualTime = startTime\nlet lastFrame = performance.now()\n\nfunction frame(now) {\n  const dt = (now - lastFrame) / 1000\n  lastFrame = now\n  virtualTime += dt * 1000 * speed\n\n  // 每条轨迹找当前时刻的插值位置\n  tracks.forEach(t => {\n    const p = interpolateAtTime(t.points, virtualTime)\n    if (p) updateMarker(t.id, p)\n  })\n  if (virtualTime < endTime) requestAnimationFrame(frame)\n}\nrequestAnimationFrame(frame)\n\n// 二分查找 + 线性插值\nfunction interpolateAtTime(points, t) {\n  let lo = 0, hi = points.length - 1\n  if (t < points[0].t || t > points[hi].t) return null\n  while (lo < hi - 1) {\n    const mid = (lo + hi) >> 1\n    points[mid].t <= t ? lo = mid : hi = mid\n  }\n  const a = points[lo], b = points[hi]\n  const r = (t - a.t) / (b.t - a.t)\n  return [a.lng + (b.lng - a.lng) * r, a.lat + (b.lat - a.lat) * r]\n}\n```\n\n## 性能优化（万车级）\n\n1. **数据预处理转二进制**：`Float32Array` 存坐标 + 时间戳，比对象数组省 80% 内存。\n2. **WebWorker 计算**：插值放 worker，主线程只画。\n3. **按时间分块加载**：把轨迹按 1 分钟切块，按虚拟时钟 fetch。\n4. **WebGL 渲染**：Deck.gl TripsLayer 内部就是这套，万车实时。\n\n```js\nnew TripsLayer({\n  id: 'trips',\n  data: trips,\n  getPath: d => d.path,        // [[lng,lat,t],...]\n  getTimestamps: d => d.path.map(p => p[2]),\n  getColor: [0, 200, 255],\n  widthMinPixels: 2,\n  currentTime: virtualTime / 1000,\n  trailLength: 30              // 拖尾时长\n})\n```\n\n## 轨迹纠偏与平滑\n\nGPS 原始轨迹常有：跳点、漂移、信号丢失。\n\n```js\n// 1. 速度过滤：超过 200km/h 的点视为跳点\nconst cleaned = points.filter((p, i) => {\n  if (i === 0) return true\n  const prev = points[i - 1]\n  const dist = turf.distance([prev.lng, prev.lat], [p.lng, p.lat], { units: 'kilometers' })\n  const dt = (p.t - prev.t) / 3600\n  return dist / dt < 200\n})\n\n// 2. 卡尔曼滤波（npm: kalman-filter）\nimport { KalmanFilter } from 'kalman-filter'\nconst kf = new KalmanFilter({ observation: 2 })\nconst smoothed = cleaned.map(p => kf.filter([p.lng, p.lat]))\n\n// 3. 路网匹配（map-matching）\n// OSRM / Valhalla 提供服务端匹配 API\nfetch(`https://router.project-osrm.org/match/v1/driving/${coords.join(';')}`)\n  .then(r => r.json())\n  .then(matched => drawLine(matched.tracepoints))\n```\n\n## 时间轴控件\n\n```js\n// 拖动时间轴 → 跳转到对应时刻\nslider.oninput = e => {\n  const ratio = e.target.value / 1000\n  virtualTime = startTime + (endTime - startTime) * ratio\n  cancelAnimationFrame(rafId)\n  renderFrame()   // 立即渲染一帧\n}\nplayBtn.onclick = () => requestAnimationFrame(frame)\n```\n\n## 实战坑\n\n- **跨日期线**：lng 从 179 跳到 -179 直接画线横穿地图，需检测并拆段。\n- **时区**：所有时间戳统一存 UTC，前端按用户时区显示。\n- **轨迹回放卡顿**：90% 是 DOM marker 太多，改 canvas/WebGL 立竿见影。\n- **暂停后再播放**：要重置 `lastFrame = performance.now()`，否则 dt 巨大导致瞬移。\n## 在线 Demo（页面可直接运行）\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<script src=\"https://unpkg.com/@turf/turf@6.5.0/turf.min.js\"></script>\n<div id=\"map\" style=\"height:260px\"></div>\n<div style=\"display:flex;gap:12px;padding:4px 0;align-items:center;font-size:12px\">\n  <button id=\"play\">▶ 播放</button><button id=\"pause\">⏸</button>\n  <input id=\"t\" type=\"range\" min=\"0\" max=\"1\" step=\"0.01\" value=\"0\"/>\n  <label><input type=\"checkbox\" id=\"cRaw\" checked/>原始(黑)</label>\n  <label><input type=\"checkbox\" id=\"cSm\" checked/>EWMA 平滑(蓝)</label>\n  <label><input type=\"checkbox\" id=\"cMm\" checked/>地图匹配(红)</label>\n  <span id=\"time\" style=\"font-family:Consolas,monospace\">T=0.0s</span>\n</div>\n<script>\nvar map=L.map('map').setView([39.91,116.4],12)\nL.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map)\nconst N=50, ref=[]\nfor(let i=0;i<N;i++) ref.push([116.36+i*.0014, 39.91 + Math.sin(i/5)*.001])\nconst refLine=turf.lineString(ref)\nconst raw=ref.map(([x,y],i)=>[x+(Math.random()-.5)*.0007, y+(Math.random()-.5)*.0007])\nconst sm=[raw[0].slice()]; const α=.3\nfor(let i=1;i<raw.length;i++) sm.push([α*raw[i][0]+(1-α)*sm[i-1][0], α*raw[i][1]+(1-α)*sm[i-1][1]])\nconst mm=raw.map(p=>{const n=turf.nearestPointOnLine(refLine,turf.point(p));return n.geometry.coordinates})\nvar lref=L.polyline(ref.map(p=>[p[1],p[0]]),{color:'#093',weight:3,dashArray:'6 6'}).bindTooltip('参考真实道路').addTo(map)\nvar lraw=L.polyline(raw.map(p=>[p[1],p[0]]),{color:'#444',weight:2,opacity:.6}).addTo(map)\nvar lsm=L.polyline(sm.map(p=>[p[1],p[0]]),{color:'#06c',weight:3,opacity:.7}).addTo(map)\nvar lmm=L.polyline(mm.map(p=>[p[1],p[0]]),{color:'#e33',weight:3,opacity:.7,dashArray:'10 4'}).addTo(map)\nvar mRaw=L.marker([raw[0][1],raw[0][0]]).addTo(map).bindTooltip('原始',{permanent:true})\nvar mSm=L.marker([sm[0][1],sm[0][0]]).addTo(map).bindTooltip('平滑',{permanent:true,direction:'top'})\nvar mMm=L.marker([mm[0][1],mm[0][0]]).addTo(map).bindTooltip('匹配',{permanent:true,direction:'bottom'})\n;['cRaw','cSm','cMm'].forEach((id,i)=>document.getElementById(id).onchange=()=>{\n  const show=document.getElementById(id).checked\n  ;[lraw,lsm,lmm][i].setStyle({opacity:show?.4:.05})\n  ;[mRaw,mSm,mMm][i].setOpacity(show?1:0)\n})\nvar timer=null, tt=0\nfunction gotoT(t){\n  tt=Math.max(0,Math.min(1,t));document.getElementById('t').value=tt\n  const k=Math.min(N-1,Math.floor(tt*(N-1)))\n  mRaw.setLatLng([raw[k][1],raw[k][0]])\n  mSm.setLatLng([sm[k][1],sm[k][0]])\n  mMm.setLatLng([mm[k][1],mm[k][0]])\n  document.getElementById('time').textContent='T = '+((k/(N-1))*50).toFixed(1)+'s  [第 '+k+'/'+(N-1)+' 点]'\n}\ndocument.getElementById('t').oninput=e=>gotoT(+e.target.value)\ndocument.getElementById('play').onclick=()=>{if(timer)return;timer=setInterval(()=>{tt+=.02;if(tt>=1){tt=1;clearInterval(timer);timer=null}gotoT(tt)},40)}\ndocument.getElementById('pause').onclick=()=>{if(timer)clearInterval(timer);timer=null}\nmap.fitBounds(lraw.getBounds());gotoT(0)\n</script>\n```\n"
+},
+{
+  "id": "gis-012",
+  "category": "gis",
+  "title": "离线地图部署方案与瓦片切片流程？",
+  "difficulty": "中等",
+  "tags": [
+    "离线地图",
+    "瓦片切片",
+    "Tippecanoe",
+    "MBTiles",
+    "PMTiles"
+  ],
+  "answer": "## 为什么要离线\n\n- **政务/内网项目**：数据不外泄，无法访问公网地图服务。\n- **车载/船载**：弱网或无网环境。\n- **降本**：Mapbox 商业瓦片按量计费，内网部署可省费用。\n\n## 离线地图三件套\n\n1. **底图瓦片**（栅格或矢量）\n2. **瓦片服务**（HTTP server 或静态文件）\n3. **前端库**（Leaflet / Mapbox / MapLibre）\n\n## 方案 1：栅格瓦片 + 静态文件\n\n最简单，适合中小项目。\n\n```bash\n# 1. 下载瓦片（开源工具 download-osm-tiles / tile-downloader）\n# 2. 按标准 XYZ 目录组织\ntiles/\n├── 5/\n│   ├── 21/\n│   │   ├── 13.png\n│   │   └── 14.png\n```\n\n```js\n// Leaflet 直接指向本地目录\nL.tileLayer('http://内网IP/tiles/{z}/{x}/{y}.png', { maxZoom: 16 }).addTo(map)\n```\n\n缺点：放大后模糊，样式不可改，体积大（一个城市 z5~16 约 5GB）。\n\n## 方案 2：MBTiles + tile server\n\n**MBTiles** 是 SQLite 单文件，存储所有瓦片，便于分发。\n\n```bash\n# 服务端：用 tileserver-gl（开源）\ndocker run -p 8080:80 -v $(pwd):/data maptiler/tileserver-gl\n# 自动识别 *.mbtiles 并提供 XYZ / WMTS API\n```\n\n```js\nL.tileLayer('http://内网:8080/data/v3/{z}/{x}/{y}.png').addTo(map)\n```\n\n## 方案 3：矢量瓦片 + MapLibre（推荐）\n\n矢量瓦片可动态换样式、旋转无失真、体积小。\n\n### 切片：Tippecanoe\n\n```bash\n# GeoJSON → MVT 矢量瓦片\ntippecanoe -o china.mbtiles \\\n  -Z 4 -z 14 \\\n  --drop-densest-as-needed \\\n  --extend-zooms-if-still-dropping \\\n  roads.geojson buildings.geojson\n\n# 转 PMTiles（云原生平铺存储，无需 server）\npmtiles convert china.mbtiles china.pmtiles\n```\n\n### 服务\n\n- **tileserver-gl**：本地 MBTiles，提供 MVT + style。\n- **PMTiles + 任意静态服务器**：前端用 `pmtiles` 协议直接 range 请求，**无需瓦片服务端**。\n\n```js\nimport { Protocol } from 'pmtiles'\nimport maplibregl from 'maplibre-gl'\n\nconst p = new Protocol()\nmaplibregl.addProtocol('pmtiles', p.tile)\n\nconst map = new maplibregl.Map({\n  container: 'map',\n  style: './style.json',\n  // style.json 里 source.tiles: [\"pmtiles://china.pmtiles/{z}/{x}/{y}\"]\n})\n```\n\n## 切片策略要点\n\n| 数据规模 | 切片 zoom | 工具 |\n| --- | --- | --- |\n| 全国路网 | 4~14 | Tippecanoe |\n| 单省建筑 | 10~16 | Tippecanoe / postgis |\n| 几百 POI | 不切片，前端直载 GeoJSON | — |\n| 卫星影像 | 5~18 | rio-tiler / gdal2tiles |\n\nTippecanoe 关键参数：\n- `-Z 4 -z 14`：起止 zoom。\n- `--drop-densest-as-needed`：自动抽稀防瓦片超 500K。\n- `--layer=name`：source-layer 名。\n- `--no-tile-compression`：若 nginx 不解压，需关掉 gzip。\n- `--simplification=10`：简化几何减体积。\n\n## 字体与图标\n\n矢量瓦片的文字标注需要字体 PBF：\n- 字体切片工具：`font-maker` / `genfont`。\n- 把 `{fontstack}/{range}.pbf` 放静态服务器。\n- style.json 的 `glyphs` 指向 `http://内网/fonts/{fontstack}/{range}.pbf`。\n\n图标 sprite：\n`spritezero` 把 SVG 打包成 `sprite.json + sprite.png`。\n\n## 完整离线部署清单\n\n```\n/static\n├── tiles/china.pmtiles       # 矢量瓦片\n├── fonts/{fontstack}/{range}.pbf\n├── sprite/sprite.json + sprite.png\n├── style.json                # 引用以上资源\n└── index.html                # 引入 maplibre-gl\n```\n\n任一静态服务器（nginx / express）即可，零后端逻辑。\n\n## 内网坐标系坑\n\n- 内网底图常用 CGCS2000 (EPSG:4490) 或高斯投影，需 `Proj4Leaflet` 自定义 CRS。\n- 矢量瓦片默认 EPSG:3857，其他投影需自定义切片 + 自定义 MapLibre projection（v3+ 支持）。\n- 与高德/百度底图叠加：业务数据要先 WGS84 → GCJ-02/BD-09。\n\n## 更新策略\n\n- 瓦片按区域切片，**只重切变化区域**，用 `tippecanoe-decode` + diff。\n- PMTiles 支持 `pmtiles extract` 按 bbox 抽取子集，便于增量更新。\n- 缓存策略：HTTP `Cache-Control: immutable`（瓦片永不变化）+ 资源加 hash。\n## 在线 Demo（页面可直接运行）\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<div id=\"map\" style=\"height:260px\"></div>\n<div style=\"font-size:12px;display:flex;gap:10px;padding:4px;align-items:center;flex-wrap:wrap\">\n  缓存瓦片: <b id=\"n\">0</b> / 已用 <b id=\"sz\">0</b> KB\n  <button id=\"clear\">🗑 清空缓存</button>\n  <label>模式: <select id=\"mode\"><option>请求 + 缓存</option><option>强制离线(只查缓存)</option></select></label>\n  <span id=\"st\" style=\"background:#000;color:#0f0;font-family:Consolas,monospace;padding:0 8px\">ready</span>\n</div>\n<script>\nL.TileLayer.Cached = L.TileLayer.extend({\n  createTile(coords, done){\n    const key=coords.z+'/'+coords.x+'/'+coords.y\n    const mode=document.getElementById('mode').value\n    const cached=localStorage.getItem('t_'+key)\n    const img=document.createElement('img'); img.crossOrigin='anonymous'\n    const saveIt=()=>{try{\n      const c=document.createElement('canvas');c.width=c.height=256\n      const x=c.getContext('2d');x.drawImage(img,0,0)\n      localStorage.setItem('t_'+key,c.toDataURL('image/png'))\n      updateStat()}catch(_){/*跨域瓦片无法写入*/}\n    }\n    if(cached){img.src=cached;document.getElementById('st').textContent='CACHE HIT '+key;setTimeout(()=>done(null,img),0)}\n    else if(mode.includes('离线')){\n      img.width=img.height=256;img.alt='[离线无缓存]';setTimeout(()=>done(null,img),0)\n      document.getElementById('st').textContent='OFFLINE MISS '+key\n    } else {\n      img.onload=()=>{saveIt();done(null,img);document.getElementById('st').textContent='FETCHED '+key}\n      img.onerror=e=>done(e)\n      img.src=this.getTileUrl(coords)\n    }\n    return img\n  }\n})\nfunction updateStat(){\n  let n=0,sz=0\n  for(let i=0;i<localStorage.length;i++) if(localStorage.key(i).startsWith('t_')){n++;sz+=localStorage.getItem(localStorage.key(i)).length}\n  document.getElementById('n').textContent=n\n  document.getElementById('sz').textContent=(sz/1024).toFixed(0)\n}\nvar map=L.map('map').setView([39.9,116.4],11)\nvar tl=new L.TileLayer.Cached('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map)\ndocument.getElementById('clear').onclick=()=>{const k=Object.keys(localStorage).filter(k=>k.startsWith('t_'));while(k.length)localStorage.removeItem(k.pop());updateStat()}\ndocument.getElementById('mode').onchange=()=>tl.redraw()\nupdateStat()\n</script>\n```\n"
+},
+{
+  "id": "gis-013",
+  "category": "gis",
+  "framework": "openlayers",
+  "title": "OpenLayers 的 Map / View / Layer / Source 体系？",
+  "difficulty": "中等",
+  "tags": [
+    "OpenLayers",
+    "Map",
+    "View",
+    "Layer",
+    "Source",
+    "架构"
+  ],
+  "answer": "## OpenLayers 的核心抽象\n\nOpenLayers（OL）是功能最全的开源 GIS 库，采用严格的四层抽象：\n\n```\nMap          容器，管理图层、控件、交互、overlay\n ├── View        视图：projection / center / zoom / rotation\n ├── Layer[]     图层：决定\"怎么画\"（可见性、透明度、样式）\n │    └── Source    数据源：决定\"画什么\"（瓦片、矢量、图片）\n ├── Control[]   控件：缩放、比例尺、全屏、图层切换（DOM）\n ├── Interaction[] 交互：拖拽、滚轮、绘制、选取、修改\n └── Overlay[]   覆盖物：弹窗、HTML 定位元素\n```\n\n**关键理解**：Layer 和 Source 是分离的——同一个 Source 可被多个 Layer 用不同样式渲染（如一个面数据同时画填充和边界）。\n\n## 最小示例\n\n```js\nimport Map from 'ol/Map'\nimport View from 'ol/View'\nimport TileLayer from 'ol/layer/Tile'\nimport VectorLayer from 'ol/layer/Vector'\nimport OSM from 'ol/source/OSM'\nimport VectorSource from 'ol/source/Vector'\nimport GeoJSON from 'ol/format/GeoJSON'\nimport { Style, Fill, Stroke } from 'ol/style'\n\nconst map = new Map({\n  target: 'map',\n  view: new View({\n    projection: 'EPSG:3857',\n    center: [12958200, 4852000],   // 投影坐标（米）\n    zoom: 10\n  }),\n  layers: [\n    new TileLayer({ source: new OSM() }),\n    new VectorLayer({\n      source: new VectorSource({\n        url: './areas.geojson',\n        format: new GeoJSON()\n      }),\n      style: new Style({\n        fill: new Fill({ color: 'rgba(0,150,255,0.3)' }),\n        stroke: new Stroke({ color: '#06f', width: 2 })\n      })\n    })\n  ]\n})\n```\n\n## View：视图与投影\n\n```js\nnew View({\n  projection: 'EPSG:4326',        // 用经纬度（center 直接传 [lng, lat]）\n  center: [116.39, 39.91],\n  zoom: 10,\n  minZoom: 3,\n  maxZoom: 18,\n  extent: [73, 3, 136, 53]        // 限制平移范围（中国境域）\n})\n\n// 动画跳转\nmap.getView().animate({ center: [116.39, 39.91], zoom: 12, duration: 800 })\n```\n\n注意：projection 决定 center 单位。EPSG:3857 用米，EPSG:4326 用度。\n\n## Layer / Source 常用组合\n\n| Layer 类型 | Source 类型 | 用途 |\n| --- | --- | --- |\n| TileLayer | OSM / XYZ / WMTS / BingMaps | 栅格底图 |\n| VectorLayer | Vector / Cluster / VectorTile | 矢量数据 |\n| VectorTileLayer | VectorTile | MVT 矢量瓦片 |\n| ImageLayer | ImageWMS / ImageArcGISRest | 单张 WMS 图 |\n| Graticule | — | 经纬网 |\n\n## 加载矢量数据并设置样式\n\n```js\nconst vector = new VectorLayer({\n  source: new VectorSource({ url: './pois.geojson', format: new GeoJSON() }),\n  style: (feature, resolution) => {\n    const level = feature.get('level')\n    return new Style({ /* 按 level 返回不同样式 */ })\n  }\n})\n\n// 动态改样式不重新加载数据\nvector.setStyle(feature => new Style({ /* ... */ }))\n```\n\n`resolution`（米/像素）让样式随 zoom 缩放：`feature.get('size') / resolution`。\n\n## 控件与交互\n\n```js\nimport { defaults, ScaleLine, FullScreen } from 'ol/control'\nimport { Select, Draw, Modify, Snap } from 'ol/interaction'\n\nmap.addControl(new ScaleLine({ units: 'metric' }))\nmap.addInteraction(new Select({ style: selectedStyle }))\n\n// 绘制 + 修改 + 吸附\nconst draw = new Draw({ source, type: 'Polygon' })\nconst modify = new Modify({ source })\nconst snap = new Snap({ source })\nmap.addInteraction(draw); map.addInteraction(modify); map.addInteraction(snap)\n```\n\n## 与 Leaflet/Mapbox 的取舍\n\n| 维度 | OpenLayers | Leaflet | Mapbox GL |\n| --- | --- | --- | --- |\n| 功能 | 最全（OGC 全协议、编辑、拓扑） | 中等 | 强（矢量瓦片、3D） |\n| 体积 | ~200KB+（按需 import） | ~40KB | ~600KB |\n| 学习曲线 | 陡（抽象多） | 平缓 | 中 |\n| 投影 | 任意 EPSG（proj4 集成） | 预设几个 | 3857 为主 |\n| 适合 | 政企级 GIS、复杂业务 | 轻量展示 | 高度自定义可视化 |\n\n## 坑\n\n- **坐标顺序**：OL 内部统一 [x, y]（即 [lng, lat] 或 [east, north]），和 GeoJSON 一致；但 `fromLonLat([lng,lat])` 转投影别漏。\n- **proj4 注册**：用非标准 EPSG 必须 `proj4.defs` + `register(OlProjection)`。\n- **样式函数性能**：每帧每个要素都调 style function，复杂样式要缓存 Style 实例。\n- **图层销毁**：`map.removeLayer(layer); layer.dispose()` 才彻底释放。\n## 在线 Demo（页面可直接运行）\n\n```html\n<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/ol@9.2.4/ol.css\" />\n<script src=\"https://cdn.jsdelivr.net/npm/ol@9.2.4/dist/ol.js\"></script>\n<div id=\"map\" style=\"height:270px\"></div>\n<div style=\"font-size:12px;padding:4px 0\">\n  <button onclick=\"rotateView(15)\">🔄 View.rotate +15°</button>\n  <button onclick=\"rotateView(-15)\">↩️ -15°</button>\n  <label>底图Layer(Source):\n    <select id=\"lBase\">\n      <option value=\"osm\">OSM (source.OSM 栅格XYZ)</option>\n      <option value=\"stamen\">Stamen Terrain (source.XYZ)</option>\n      <option value=\"wms\">NASA (source.TileWMS)</option>\n    </select>\n  </label>\n  <label><input type=\"checkbox\" id=\"vPoly\" checked/>VectorLayer(GeoJSONSource) 北京市</label>\n  <label><input type=\"checkbox\" id=\"vTrack\" checked/>VectorLayer(ArraySource) 300 点轨迹</label>\n  <span id=\"st\" style=\"float:right;font-family:Consolas,monospace;background:#000;color:#0f0;padding:0 6px\"></span>\n</div>\n<script>\nconst baseSources = {\n  osm: new ol.source.OSM(),\n  stamen: new ol.source.XYZ({url:'https://{a-c}.tile.stamen.com/terrain/{z}/{x}/{y}.jpg'}),\n  wms: new ol.source.TileWMS({url:'https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?',\n    params:{LAYERS:'BlueMarble_NextGeneration_BMNG',VERSION:'1.3.0'},projection:'EPSG:4326'})\n}\nconst polySource = new ol.source.Vector({features:(new ol.format.GeoJSON()).readFeatures(\n  {type:'FeatureCollection',features:[\n    {type:'Feature',geometry:{type:'Polygon',coordinates:[[[116.30,39.84],[116.48,39.84],[116.48,39.98],[116.30,39.98],[116.30,39.84]]]},properties:{name:'北京矩形'}},\n    {type:'Feature',geometry:{type:'Polygon',coordinates:[[[116.36,39.88],[116.43,39.88],[116.43,39.94],[116.36,39.94],[116.36,39.88]]]},properties:{name:'内城'}},\n    {type:'Feature',geometry:{type:'Point',coordinates:[116.397,39.908]},properties:{name:'天安门'}}\n  ]},{featureProjection:'EPSG:3857',dataProjection:'EPSG:4326'})})\nlet last=[116.30,39.88]\nconst tfs=[]\nfor(let i=0;i<300;i++){\n  last=[last[0]+.00045+Math.random()*.0002, last[1]+Math.sin(i/8)*.0003+(Math.random()-.5)*.0003]\n  tfs.push(new ol.Feature({geometry:new ol.geom.Point(ol.proj.fromLonLat(last))}))\n}\ntfs.push(new ol.Feature({geometry:new ol.geom.LineString(tfs.map(f=>f.getGeometry().getCoordinates()))}))\nconst trackSource=new ol.source.Vector({features:tfs})\nvar tileLayer=new ol.layer.Tile({source:baseSources.osm})\nvar polyLayer=new ol.layer.Vector({source:polySource,\n  style:f=>{const t=f.getGeometry().getType().slice(0,4)\n    return t==='Poly'?new ol.style.Style({stroke:new ol.style.Stroke({color:'#a33',width:2,dashPattern:[6,4]}),\n      fill:new ol.style.Fill({color:[255,170,100,.25])}):\n    t==='Poin'?new ol.style.Style({image:new ol.style.Circle({radius:6,fill:new ol.style.Fill({color:'#e33'}),stroke:new ol.style.Stroke({color:'#fff',width:2})})})\n    :new ol.style.Style()}})\nvar trackLayer=new ol.layer.Vector({source:trackSource,\n  style:f=>{const t=f.getGeometry().getType()\n    return t==='LineString'?new ol.style.Style({stroke:new ol.style.Stroke({color:'#06c',width:2})}):\n      new ol.style.Style({image:new ol.style.Circle({radius:1.6,fill:new ol.style.Fill({color:'#06c'})})})}})\nvar view=new ol.View({center:ol.proj.fromLonLat([116.39,39.91]),zoom:11})\nvar map=new ol.Map({target:'map',view,layers:[tileLayer,polyLayer,trackLayer]})\nfunction rotateView(deg){view.animate({rotation:view.getRotation()+deg*Math.PI/180,duration:500})}\ndocument.getElementById('lBase').onchange=e=>tileLayer.setSource(baseSources[e.target.value])\ndocument.getElementById('vPoly').onchange=e=>polyLayer.setVisible(e.target.checked)\ndocument.getElementById('vTrack').onchange=e=>trackLayer.setVisible(e.target.checked)\nfunction refresh(){\n  document.getElementById('st').textContent='layers='+map.getLayers().getLength()+' zoom='+view.getZoom().toFixed(2)+' rot='+(view.getRotation()*180/Math.PI).toFixed(0)+'°'\n}\nview.on('change:resolution change:rotation',refresh);refresh()\nmap.on('pointermove',e=>{\n  const [lng,lat]=ol.proj.toLonLat(e.coordinate)\n  document.getElementById('st').textContent='鼠标 '+lng.toFixed(5)+', '+lat.toFixed(5)\n})\n</script>\n```\n"
+},
+{
+  "id": "gis-014",
+  "category": "gis",
+  "framework": "openlayers",
+  "title": "OpenLayers 如何对接 WMS / WFS / WMTS 与矢量编辑？",
+  "difficulty": "困难",
+  "tags": [
+    "OpenLayers",
+    "WMS",
+    "WFS",
+    "WMTS",
+    "OGC",
+    "矢量编辑"
+  ],
+  "answer": "## OGC 服务三件套\n\n| 服务 | 返回 | OL Source | 典型用途 |\n| --- | --- | --- | --- |\n| **WMS** | 服务端渲染的图片 | ImageWMS / TileWMS | 出图（不改样式） |\n| **WFS** | 矢量数据（GML/GeoJSON） | VectorSource + format | 取要素、编辑回写 |\n| **WMTS** | 预切片瓦片 | WMTS（TileImage） | 高性能底图 |\n\n## WMS：服务端出图\n\n```js\nimport ImageLayer from 'ol/layer/Image'\nimport ImageWMS from 'ol/source/ImageWMS'\n\nnew ImageLayer({\n  source: new ImageWMS({\n    url: 'https://geo.example.com/geoserver/wms',\n    params: {\n      LAYERS: 'topo:roads',\n      FORMAT: 'image/png',\n      TRANSPARENT: true,\n      CQL_FILTER: \"type='highway'\"   // 服务端过滤\n    },\n    ratio: 1,\n    serverType: 'geoserver'         // 优化 GetMap 请求\n  })\n})\n```\n\nWMS 适合\"样式写死在服务端、前端只出图\"。\n\n## WMTS：预切片高性能底图\n\n```js\nimport WMTS from 'ol/source/WMTS'\nimport WMTSTileGrid from 'ol/tilegrid/WMTS'\n\nconst grid = new WMTSTileGrid({\n  origin: [-20037508.34, 20037508.34],\n  resolutions: [156543, 78271, 39135, /* ... */],\n  matrixIds: [0, 1, 2, /* ... */]\n})\n\nnew TileLayer({\n  source: new WMTS({\n    url: 'https://geo.example.com/geoserver/gwc/service/wmts',\n    layer: 'topo:base',\n    matrixSet: 'EPSG:3857',\n    format: 'image/png',\n    tileGrid: grid,\n    style: ''\n  })\n})\n\n// 也可用 ol/source/WMTS.createFromCapabilities() 自动解析 GetCapabilities\n```\n\n## WFS：取矢量数据\n\n```js\nimport VectorSource from 'ol/source/Vector'\nimport GeoJSON from 'ol/format/GeoJSON'\n\nconst vectorSource = new VectorSource({\n  url: (extent) => 'https://geo.example.com/geoserver/wfs?' + new URLSearchParams({\n    service: 'WFS',\n    version: '1.1.0',\n    request: 'GetFeature',\n    typeName: 'topo:buildings',\n    outputFormat: 'application/json',\n    srsName: 'EPSG:3857',\n    bbox: extent.join(',') + ',EPSG:3857'   // 视口过滤：只取可见范围\n  }),\n  format: new GeoJSON(),\n  strategy: bbox                          // 滚动时按视口增量加载\n})\n```\n\n`strategy: bbox` 是关键：每移图自动按新视口请求，避免一次拉全量。\n\n## WFS-T：前端编辑回写服务端\n\n```js\nimport { Draw, Modify, Snap } from 'ol/interaction'\nimport WFS from 'ol/format/WFS'\nimport GML3 from 'ol/format/GML3'\n\nconst wfst = new WFS({ featureNS: 'https://topo', featureType: 'buildings', srsName: 'EPSG:3857' })\n\nmodify.on('modifyend', e => {\n  const feat = e.features.item(0)\n  const txn = wfst.writeTransaction([], [feat], [], new GML3())  // update\n  fetch('https://geo.example.com/geoserver/wfs', {\n    method: 'POST',\n    body: new XMLSerializer().serializeToString(txn),\n    headers: { 'Content-Type': 'text/xml' }\n  })\n})\n```\n\nWFS-T（Transactional WFS）支持 insert/update/delete，是 OL 在政企 GIS 里独有的强项。\n\n## GetFeatureInfo：点查询 WMS 要素属性\n\n```js\nmap.on('singleclick', e => {\n  const viewResolution = map.getView().getResolution()\n  const url = wmsSource.getFeatureInfoUrl(e.coordinate, viewResolution, 'EPSG:3857', {\n    INFO_FORMAT: 'application/json',\n    FEATURE_COUNT: 10\n  })\n  fetch(url).then(r => r.json()).then(showPopup)\n})\n```\n\n不取整图层，只查询点击位置的要素属性。\n\n## 常见坑\n\n- **bbox 的 srsName**：WFS bbox 必须带 EPSG，否则服务端按默认投影解析错位。\n- **CORS**：GeoServer 默认不开 CORS，需配 `cors-allow-all` 或同域代理。\n- **GML 版本**：WFS 1.0.0 用 GML2，1.1.0 用 GML3，版本不匹配解析失败。\n- **WMTS 矩阵**：`matrixIds` 必须和服务端 GetCapabilities 一致，否则瓦片错位。\n- **strategy: all vs bbox**：小数据用 all 一次拉，大数据用 bbox 但要处理去重（feature id）。\n## 在线 Demo（页面可直接运行）\n\n```html\n<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/ol@9.2.4/ol.css\" />\n<script src=\"https://cdn.jsdelivr.net/npm/ol@9.2.4/dist/ol.js\"></script>\n<div id=\"map\" style=\"height:270px\"></div>\n<div style=\"font-size:12px;padding:4px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center\">\n  <b>WMS GetFeatureInfo:</b><span id=\"gfi\" style=\"background:#ffe;padding:2px 6px\">点击任一点 → GFI 返回</span>\n  <b style=\"margin-left:10px\">本地编辑 (可对接 WFS-T):</b>\n  <select id=\"drawMode\"><option>None</option><option>Point</option><option>LineString</option><option>Polygon</option><option>Circle</option></select>\n  <label><input type=\"checkbox\" id=\"doSnap\" checked/>Snap 吸附</label>\n  <label><input type=\"checkbox\" id=\"doModify\" checked/>Modify 拖动改要素</label>\n  <button id=\"clearVec\">🗑 清空矢量</button>\n  要素数=<b id=\"fcnt\">0</b>\n</div>\n<script>\nvar source=new ol.source.Vector({wrapX:false})\nvar vecLayer=new ol.layer.Vector({source,\n  style:f=>new ol.style.Style({\n    stroke:new ol.style.Stroke({color:'#06c',width:2}),\n    fill:new ol.style.Fill({color:[100,180,255,.3]}),\n    image:new ol.style.Circle({radius:6,fill:new ol.style.Fill({color:'#e33'}),stroke:new ol.style.Stroke({color:'#fff',width:2})})\n  })})\nvar wmsSource=new ol.source.TileWMS({\n  url:'https://ahocevar.com/geoserver/wms',\n  params:{LAYERS:'topp:states',TILED:true,VERSION:'1.1.1'},serverType:'geoserver'})\nvar wms=new ol.layer.Tile({source:wmsSource})\nvar map=new ol.Map({target:'map',layers:[wms,vecLayer],view:new ol.View({center:[-93,40],zoom:4})})\nmap.on('singleclick',e=>{\n  const view=map.getView()\n  const url=wmsSource.getFeatureInfoUrl(e.coordinate,view.getResolution(),view.getProjection().getCode(),\n    {INFO_FORMAT:'application/json',FEATURE_COUNT:2,propertyName:'STATE_NAME,PERSONS'})\n  if(url) fetch(url).then(r=>r.json()).then(j=>{\n    const f=j.features&&j.features[0]\n    document.getElementById('gfi').innerHTML=f?'<b>'+f.properties.STATE_NAME+'</b> 人口='+(+f.properties.PERSONS).toLocaleString()\n      :'<span style=\"color:#888\">该海域/边界无要素</span>'\n  }).catch(()=>{document.getElementById('gfi').innerHTML='GFI 请求 (CORS 时 demo): 坐标='+e.coordinate.map(v=>v.toFixed(2))})\n})\nvar drawIxn=null,snapIxn=null,modifyIxn=null\nfunction rebuild(){\n  ;[drawIxn,snapIxn,modifyIxn].forEach(x=>x&&map.removeInteraction(x))\n  const m=document.getElementById('drawMode').value\n  if(m!=='None'){drawIxn=new ol.interaction.Draw({source,type:m});drawIxn.on('drawend',updateCount);map.addInteraction(drawIxn)}\n  if(document.getElementById('doSnap').checked){snapIxn=new ol.interaction.Snap({source});map.addInteraction(snapIxn)}\n  if(document.getElementById('doModify').checked){modifyIxn=new ol.interaction.Modify({source});map.addInteraction(modifyIxn);modifyIxn.on('modifyend',updateCount)}\n}\nfunction updateCount(){document.getElementById('fcnt').textContent=source.getFeatures().length}\n;['drawMode','doSnap','doModify'].forEach(id=>document.getElementById(id).onchange=rebuild)\ndocument.getElementById('clearVec').onclick=()=>{source.clear();updateCount()}\nrebuild();updateCount()\n</script>\n```\n"
+},
+{
+  "id": "gis-015",
+  "category": "gis",
+  "framework": "mapbox",
+  "title": "Mapbox GL 的表达式系统与数据驱动样式？",
+  "difficulty": "中等",
+  "tags": [
+    "Mapbox",
+    "表达式",
+    "interpolate",
+    "match",
+    "数据驱动"
+  ],
+  "answer": "## 表达式是 Mapbox 的\"DSL\"\n\nMapbox style 的 paint/layout 属性值除了字面量，还支持**表达式数组**，类似 Lisp：\n\n```\n[operator, argument1, argument2, ...]\n```\n\n```json\n\"fill-color\": [\"match\", [\"get\", \"type\"], \"park\", \"#0f0\", \"water\", \"#0af\", \"#ccc\"]\n```\n\n等价于：`type === 'park' ? '#0f0' : type === 'water' ? '#0af' : '#ccc'`。\n\n## 表达式分类\n\n| 类别 | 代表 | 用途 |\n| --- | --- | --- |\n| **数据获取** | `get`, `has`, `at`, `length` | 读要素属性 |\n| **类型转换** | `to-number`, `to-string`, `to-boolean`, `to-color` | 强转 |\n| **数学** | `+`, `*`, `%`, `round`, `ln2` | 运算 |\n| **字符串** | `concat`, `upcase`, `downcase`, `slice` | 字符串处理 |\n| **逻辑** | `case`, `match`, `coalesce`, `all`, `any`, `!` | 条件分支 |\n| **插值** | `interpolate`, `step` | 连续/阶梯映射 |\n| **变量** | `let`, `var` | 复用子表达式 |\n| **zoom** | `[\"zoom\"]` | 当前缩放级别 |\n| **feature-state** | `[\"feature-state\", \"hover\"]` | 要素状态（hover/selected） |\n\n## 数据驱动（Data-Driven Styling）\n\n把 `[\"get\", \"field\"]` 喂给 paint 属性，样式随要素属性变化：\n\n```js\n// 按人口密度连续插值上色\n'fill-color': [\n  'interpolate', ['linear'], ['get', 'density'],\n  0, '#fffbeb',\n  100, '#fcd34d',\n  500, '#f59e0b',\n  2000, '#b91c1c'\n]\n\n// 按类型枚举匹配\n'circle-color': [\n  'match', ['get', 'category'],\n  'A', '#0f0', 'B', '#00f', 'C', '#f00',\n  '#999'   // default\n]\n```\n\n## zoom 驱动：随缩放变化\n\n```js\n// 线宽随 zoom 增大\n'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1, 15, 4]\n\n// zoom + 属性双驱动\n'circle-radius': [\n  'interpolate', ['linear'], ['zoom'],\n  5, ['interpolate', ['linear'], ['get', 'mag'], 0, 2, 5, 10],\n  15, ['interpolate', ['linear'], ['get', 'mag'], 0, 8, 5, 30]\n]\n```\n\n## let / var 复用\n\n```js\n'fill-color': [\n  'let', 'd', ['get', 'density'],\n  ['case', ['>', ['var', 'd'], 1000], '#f00', '#0f0']\n]\n```\n\n## feature-state：无重渲染的交互态\n\n```js\n// 设置要素状态（不触发图层重绘，性能好）\nmap.setFeatureState({ source: 'pois', id: featId }, { hover: true })\n\n'circle-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#f00', '#06f']\n```\n\n适合 hover/select 高亮，万级要素也流畅。\n\n## 运行时改样式\n\n```js\nmap.setPaintProperty('buildings', 'fill-color', newExpr)\nmap.setLayoutProperty('labels', 'text-size', 14)\nmap.setFilter('roads', ['==', ['get', 'class'], 'motorway'])   // 过滤\n```\n\n## 调试技巧\n\n- Mapbox 内置表达式校验：错误会在控制台报 `layers[N].paint.X: expression must be...`。\n- 用 `[\"literal\", [...]]` 包裹数组字面量，否则被当成表达式解析。\n- `[\"format\", ...]` 实现多段不同样式文字标注。\n\n## 性能边界\n\n- 表达式越简单越快：`match` > `case`，`interpolate` 比 `step` 略慢。\n- 数据驱动属性会让 GPU 每要素算一次，万级以下无感，10w+ 注意简化。\n- `feature-state` 比直接改 paint 便宜，优先用它做交互态。\n## 在线 Demo（页面可直接运行）\n\n```html\n<link href=\"https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css\" rel=\"stylesheet\" />\n<script src=\"https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js\"></script>\n<div id=\"map\" style=\"height:270px\"></div>\n<div style=\"font-size:12px;padding:4px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap\">\n  <label>circle-color 表达式:\n    <select id=\"expr\">\n      <option value=\"match\">match 类别→色</option>\n      <option value=\"step\">step 分段→色</option>\n      <option value=\"interpolate\">interpolate 渐变</option>\n      <option value=\"case\">case 布尔条件</option>\n    </select>\n  </label>\n  <label>circle-radius 表达式:\n    <select id=\"sizing\">\n      <option value=\"interpolate_zoom\">interpolate [zoom] 线性</option>\n      <option value=\"step_zoom\">step [zoom] 阶梯</option>\n      <option value=\"const\">固定 8px</option>\n    </select>\n  </label>\n  <span id=\"legend\" style=\"background:#000;color:#0f0;font-family:Consolas,monospace;padding:0 8px\"></span>\n</div>\n<script>\nvar map=new maplibregl.Map({container:'map',style:'https://demotiles.maplibre.org/style.json',center:[116.4,39.9],zoom:9})\nconst CATS=['便利店','餐饮','银行','地铁','医院','学校']\nconst feats=[]\nfor(let i=0;i<500;i++) feats.push({type:'Feature',\n  geometry:{type:'Point',coordinates:[116.4+(Math.random()-.5)*.8,39.9+(Math.random()-.5)*.7]},\n  properties:{cat:CATS[i%6],value:Math.floor(Math.random()*100)}})\nmap.on('load',()=>{\n  map.addSource('pt',{type:'geojson',data:{type:'FeatureCollection',features:feats}})\n  map.addLayer({id:'pts',type:'circle',source:'pt',\n    paint:{'circle-stroke-color':'#fff','circle-stroke-width':1,'circle-opacity':.92}})\n  applyColor();applySize()\n})\nfunction applyColor(){\n  const e=document.getElementById('expr').value\n  let paint, legend\n  if(e==='match'){paint=['match',['get','cat'],'便利店','#e33','餐饮','#f80','银行','#06c','地铁','#0a6','医院','#c0c','学校','#fc0','#888'];legend='match: 6类→6色'}\n  else if(e==='step'){paint=['step',['get','value'],'#0a6',20,'#fc0',50,'#f60',80,'#e33'];legend='step: [0,20)绿 [20,50)黄 [50,80)橙 [80,100)红'}\n  else if(e==='interpolate'){paint=['interpolate',['linear'],['get','value'],0,'#5fd',50,'#fd5',100,'#f48'];legend='interpolate 线性 0→#5fd,50→#fd5,100→#f48'}\n  else {paint=['case',['all',['>=',['get','value'],60],['==',['get','cat'],'地铁']],'#e33',['>=',['get','value'],60],'#f80',['<',['get','value'],10],'#ddd','#06c'];legend='case: 高价值+地铁=红 | 高价值=橙 | 低(0~10)=灰 | 其他=蓝'}\n  map.setPaintProperty('pts','circle-color',paint)\n  document.getElementById('legend').textContent=legend\n}\nfunction applySize(){\n  const z=document.getElementById('sizing').value\n  map.setPaintProperty('pts','circle-radius',\n    z==='interpolate_zoom'?['interpolate',['exponential',1.6],['zoom'],5,3,14,16]:\n    z==='step_zoom'?['step',['zoom'],4,9,12,10,15]:8)\n}\ndocument.getElementById('expr').onchange=applyColor\ndocument.getElementById('sizing').onchange=applySize\n</script>\n```\n"
+},
+{
+  "id": "gis-016",
+  "category": "gis",
+  "framework": "mapbox",
+  "title": "Mapbox 3D 地形、fill-extrusion 与自定义图层？",
+  "difficulty": "困难",
+  "tags": [
+    "Mapbox",
+    "3D",
+    "地形",
+    "fill-extrusion",
+    "terrain",
+    "CustomLayer"
+  ],
+  "answer": "## Mapbox 3D 三大能力\n\n1. **pitch + bearing**：相机倾斜与旋转\n2. **terrain**：真实地形高程（DEM）\n3. **fill-extrusion**：面拉伸成 3D 体（建筑）\n4. **CustomLayer**：自定义 WebGL 图层（接 Three.js / Deck.gl）\n\n## 相机：倾斜与旋转\n\n```js\nmap.setPitch(60)        // 0~85 度\nmap.setBearing(30)      // 旋转\nmap.easeTo({ pitch: 70, bearing: 90, duration: 1000 })\n\n// 鼠标拖拽倾斜：TouchZoomRotateHandler / dragRotate\n```\n\n## terrain：真实地形\n\n```js\nmap.on('load', () => {\n  map.addSource('dem', {\n    type: 'raster-dem',\n    url: 'mapbox://mapbox.terrain-rgb',   // 或自建 DEM 瓦片\n    tileSize: 512,\n    maxzoom: 14\n  })\n  map.setTerrain({ source: 'dem', exaggeration: 1.5 })   // exaggeration 高程夸张系数\n\n  // 天空层（远景天空）\n  map.addLayer({ id: 'sky', type: 'sky', paint: { 'sky-color': '#cfd', 'sky-horizon-blend': 0.5 } })\n})\n```\n\n要点：\n- `terrain-rgb`：每个像素 RGB 编码高程（红×256×256 + 绿×256 + 蓝 - 32768）。\n- `exaggeration`：1 = 真实，1.5~2 视觉冲击强，地形细节弱时适当夸张。\n- 开启 terrain 后所有图层自动贴合地形，无需手动算高度。\n\n## fill-extrusion：3D 建筑\n\n```js\nmap.addLayer({\n  id: 'buildings-3d',\n  type: 'fill-extrusion',\n  source: 'buildings',\n  sourceLayer: 'building',\n  minzoom: 14,\n  paint: {\n    'fill-extrusion-color': ['interpolate', ['linear'], ['get', 'height'], 0, '#ddd', 50, '#faa', 200, '#f55'],\n    'fill-extrusion-height': ['get', 'height'],          // 楼高（米）\n    'fill-extrusion-base': ['get', 'min_height'],        // 底部高（架空/裙楼）\n    'fill-extrusion-opacity': 0.85\n  }\n})\n```\n\n技巧：\n- 无 height 属性可用 `['interpolate', ['zoom'], 14, 0, 16, 50]` 假高度。\n- `fill-extrusion-base` 让架空层（地铁、连廊）悬空。\n- 配合 `terrain` 自动贴地。\n\n## 自定义图层（CustomLayerInterface）\n\n直接在 Mapbox 渲染管线里插入 WebGL 代码，常用于集成 Three.js / Deck.gl：\n\n```js\nclass ThreeLayer {\n  constructor() { this.id = 'three'; this.type = 'custom'; this.renderingMode = '3d' }\n  onAdd(map, gl) {\n    this.map = map\n    this.camera = new THREE.Camera()\n    this.scene = new THREE.Scene()\n    this.renderer = new THREE.WebGLRenderer({ canvas: map.getCanvas(), context: gl })\n    this.renderer.autoClear = false\n    // 加模型...\n  }\n  render(gl, matrix) {\n    const m = new THREE.Matrix4().fromArray(matrix)\n    this.camera.projectionMatrix = m\n    this.renderer.resetState()\n    this.renderer.render(this.scene, this.camera)\n    this.map.triggerRepaint()\n  }\n}\nmap.addLayer(new ThreeLayer())\n```\n\nMapbox 提供 `map.transform`（相机矩阵），可同步 Three.js 相机。社区有 `threebox`、`deck.gl@mapbox` 封装。\n\n## 实战：3D 城市可视化\n\n```js\n// 1. 底图 + 地形\nmap.setTerrain({ source: 'dem', exaggeration: 1.2 })\n// 2. 建筑 fill-extrusion 按高度上色\n// 3. 业务图层用 CustomLayer 接 Deck.gl ArcLayer 画飞线\n// 4. 加 fog 雾化远景\nmap.setFog({ range: [1, 10], color: '#fff', 'high-color': '#add8e6' })\n```\n\n## 性能与坑\n\n- **pitch 太大卡顿**：远距离渲染像素多，限制 `maxPitch: 70`。\n- **terrain + fill-extrusion**：开 terrain 后 fill-extrusion 高度是相对地形还是海拔？答：相对海平面，会自动加地形高程，所以楼顶 = terrain + height。\n- **CustomLayer 状态泄漏**：必须 `renderer.resetState()` 否则污染 Mapbox WebGL 上下文。\n- **相机同步**：Three.js 相机每帧从 `map.transform` 取，不要自己 OrbitControls。\n- **terrain-rgb 数据源**：自建需用 `rio-tiler` 或 `gdal2tiles` 切 DEM，颜色编码别搞错。\n## 在线 Demo（页面可直接运行）\n\n```html\n<link href=\"https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css\" rel=\"stylesheet\" />\n<script src=\"https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js\"></script>\n<div id=\"map\" style=\"height:280px\"></div>\n<div style=\"font-size:12px;padding:4px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap\">\n  🏙最高高度: <input type=\"range\" id=\"hm\" min=\"30\" max=\"500\" step=\"10\" value=\"180\"/> <span id=\"hmt\">180m</span>\n  🔦方位角: <input type=\"range\" id=\"az\" min=\"-180\" max=\"180\" step=\"5\" value=\"-45\"/>\n  🎯俯仰: <input type=\"range\" id=\"pi\" min=\"0\" max=\"80\" step=\"1\" value=\"55\"/>\n</div>\n<script>\nvar map=new maplibregl.Map({container:'map',style:'https://demotiles.maplibre.org/style.json',\n  center:[116.397,39.908],zoom:14.2,pitch:55,bearing:-45,antialias:true})\nconst features=[]\nfor(let i=0;i<120;i++){\n  const lng=116.39+(i%12)*.001,lat=39.912-Math.floor(i/12)*.0008\n  const h=30+Math.random()*150+ (i%5===0?100:0)\n  features.push({type:'Feature',\n    geometry:{type:'Polygon',coordinates:[[[lng,lat],[lng+.00075,lat],[lng+.00075,lat-.0006],[lng,lat-.0006],[lng,lat]]]},\n    properties:{height:h,base:0}})\n}\nmap.on('load',()=>{\n  map.addSource('b',{type:'geojson',data:{type:'FeatureCollection',features}})\n  map.addLayer({id:'bd',type:'fill-extrusion',source:'b',\n    paint:{\n      'fill-extrusion-height':['get','height'],\n      'fill-extrusion-base':0,\n      'fill-extrusion-color':['interpolate',['linear'],['get','height'],30,'#cfe',120,'#58a8d8',200,'#25a',300,'#f80'],\n      'fill-extrusion-opacity':.95\n    }})\n  apply()\n})\nfunction apply(){\n  const hmax=+document.getElementById('hm').value\n  document.getElementById('hmt').textContent=hmax+'m'\n  map.setPaintProperty('bd','fill-extrusion-height',['interpolate',['linear'],['get','height'],0,5,150,hmax,300,hmax*1.4])\n  map.setBearing(+document.getElementById('az').value)\n  map.setPitch(+document.getElementById('pi').value)\n}\ndocument.getElementById('hm').oninput=apply\ndocument.getElementById('az').oninput=apply\ndocument.getElementById('pi').oninput=apply\n</script>\n```\n"
+},
+{
+  "id": "gis-017",
+  "category": "gis",
+  "framework": "threejs",
+  "title": "Three.js 如何构建 3D 城市地图与建筑白模？",
+  "difficulty": "困难",
+  "tags": [
+    "Three.js",
+    "3D 城市地图",
+    "白模",
+    "ExtrudeGeometry",
+    "WebGL"
+  ],
+  "answer": "## 为什么用 Three.js 做地图\n\nMapbox/Cesium 的 3D 是\"地图带高度\"，Three.js 的 3D 是\"完全自由的场景\"：\n- 完全控制光照、材质、后处理（泛光、辉光、景深）。\n- 可做非真实地图（科技风、数据艺术、元宇宙城市）。\n- 性能极致（百万面片 60fps）。\n\n代价：要自己处理坐标系、相机、瓦片调度，没有现成地图交互。\n\n## 核心：GeoJSON Polygon → 3D 建筑\n\n```js\nimport * as THREE from 'three'\nimport { ExtrudeGeometry } from 'three'\nimport { GeoJSON } from 'geojson'\n\nfunction buildingToMesh(feature, height) {\n  const coords = feature.geometry.coordinates[0]   // 外环 [lng,lat][]\n  const shape = new THREE.Shape()\n  coords.forEach(([x, y], i) => i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y))\n\n  const geo = new ExtrudeGeometry(shape, {\n    depth: height,            // 楼高\n    bevelEnabled: false,\n    steps: 1\n  })\n  geo.rotateX(-Math.PI / 2)   // 让高度沿 Y 轴向上\n  return new THREE.Mesh(geo, buildingMaterial)\n}\n\nbuildings.features.forEach(f => {\n  const h = f.properties.height || 20\n  scene.add(buildingToMesh(f, h))\n})\n```\n\n## 坐标系转换：经纬度 → 场景坐标\n\nThree.js 是右手 Y-up 直角坐标，GeoJSON 是经纬度，必须转换：\n\n```js\n// 以城市中心为原点，经纬度差 → 米\nconst CENTER = [116.39, 39.91]\nconst M_PER_LAT = 111320\nconst M_PER_LNG = 111320 * Math.cos(CENTER[1] * Math.PI / 180)\n\nfunction project([lng, lat]) {\n  return [\n    (lng - CENTER[0]) * M_PER_LNG,\n    0,\n    (lat - CENTER[1]) * M_PER_LAT   // 注意 Three.js Z 对应地理纬度\n  ]\n}\n```\n\n小范围（单城市）可用此线性近似；全国范围必须用 Web Mercator 投影。\n\n## 相机：地图视角控制\n\n```js\nimport { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'\nconst controls = new OrbitControls(camera, renderer.domElement)\ncontrols.maxPolarAngle = Math.PI / 2.2   // 限制不能看到地面下\ncontrols.minDistance = 100\ncontrols.maxDistance = 5000\ncontrols.enablePan = true\n\n// 初始视角：斜俯视\ncamera.position.set(2000, 1500, 2000)\ncamera.lookAt(0, 0, 0)\n```\n\n## 地面与底图\n\n```js\n// 纯色地面\nconst ground = new THREE.Mesh(\n  new THREE.PlaneGeometry(10000, 10000),\n  new THREE.MeshStandardMaterial({ color: 0x111827 })\n)\nground.rotation.x = -Math.PI / 2\nscene.add(ground)\n\n// 或贴一张栅格底图（瓦片拼接）\nconst loader = new THREE.TextureLoader()\nground.material.map = loader.load('./basemap.png')\n```\n\n## 光照与材质\n\n```js\n// 模拟城市天光\nscene.add(new THREE.HemisphereLight(0x88aaff, 0x080820, 0.6))\nscene.add(new THREE.DirectionalLight(0xffffff, 1.2).translateX(1000).translateY(2000))\n\n// 白模材质：菲涅尔边缘高亮\nconst buildingMat = new THREE.MeshStandardMaterial({\n  color: 0x1a2a4a,\n  metalness: 0.2,\n  roughness: 0.6,\n  emissive: 0x002244,\n  emissiveIntensity: 0.3\n})\n```\n\n## 后处理：科技感泛光\n\n```js\nimport { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer'\nimport { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass'\nimport { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass'\n\nconst composer = new EffectComposer(renderer)\ncomposer.addPass(new RenderPass(scene, camera))\ncomposer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.8, 0.4, 0.85))\n\nfunction animate() { composer.render(); requestAnimationFrame(animate) }\n```\n\n## 性能优化\n\n- **合并几何**：`BufferGeometryUtils.mergeGeometries(buildingGeos)` 把万栋楼合并成一个 Mesh，drawcall 从 1w 降到 1。\n- **LOD**：远处用低面数，近处用高精度。\n- **InstancedMesh**：相同材质的重复体素（窗户、灯柱）用实例化。\n- **视锥剔除**：Three.js 自动开启，但合并后失效，需手动按区块分 Mesh。\n- **WebWorker**：GeoJSON 解析 + 几何构建放 worker，主线程只渲染。\n\n## 与 Mapbox 集成\n\n完整自建 Three.js 地图工程量大，常见做法是 **Mapbox 做底图 + CustomLayer 嵌 Three.js**：\n- Mapbox 负责底图、瓦片、相机控制、坐标系。\n- Three.js 负责特殊 3D 效果（粒子、自定义建筑、数据艺术）。\n- 用 `deck.gl` 的 `MapboxLayer` 是更省事的桥接方案。\n\n## 局限\n\n- 无内置瓦片调度，全国数据需自己写 LOD + 视口加载。\n- 地理坐标系要自己维护，跨日期线、极地投影都是坑。\n- 交互（点选要素、测距）需用 raycaster 自己实现。\n\n适用场景：科技大屏、数据可视化艺术、元宇宙城市；常规地图选 Mapbox/Cesium 更省。\n## 在线 Demo（页面可直接运行）\n\n```html\n<script type=\"importmap\">\n{\"imports\":{\"three\":\"https://unpkg.com/three@0.160.0/build/three.module.js\",\n\"three/addons/\":\"https://unpkg.com/three@0.160.0/examples/jsm/\"}}\n</script>\n<canvas id=\"c\" style=\"width:100%;height:280px;display:block;background:linear-gradient(#6bf,#eaf)\"></canvas>\n<div style=\"font-size:12px;padding:4px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap\">\n  🏢建筑高度系数: <input type=\"range\" id=\"hm\" min=\"20\" max=\"300\" step=\"10\" value=\"140\"/>\n  🌆密度 N×N: <input type=\"range\" id=\"dn\" min=\"4\" max=\"20\" step=\"1\" value=\"12\"/>\n  🪓切割 0~1: <input type=\"range\" id=\"cl\" min=\"0\" max=\"1\" step=\"0.02\" value=\"1\"/>\n  <span id=\"st\" style=\"background:#000;color:#0f0;font-family:Consolas,monospace;padding:0 8px\">render 0 ms</span>\n</div>\n<script type=\"module\">\nimport * as THREE from 'three'\nimport {OrbitControls} from 'three/addons/controls/OrbitControls.js'\nconst canvas=document.getElementById('c'),W=canvas.clientWidth,H=canvas.clientHeight\nconst scene=new THREE.Scene();scene.fog=new THREE.Fog(0xbfd8ff,80,400)\nconst cam=new THREE.PerspectiveCamera(55,W/H,.1,2000);cam.position.set(140,80,140)\nconst renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true})\nrenderer.setPixelRatio(Math.min(2,devicePixelRatio));renderer.setSize(W,H,false)\nrenderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap\nconst sun=new THREE.DirectionalLight(0xffffff,1.2);sun.position.set(60,120,40)\nsun.castShadow=true;sun.shadow.mapSize.set(1024,1024)\nsun.shadow.camera.left=-120;sun.shadow.camera.right=120;sun.shadow.camera.top=120;sun.shadow.camera.bottom=-120\nscene.add(sun,new THREE.HemisphereLight(0xbfd8ff,0x557744,.55))\nconst grd=new THREE.Mesh(new THREE.PlaneGeometry(500,500),new THREE.MeshStandardMaterial({color:0xf3f7ff,roughness:1}))\ngrd.rotation.x=-Math.PI/2;grd.receiveShadow=true;scene.add(grd)\nnew OrbitControls(cam,renderer.domElement)\nlet cityG=null\nfunction build(){\n  if(cityG) scene.remove(cityG)\n  cityG=new THREE.Group()\n  const N=+document.getElementById('dn').value,hmax=+document.getElementById('hm').value\n  const cell=400/N,planeCut=+document.getElementById('cl').value\n  renderer.clippingPlanes=[new THREE.Plane(new THREE.Vector3(0,1,0),-hmax*planeCut)];renderer.localClippingEnabled=true\n  for(let i=0;i<N;i++)for(let j=0;j<N;j++){\n    if((i+j)%7===0 && Math.random()<.8) continue\n    const w=cell*(.5+Math.random()*.35),d=cell*(.5+Math.random()*.35),h=15+Math.random()*hmax+(Math.random()<.1?hmax*.8:0)\n    const v=Math.min(1,h/(hmax||1))\n    const col=new THREE.Color().setHSL(.55-v*.55,.7,.4+v*.3)\n    const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),\n      new THREE.MeshStandardMaterial({color:col,roughness:.75,metalness:.05,clippingPlanes:[new THREE.Plane(new THREE.Vector3(0,1,0),-hmax*planeCut)],clipShadows:true}))\n    m.position.set(i*cell-200,h/2,j*cell-200);m.castShadow=m.receiveShadow=true;cityG.add(m)\n  }\n  const roadMat=new THREE.MeshStandardMaterial({color:0x333333,roughness:.9})\n  for(let k=0;k<3;k++){\n    const rr=new THREE.Mesh(new THREE.PlaneGeometry(400,6),roadMat);rr.rotation.x=-Math.PI/2\n    rr.position.set(0,.02,-200+(N/2)*cell+k*cell*3);cityG.add(rr)\n    const r2=rr.clone();r2.rotation.z=Math.PI/2;r2.position.y=.03;cityG.add(r2)\n  }\n  scene.add(cityG)\n}\nlet last=performance.now(),frames=0\nfunction tick(){\n  const t=performance.now();renderer.render(scene,cam);frames++\n  if(t-last>1000){document.getElementById('st').textContent='建筑数='+(cityG?cityG.children.length:0)+'　fps='+frames;frames=0;last=t}\n  requestAnimationFrame(tick)\n}\ndocument.getElementById('hm').oninput=build\ndocument.getElementById('dn').oninput=build\ndocument.getElementById('cl').oninput=build\nconst resize=()=>{const W=canvas.clientWidth,H=canvas.clientHeight;renderer.setSize(W,H,false);cam.aspect=W/H;cam.updateProjectionMatrix()}\nnew ResizeObserver(resize).observe(canvas);resize()\nbuild();tick()\n</script>\n```\n"
+},
+{
+  "id": "gis-018",
+  "category": "gis",
+  "framework": "threejs",
+  "title": "Three.js 与 GIS 坐标系集成（threebox / deck.gl 桥接）？",
+  "difficulty": "困难",
+  "tags": [
+    "Three.js",
+    "threebox",
+    "deck.gl",
+    "坐标集成",
+    "Mapbox"
+  ],
+  "answer": "## 痛点：两套坐标系\n\nThree.js：右手 Y-up，单位\"无意义\"（米），原点在场景中心。\n地图：经纬度 / Web Mercator，原点在赤道/本初子午线，单位度或米。\n\n要让 3D 模型\"贴在地球上某个经纬度\"，必须做坐标系桥接。\n\n## 方案 1：threebox（Mapbox + Three.js）\n\n`threebox` 是社区库，封装 Mapbox CustomLayer + Three.js，自动同步相机：\n\n```js\nimport Threebox from 'threebox-plugin'\nimport mapboxgl from 'mapbox-gl'\n\nconst tb = new Threebox(map, map.getCanvas().getContext('webgl'), { defaultLights: true })\n\nmap.addLayer({\n  id: '3d-model',\n  type: 'custom',\n  renderingMode: '3d',\n  onAdd: (map, gl) => {\n    const obj = tb.loadObj({ obj: './car.obj' }, (model) => {\n      model.setCoords([116.39, 39.91])   // 经纬度直接设置位置\n      tb.add(model)\n    })\n  },\n  render: () => tb.update()\n})\n\n// 沿轨迹动画\nconst path = [[116.39, 39.91], [116.40, 39.92]]\nobj.followPath({ path, duration: 10000 })\n```\n\nthreebox 自动处理：\n- 经纬度 → 世界坐标（用 Mapbox transform）。\n- 模型随地图缩放/旋转/倾斜。\n- 高度自动贴 terrain。\n\n## 方案 2：deck.gl MapboxLayer（推荐）\n\ndeck.gl 原生支持作为 Mapbox 图层嵌入，坐标系完全由 Mapbox 管：\n\n```js\nimport { MapboxLayer } from '@deck.gl/mapbox'\nimport { ScenegraphLayer } from '@deck.gl/layers'\n\nconst carLayer = new MapboxLayer({\n  id: 'cars',\n  type: ScenegraphLayer,\n  data: cars,\n  scenegraph: './car.glb',\n  getPosition: d => [d.lng, d.lat, d.alt],   // 经纬度！\n  getOrientation: d => [0, d.bearing, 90],\n  sizeScale: 1\n})\nmap.addLayer(carLayer)\n```\n\n优势：deck.gl 内部用 Mapbox 的 projection，所有图层和 Mapbox 底图严丝合缝，无需手动同步相机。\n\n## 方案 3：纯 Three.js 手动同步相机\n\n不依赖 threebox，自己写 CustomLayer：\n\n```js\nclass ThreeLayer {\n  onAdd(map, gl) {\n    this.map = map\n    this.camera = new THREE.PerspectiveCamera()\n    this.scene = new THREE.Scene()\n    this.renderer = new THREE.WebGLRenderer({ canvas: map.getCanvas(), context: gl, antialias: true })\n    this.renderer.autoClear = false\n  }\n  render(gl, matrix) {\n    // 关键：用 Mapbox 给的投影矩阵\n    this.camera.projectionMatrix.fromArray(matrix)\n    // 同步相机位置/旋转（从 map.transform）\n    const t = this.map.transform\n    this.camera.position.set(...this.unproject(t.cameraPosition))\n    this.camera.up.set(0, 0, -1)\n    this.camera.lookAt(...this.unproject(t.center))\n\n    this.renderer.resetState()\n    this.renderer.render(this.scene, this.camera)\n    this.map.triggerRepaint()\n  }\n  // 经纬度 → Mercator 世界坐标\n  unproject([lng, lat]) {\n    const x = lng / 180\n    const y = Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)) / Math.PI\n    return [x, y, 0]\n  }\n}\n```\n\n要点：\n- `matrix` 参数是 Mapbox 算好的投影矩阵，直接用。\n- `map.transform` 提供相机位置、朝向、缩放。\n- `renderer.resetState()` 必须，否则 WebGL 状态污染。\n\n## 高度处理：地形贴附\n\n模型要贴地形（不是悬空）：\n\n```js\n// 查询某点地形高程\nconst elevation = map.queryTerrainElevation([lng, lat])\nmodel.position.y = elevation\n```\n\n或用 deck.gl 的 `terrainFollowingMode` 自动贴地。\n\n## 模型朝向：沿路径移动\n\n```js\n// 计算两点方位角\nfunction bearing([lng1, lat1], [lng2, lat2]) {\n  const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180\n  const Δλ = (lng2 - lng1) * Math.PI / 180\n  const y = Math.sin(Δλ) * Math.cos(φ2)\n  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ)\n  return Math.atan2(y, x) * 180 / Math.PI\n}\nmodel.setRotation([0, -bearing(from, to) * Math.PI / 180, 0])\n```\n\n## 常见坑\n\n- **Z 轴方向**：Three.js Y-up，地图 Z-up（Mercator），模型导入后常\"躺平\"，需 `rotateX(-Math.PI/2)`。\n- **模型单位**：GLB/OBJ 默认米，地图单位度，sizeScale 要调。\n- **CustomLayer 渲染顺序**：`renderingMode: '3d'` 会在 2D 图层之上、symbol 之下；想盖 symbol 用 `renderingMode: '3d'` + 调 `beforeId`。\n- **WebGL 上下文**：Three.js 和 Mapbox 共用一个 GL context，`autoClear=false` + `resetState` 是必须的，否则画面撕裂。\n- **性能**：复杂 GLB 模型用 `DracoLoader` 压缩，drawcall 控制在 100 以内。\n\n## 选型建议\n\n| 需求 | 方案 |\n| --- | --- |\n| 简单加几个 3D 模型 | threebox |\n| 大规模 3D 数据可视化 | deck.gl + MapboxLayer |\n| 完全自定义渲染管线 | 手动 CustomLayer |\n| 不依赖 Mapbox 的纯 3D | 自建 Three.js 场景（见 gis-017） |\n## 在线 Demo（页面可直接运行）\n\n```html\n<script type=\"importmap\">\n{\"imports\":{\"three\":\"https://unpkg.com/three@0.160.0/build/three.module.js\",\n\"three/addons/\":\"https://unpkg.com/three@0.160.0/examples/jsm/\"}}\n</script>\n<canvas id=\"c\" style=\"width:100%;height:280px;display:block;background:#07101f\"></canvas>\n<div style=\"font-size:12px;padding:4px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap\">\n  中心(lng,lat):<input id=\"lng\" style=\"width:80px\" value=\"116.397\"/>,<input id=\"lat\" style=\"width:80px\" value=\"39.908\"/>\n  点A:<input id=\"pA\" value=\"116.397,39.908,50\"/>\n  点B:<input id=\"pB\" value=\"116.401,39.910,120\"/>\n  点C:<input id=\"pC\" value=\"116.394,39.906,30\"/>\n  <button id=\"rebuild\">⟳ 重建</button>\n  <span id=\"st\" style=\"background:#000;color:#0f0;font-family:Consolas,monospace;padding:0 8px\">ENU 变换: 原点中心 / 东=x / 北=y / 上=z</span>\n</div>\n<script type=\"module\">\nimport * as THREE from 'three'\nimport {OrbitControls} from 'three/addons/controls/OrbitControls.js'\nconst canvas=document.getElementById('c'),W=canvas.clientWidth,H=canvas.clientHeight\nconst scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(60,W/H,1,5000)\ncam.position.set(300,260,300)\nconst renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true})\nrenderer.setPixelRatio(devicePixelRatio);renderer.setSize(W,H,false)\nnew OrbitControls(cam,renderer.domElement)\nscene.add(new THREE.HemisphereLight(0xaac7ff,0x223344,.7))\nconst dir=new THREE.DirectionalLight(0xffffff,1.1);dir.position.set(200,400,150);scene.add(dir)\nfunction llToECEF([lng,lat,h]){\n  const R=6378137,f=1/298.257223563,e2=f*(2-f)\n  const [la,ln]=[lat,lng].map(v=>v*Math.PI/180)\n  const sl=Math.sin(la),cl=Math.cos(la),N=R/Math.sqrt(1-e2*sl*sl)\n  return [(N+h)*cl*Math.cos(ln),(N+h)*cl*Math.sin(ln),((1-e2)*N+h)*sl]\n}\nfunction ENUFromOrigin(O){\n  const E=llToECEF(O)\n  const [lng0,lat0]=[O[0]*Math.PI/180,O[1]*Math.PI/180]\n  const sLng=Math.sin(lng0),cLng=Math.cos(lng0),sLat=Math.sin(lat0),cLat=Math.cos(lat0)\n  return function([lng,lat,h]){\n    const [X,Y,Z]=llToECEF([lng,lat,h]),dx=X-E[0],dy=Y-E[1],dz=Z-E[2]\n    return [-sLng*dx+cLng*dy, -sLat*cLng*dx-sLat*sLng*dy+cLat*dz, cLat*cLng*dx+cLat*sLng*dy+sLat*dz]\n  }\n}\nvar grp=null,axesHelper=null,ground=null\nfunction rebuild(){\n  if(grp) scene.remove(grp);if(axesHelper) scene.remove(axesHelper);if(ground) scene.remove(ground)\n  const O=[+document.getElementById('lng').value,+document.getElementById('lat').value,0]\n  const toENU=ENUFromOrigin(O)\n  grp=new THREE.Group();scene.add(grp)\n  ground=new THREE.Mesh(new THREE.PlaneGeometry(600,600),new THREE.MeshStandardMaterial({color:0x1a3355,roughness:1}))\n  ground.rotation.x=-Math.PI/2;grp.add(ground)\n  const pts=[document.getElementById('pA').value.split(',').map(Number),\n             document.getElementById('pB').value.split(',').map(Number),\n             document.getElementById('pC').value.split(',').map(Number)]\n  const labels=['A','B','C'],cols=[0xff7766,0x66bbff,0xffdd55]\n  const posENU=pts.map((p,i)=>{\n    const [x,y,z]=toENU(p);const r=12,h=p[2]||20\n    const b=new THREE.Mesh(new THREE.BoxGeometry(r,h,r),new THREE.MeshStandardMaterial({color:cols[i],roughness:.6,metalness:.2,emissive:cols[i],emissiveIntensity:.12}))\n    b.position.set(x,h/2,y);b.castShadow=true;grp.add(b)\n    const cv=document.createElement('canvas');cv.width=256;cv.height=64;const c=cv.getContext('2d')\n    c.fillStyle='#'+cols[i].toString(16).padStart(6,'0');c.font='bold 40px sans-serif';c.fillText(labels[i]+' '+p[2]+'m',6,48)\n    const tex=new THREE.CanvasTexture(cv)\n    const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,depthTest:false}))\n    sp.scale.set(80,20,1);sp.position.set(x,h+20,y);grp.add(sp)\n    return [x,y,z]\n  })\n  const line=new THREE.Line(new THREE.BufferGeometry().setFromPoints(\n    [posENU[0],posENU[1],posENU[2],posENU[0]].map(p=>new THREE.Vector3(p[0],1,p[1]))),\n    new THREE.LineBasicMaterial({color:0xffffff}));grp.add(line)\n  axesHelper=new THREE.AxesHelper(100);axesHelper.position.set(0,0,0);scene.add(axesHelper)\n  const b=new THREE.Box3().setFromObject(grp);const c=new THREE.Vector3();b.getCenter(c);cam.lookAt(c)\n}\ndocument.getElementById('rebuild').onclick=rebuild\nconst resize=()=>{const W=canvas.clientWidth,H=canvas.clientHeight;renderer.setSize(W,H,false);cam.aspect=W/H;cam.updateProjectionMatrix()}\nnew ResizeObserver(resize).observe(canvas);resize()\nrebuild();(function tick(){renderer.render(scene,cam);requestAnimationFrame(tick)})()\n</script>\n```\n"
+},
+{
+  "id": "gis-019",
+  "category": "gis",
+  "framework": "cesium",
+  "title": "Cesium 的地球、地形与影像体系？",
+  "difficulty": "困难",
+  "tags": [
+    "Cesium",
+    "地球",
+    "地形",
+    "影像",
+    "ImageryLayer",
+    "WebMapTileServiceImageryProvider"
+  ],
+  "answer": "## Cesium 是什么\n\nCesiumJS 是开源的 **3D 地球引擎**，专为全球尺度、真 3D、时间动态数据设计：\n- 球面渲染（不是平面 Mercator），支持全球无缝缩放。\n- 内置时间轴（CZML、时间动态数据）。\n- 3D Tiles 标准（倾斜摄影/BIM/点云流式加载）。\n\n对比 Mapbox：Mapbox 是\"平面地图 + 倾斜\"，Cesium 是\"真 3D 球体\"，全球尺度更强。\n\n## 最小示例\n\n```js\nimport * as Cesium from 'cesium'\nimport 'cesium/Build/Cesium/Widgets/widgets.css'\n\nCesium.Ion.defaultAccessToken = 'eyJ...'\n\nconst viewer = new Cesium.Viewer('cesiumContainer', {\n  terrainProvider: Cesium.createWorldTerrain(),\n  imageryProvider: new Cesium.UrlTemplateImageryProvider({\n    url: 'https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}&l=6',\n    subdomains: ['1', '2', '3', '4']\n  }),\n  baseLayerPicker: false,\n  geocoder: false\n})\n\nviewer.camera.setView({\n  destination: Cesium.Cartesian3.fromDegrees(116.39, 39.91, 5000),   // 经纬度+高度\n  orientation: { heading: 0, pitch: -45, roll: 0 }\n})\n```\n\n## 三大核心对象\n\n| 对象 | 作用 | 类比 Mapbox |\n| --- | --- | --- |\n| **Viewer** | 容器（场景、相机、时钟、控件） | Map |\n| **ImageryLayer** | 影像底图（贴在球面） | TileLayer |\n| **TerrainProvider** | 地形高程 | terrain source |\n| **Entity / Primitive** | 矢量要素 | GeoJSON layer |\n| **3D Tiles** | 海量 3D 数据 | 无对应 |\n\n## 影像底图（ImageryLayer）\n\n```js\n// 1. 在线标准 XYZ\nviewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({\n  url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',\n  maximumLevel: 19\n}))\n\n// 2. WMS\nnew Cesium.WebMapServiceImageryProvider({\n  url: 'https://geo.example.com/geoserver/wms',\n  layers: 'topo:base',\n  parameters: { transparent: true, format: 'image/png' }\n})\n\n// 3. WMTS\nnew Cesium.WebMapTileServiceImageryProvider({\n  url: 'https://.../wmts',\n  layer: 'img', style: 'default', tileMatrixSetID: 'EPSG:3857',\n  format: 'image/jpeg'\n})\n\n// 4. 叠加多图层\nconst layer = viewer.imageryLayers.addImageryProvider(wmsProvider)\nlayer.alpha = 0.6          // 透明度\nlayer.brightness = 1.2     // 亮度\n```\n\n## 地形（TerrainProvider）\n\n```js\n// 1. Cesium 在线地形\nviewer.terrainProvider = Cesium.createWorldTerrain({ requestVertexNormals: true })\n\n// 2. 自建地形（quantized-mesh 瓦片）\nviewer.terrainProvider = new Cesium.CesiumTerrainProvider({\n  url: 'https://terrain.example.com/{z}/{x}/{y}.terrain'\n})\n\n// 3. 检测相机贴地\nviewer.scene.globe.depthTestAgainstTerrain = true\n```\n\n地形开启后，所有 Entity 自动贴地（`clampToGround: true`）。\n\n## Entity：声明式矢量要素\n\n```js\nviewer.entities.add({\n  name: '天安门',\n  position: Cesium.Cartesian3.fromDegrees(116.39, 39.91, 0),\n  point: { pixelSize: 10, color: Cesium.Color.RED },\n  label: { text: '天安门', font: '14pt sans-serif', verticalOrigin: Cesium.VerticalOrigin.BOTTOM },\n  billboard: { image: './marker.png', heightReference: Cesium.HeightReference.CLAMP_TO_GROUND }\n})\n\n// 折线/面\nviewer.entities.add({\n  polyline: { positions: Cesium.Cartesian3.fromDegreesArray([116.39,39.91, 116.40,39.92]), width: 3, material: Cesium.Color.BLUE }\n})\n\n// 贴地线（沿地形起伏）\npolyline: { positions: [...], clampToGround: true, material: new Cesium.PolylineGlowMaterialProperty(...) }\n```\n\nEntity API 简单，适合几百个要素；上万要素用 `Primitive` API（性能更好但复杂）。\n\n## 时间动态数据（Cesium 独门）\n\n```js\n// 移动的飞机：position 随时间变\nviewer.entities.add({\n  position: new Cesium.SampledPositionProperty(),\n  path: { resolution: 1, material: Cesium.Color.YELLOW, width: 2 }\n})\nconst pos = entity.position\npos.addSample(Cesium.JulianDate.fromIso8601('2026-08-09T00:00:00Z'), Cesium.Cartesian3.fromDegrees(116, 39, 1000))\npos.addSample(Cesium.JulianDate.fromIso8601('2026-08-09T01:00:00Z'), Cesium.Cartesian3.fromDegrees(117, 40, 1000))\n\n// 时间轴自动播放\nviewer.clock.startTime = ...; viewer.clock.shouldAnimate = true\n```\n\n## 坐标转换\n\n```js\n// 经纬度 → Cartesian3（球面 XYZ）\nconst c3 = Cesium.Cartesian3.fromDegrees(116.39, 39.91, 100)\n\n// Cartesian3 → 经纬度\nconst carto = Cesium.Cartographic.fromCartesian(c3)\nconst lng = Cesium.Math.toDegrees(carto.longitude)\n\n// 屏幕坐标 → 世界坐标\nconst c3 = viewer.scene.pickPosition(new Cesium.Cartesian2(x, y))\n```\n\n## 性能\n\n- `scene.globe.maximumScreenSpaceError`：调大减少瓦片加载（默认 2，大场景调 4~8）。\n- `requestRenderMode: true`：无操作时不渲染，省 CPU/GPU。\n- Entity 数量 > 1w 转 Primitive 或 3D Tiles。\n\n## 坑\n\n- **Token**：必须配 `Cesium.Ion.defaultAccessToken`，否则地形/影像加载失败。\n- **CORS**：自建影像/地形服务必须开 CORS。\n- **坐标系**：Cesium 内部用 Cartesian3（地心 XYZ），别和经纬度混。\n- **资源路径**：`CESIUM_BASE_URL` 要指向 static 资源目录，否则 widgets 资源 404。\n## 在线 Demo（页面可直接运行）\n\n```html\n<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/cesium@1.120/Build/Cesium/Widgets/widgets.css\" />\n<script src=\"https://cdn.jsdelivr.net/npm/cesium@1.120/Build/Cesium/Cesium.js\"></script>\n<div style=\"position:relative;width:100%;height:280px\">\n  <div id=\"c\" style=\"width:100%;height:100%\"></div>\n  <div id=\"st\" style=\"position:absolute;left:0;top:0;background:rgba(0,0,0,.6);color:#fff;padding:4px 8px;font-size:12px\">-</div>\n</div>\n<div style=\"font-size:12px;padding:4px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap\">\n  影像:\n  <select id=\"im\"><option value=\"osm\">OSM 街道</option>\n    <option value=\"arcgis\">ArcGIS World Imagery</option>\n    <option value=\"nat\">Natural Earth II (手绘风)</option>\n  </select>\n  <label><input type=\"checkbox\" id=\"wall\" checked/>飞行 Wall 矢量层</label>\n  <label><input type=\"checkbox\" id=\"pin\" checked/>3 个 Pin</label>\n  <button onclick=\"flyTo('bj')\">📍北京</button>\n  <button onclick=\"flyTo('ny')\">🗽纽约</button>\n  <button onclick=\"flyTo('ln')\">🎡伦敦</button>\n</div>\n<script>\nCesium.Ion.defaultAccessToken='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIxMjRiY2NiOC04YTA1LTRjMTQtYmEyYi0wOGQ5YzVlYzBlZjciLCJpZCI6MjU5LCJpYXQiOjE3MjMxNzEyMDZ9.vvG8zHc2t2qX5d1T7KZ4X3bVf6G5fJc6pCz8vF9xLUs'\nvar viewer=new Cesium.Viewer('c',{\n  baseLayerPicker:false,geocoder:false,homeButton:false,sceneModePicker:false,\n  navigationHelpButton:false,animation:false,timeline:false,fullscreenButton:false,infoBox:false,\n  imageryProvider:new Cesium.OpenStreetMapImageryProvider()})\nviewer.scene.globe.enableLighting=true\nconst providers={\n  osm:()=>new Cesium.OpenStreetMapImageryProvider(),\n  arcgis:()=>new Cesium.ArcGisMapServerImageryProvider({url:'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer'}),\n  nat:()=>new Cesium.IonImageryProvider({assetId:3812})\n}\ndocument.getElementById('im').onchange=e=>{viewer.imageryLayers.removeAll();viewer.imageryLayers.addImageryProvider(providers[e.target.value]())}\nvar wallEnt=null,pinEnt=null\nfunction toggleWall(show){\n  if(wallEnt&&!show){viewer.entities.remove(wallEnt);wallEnt=null;return}\n  if(wallEnt&&show)return\n  wallEnt=viewer.entities.add({wall:{\n    positions:Cesium.Cartesian3.fromDegreesArrayHeights([\n      116.397,39.908,0,121.47,31.23,40000,113.27,23.13,0,104.06,30.67,30000,87.61,43.82,0]),\n    material:new Cesium.Color(1,.3,.2,.6),\n    minimumHeights:[0,40000,0,30000,0],\n    maximumHeights:[12000,60000,20000,50000,12000]\n  }})\n}\nfunction togglePin(show){\n  if(pinEnt&&!show){viewer.entities.remove(pinEnt);pinEnt=null;return}\n  if(pinEnt&&show)return\n  pinEnt=viewer.entities.add({})\n  ;[['北京',116.397,39.908,150],['上海',121.47,31.23,200],['纽约',-74.006,40.713,220]].forEach(([n,lng,lat,h])=>{\n    viewer.entities.add({position:Cesium.Cartesian3.fromDegrees(lng,lat,h),\n      billboard:{image:'data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"48\"><path d=\"M20 48 C 12 36 4 28 4 18 A 16 16 0 0 1 36 18 c0 10-8 18-16 30z\" fill=\"#e33\" stroke=\"#fff\" stroke-width=\"2\"/><circle cx=\"20\" cy=\"18\" r=\"6\" fill=\"#fff\"/></svg>'),\n        verticalOrigin:Cesium.VerticalOrigin.BOTTOM,width:28,height:34},\n      label:{text:n+' '+h+'m',font:'bold 14px sans-serif',fillColor:Cesium.Color.WHITE,\n        outlineColor:Cesium.Color.BLACK,outlineWidth:2,style:Cesium.LabelStyle.FILL_AND_OUTLINE,\n        verticalOrigin:Cesium.VerticalOrigin.BOTTOM,pixelOffset:new Cesium.Cartesian2(0,-34)}})\n  })\n}\nfunction flyTo(city){\n  const t={bj:{lng:116.4,lat:39.9,h:2500},ny:{lng:-74.006,lat:40.71,h:2000},ln:{lng:-0.128,lat:51.507,h:2500}}[city]\n  viewer.camera.flyTo({destination:Cesium.Cartesian3.fromDegrees(t.lng,t.lat,t.h),duration:1.2})\n}\ndocument.getElementById('wall').onchange=e=>toggleWall(e.target.checked)\ndocument.getElementById('pin').onchange=e=>togglePin(e.target.checked)\ntoggleWall(true);togglePin(true)\nviewer.camera.flyTo({destination:Cesium.Cartesian3.fromDegrees(105,28,5000000),duration:1})\nsetInterval(()=>{\n  const c=Cesium.Cartographic.fromCartesian(viewer.camera.position)\n  document.getElementById('st').textContent='h='+Math.round(c.height/1000)+'km lng='+Cesium.Math.toDegrees(c.longitude).toFixed(2)+' lat='+Cesium.Math.toDegrees(c.latitude).toFixed(2)\n},400)\n</script>\n```\n"
+},
+{
+  "id": "gis-020",
+  "category": "gis",
+  "framework": "cesium",
+  "title": "Cesium 3D Tiles：倾斜摄影、BIM、点云流式加载？",
+  "difficulty": "困难",
+  "tags": [
+    "Cesium",
+    "3D Tiles",
+    "倾斜摄影",
+    "BIM",
+    "点云",
+    "LOD"
+  ],
+  "answer": "## 3D Tiles 是什么\n\n3D Tiles 是 OGC 标准，为**海量 3D 内容**设计：把模型按空间切分成树形瓦片，每个瓦片带 LOD（细节层次），浏览器按视口距离流式加载。\n\n适用：倾斜摄影（城市级）、BIM（整栋楼）、点云（激光扫描）、人工模型。\n\n## 数据格式\n\n3D Tiles 一组文件：\n- `tileset.json`：根文件，描述瓦片树 + boundingVolume + geometricError。\n- `*.b3dm`：Batched 3D Model（倾斜摄影/建筑）。\n- `*.i3dm`：Instanced 3D Model（树、灯柱等实例化）。\n- `*.pnts`：点云。\n- `*.cmpt`：复合瓦片。\n\n## 加载 tileset\n\n```js\nconst tileset = await Cesium.Cesium3DTileset.fromUrl('./building/tileset.json')\nviewer.scene.primitives.add(tileset)\n\n// 初始定位到 tileset\nviewer.zoomTo(tileset)\n```\n\n## 倾斜摄影（ osgb → 3D Tiles）\n\n倾斜摄影原始格式是 osgb（OSG 二进制），需转换：\n\n```bash\n# 用 CesiumLab / 3dtiles 工具\n3dtiles --tilesetJson tileset.json --merge osgb/ --output output/\n# 或 CesiumLab GUI：osgb → 3D Tiles\n```\n\n转换后常调：\n```js\ntileset.maximumScreenSpaceError = 16   // 默认 16，调大加载更粗 LOD 省性能\ntileset.dynamicScreenSpaceError = true // 动态：移动时降质量，停下提质量\n```\n\n## BIM 模型（glTF → 3D Tiles）\n\nBIM（Revit/IFC）→ glTF → b3dm：\n\n```bash\n# 1. Revit 导出 FBX/glTF\n# 2. 用 3dtiles 工具转 b3dm\n# 3. 保留构件属性（featureTable.batchTable）\n```\n\n构件属性查询：\n```js\nconst handler = new Cesium.ScreenSpaceEventHandler(viewer.canvas)\nhandler.setInputAction(e => {\n  const picked = viewer.scene.pick(e.position)\n  if (picked) {\n    const props = picked.getProperty('name')   // 读 batchTable 属性\n    console.log('点击构件:', props)\n  }\n}, Cesium.ScreenSpaceEventType.LEFT_CLICK)\n```\n\n## 点云（las/laz → pnts）\n\n```bash\n# potree-converter 或 cesium-point-cloud-generator\npotree-converter -i cloud.las -o output/\n```\n\n点云渲染：\n```js\ntileset.pointCloudShading.attenuation = true   // 近大远小\ntileset.pointCloudShading.maximumAttenuation = 4\n```\n\n## 样式（3D Tiles Styling）\n\n```js\ntileset.style = new Cesium.Cesium3DTileStyle({\n  color: {\n    conditions: [\n      ['${height} > 100', 'color(\"red\")'],\n      ['${height} > 50', 'color(\"orange\")'],\n      ['true', 'color(\"white\")']\n    ]\n  },\n  show: '${type} !== \"underground\"'\n})\n```\n\n类似 Mapbox 表达式，按 batchTable 属性动态着色/过滤。\n\n## 性能调优\n\n| 参数 | 作用 | 调优 |\n| --- | --- | --- |\n| `maximumScreenSpaceError` | LOD 切换阈值 | 卡顿调大（24），精细调小（8） |\n| `cacheBytes` | 缓存上限 | 内存足调大（512MB+） |\n| `dynamicScreenSpaceError` | 移动时降质 | 默认 true，流畅性优先 |\n| `skipLevelOfDetail` | 跳级加载 | 加载快但可能有跳变 |\n| `preloadWhenHidden` | 隐藏时预加载 | 多 tileset 切换有用 |\n\n```js\ntileset.cacheBytes = 536870912   // 512MB\ntileset.maximumCacheOverflowBytes = 268435456\n```\n\n## 切片与部署\n\n```\n/tilesets\n├── building/tileset.json + *.b3dm\n├── photogrammetry/tileset.json + *.b3dm\n└── pointcloud/tileset.json + *.pnts\n```\n\n- 用 nginx 静态服务，开 HTTP/2 + range request。\n- 大 tileset 分块发布，按区域/楼层切。\n- CDN 加速，瓦片加 immutable 缓存。\n\n## 常见坑\n\n- **坐标系**：3D Tiles 内部用 ECEF（地心 XYZ）+ 局部变换矩阵，转换工具会处理；自建要确保 glTF 是 Y-up。\n- **高度参考**：BIM 习惯相对正负零，3D Tiles 要绝对高度（贴地形），转换时设 `transform`。\n- **batchTable 属性丢失**：转换工具不保留属性，构件查询失效，需用支持 batchTable 的工具（3dtiles tool / CesiumLab）。\n- **超大 tileset 加载慢**：根瓦片几何误差太大，浏览器一次性加载根，要重新切片让根只包含低 LOD。\n- **贴地**：3D Tiles 不会自动贴地形，需 `Cesium3DTileset.clampToGround` 或转换时采样地形。\n\n## 与 Mapbox 对比\n\n| 维度 | Cesium 3D Tiles | Mapbox fill-extrusion |\n| --- | --- | --- |\n| 数据规模 | 城市级（GB~TB） | 单城市建筑（百 MB） |\n| 数据类型 | 倾斜摄影/BIM/点云 | 简单拉伸面 |\n| LOD | 标准 LOD 树 | 无（靠 minzoom） |\n| 全球球面 | 是 | 否（平面投影） |\n| 适合 | 智慧城市、测绘 | 数据可视化、轻量 3D |\n## 在线 Demo（页面可直接运行）\n\n```html\n<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/cesium@1.120/Build/Cesium/Widgets/widgets.css\" />\n<script src=\"https://cdn.jsdelivr.net/npm/cesium@1.120/Build/Cesium/Cesium.js\"></script>\n<div style=\"position:relative;width:100%;height:280px\">\n  <div id=\"c\" style=\"width:100%;height:100%\"></div>\n  <div id=\"pg\" style=\"position:absolute;left:0;top:0;background:rgba(0,0,0,.6);color:#fff;padding:4px 8px;font-size:12px\">3D Tiles: 加载中…</div>\n</div>\n<div style=\"font-size:12px;padding:4px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap\">\n  🎨着色:\n  <select id=\"colormode\"><option>按 id 调色板</option><option>按高度伪彩</option><option>纯白</option></select>\n  <button onclick=\"flyTo('beijing')\">📍北京</button>\n  <button onclick=\"flyTo('ny')\">🗽纽约</button>\n  <button onclick=\"flyTo('london')\">🎡伦敦</button>\n</div>\n<script>\nCesium.Ion.defaultAccessToken='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIxMjRiY2NiOC04YTA1LTRjMTQtYmEyYi0wOGQ5YzVlYzBlZjciLCJpZCI6MjU5LCJpYXQiOjE3MjMxNzEyMDZ9.vvG8zHc2t2qX5d1T7KZ4X3bVf6G5fJc6pCz8vF9xLUs'\nvar viewer=new Cesium.Viewer('c',{\n  baseLayerPicker:false,geocoder:false,homeButton:false,sceneModePicker:false,\n  navigationHelpButton:false,animation:false,timeline:false,fullscreenButton:false,infoBox:false,\n  imageryProvider:new Cesium.ArcGisMapServerImageryProvider({url:'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer'})})\nviewer.scene.globe.enableLighting=true\nlet loaded=0,total=0\nlet tileset=new Cesium.Cesium3DTileset({\n  url:'https://tile.openstreetmap.top/3dtiles/styles/osm-buildings/tileset.json',\n  maximumScreenSpaceError:16\n})\ntileset.tileLoad.addEventListener(()=>{loaded++;updatePbar()})\ntileset.tileFailed.addEventListener(()=>{total++;updatePbar()})\ntileset.tileUnload.addEventListener(()=>{loaded=Math.max(0,loaded-1);updatePbar()})\nfunction updatePbar(all){document.getElementById('pg').textContent='3D Tiles loaded='+loaded}\nviewer.scene.primitives.add(tileset)\nfunction colorBy(mode){\n  tileset.style=new Cesium.Cesium3DTileStyle({\n    color:{conditions:mode==='white'?[['true','\"rgb(255,255,255)\"']]:\n      mode==='height'?[\n        [\"${feature['cesium#estimatedHeight']} > 150\", '\"rgba(240,80,60,0.9)\"'],\n        [\"${feature['cesium#estimatedHeight']} > 60\", '\"rgba(255,200,80,0.9)\"'],\n        [\"true\", '\"rgba(120,180,255,0.9)\"']\n      ]:[\n        [\"(${id} % 7) === 0\", '\"rgba(230,80,70,0.9)\"'],\n        [\"(${id} % 7) === 1\", '\"rgba(80,170,250,0.9)\"'],\n        [\"(${id} % 7) === 2\", '\"rgba(120,220,130,0.9)\"'],\n        [\"(${id} % 7) === 3\", '\"rgba(250,210,80,0.9)\"'],\n        [\"(${id} % 7) === 4\", '\"rgba(210,120,240,0.9)\"'],\n        [\"(${id} % 7) === 5\", '\"rgba(80,210,220,0.9)\"'],\n        [\"true\", '\"rgba(255,255,255,0.9)\"']\n      ]}\n  })\n}\ncolorBy('id')\ndocument.getElementById('colormode').onchange=e=>colorBy(\n  e.target.selectedIndex===0?'id':e.target.selectedIndex===1?'height':'white')\nfunction flyTo(city){\n  const t={beijing:{lng:116.39,lat:39.90,h:2500},ny:{lng:-74.006,lat:40.71,h:2000},london:{lng:-0.128,lat:51.507,h:2500}}[city]\n  viewer.camera.flyTo({destination:Cesium.Cartesian3.fromDegrees(t.lng,t.lat,t.h),duration:1.2})\n}\nviewer.camera.flyTo({destination:Cesium.Cartesian3.fromDegrees(116.39,39.90,2500),duration:1})\n</script>\n```\n"
+},
+{
+  "id": "gis-021",
+  "category": "gis",
+  "framework": "deckgl",
+  "title": "Deck.gl 的图层体系与大规模数据性能优化？",
+  "difficulty": "困难",
+  "tags": [
+    "Deck.gl",
+    "图层",
+    "WebGL",
+    "性能优化",
+    "Binary",
+    "Worker"
+  ],
+  "answer": "## Deck.gl 定位\n\nDeck.gl 是 Uber 开源的**大规模地理可视化框架**，基于 WebGL2：\n- 50+ 开箱即用图层（Scatterplot / Arc / Hexagon / Trip / 3D Tiles ...）。\n- 百万级数据 GPU 渲染。\n- 可独立用，也可作为 Mapbox/MapLibre/Leaflet/Cesium 的图层嵌入。\n\n## 核心抽象：Layer + View\n\n```js\nimport { Deck } from '@deck.gl/core'\nimport { ScatterplotLayer } from '@deck.gl/layers'\n\nnew Deck({\n  canvas: 'deck',\n  initialViewState: { longitude: 116.39, latitude: 39.91, zoom: 10 },\n  controller: true,\n  layers: [\n    new ScatterplotLayer({\n      id: 'points',\n      data: points,\n      getPosition: d => [d.lng, d.lat],\n      getRadius: d => Math.sqrt(d.value) * 100,\n      getFillColor: [0, 150, 255],\n      radiusMinPixels: 2,\n      pickable: true\n    })\n  ]\n})\n```\n\n每个 Layer 是声明式配置，`data` 支持 Array / AsyncIterable / GeoJSON / Tileset URL。\n\n## 图层分类\n\n| 包 | 代表图层 | 用途 |\n| --- | --- | --- |\n| @deck.gl/layers | Scatterplot / Line / Polygon / Icon / Text | 基础矢量 |\n| @deck.gl/aggregation-layers | Hexagon / ScreenGrid / Heatmap | 密度聚合 |\n| @deck.gl/geo-layers | TileLayer / MVTLayer / TripsLayer / 3DTilesLayer | 地理专用 |\n| @deck.gl/mesh-layers | Scenegraph / SimpleMesh | 3D 模型 |\n| @deck.gl/mapbox | MapboxLayer | 嵌入 Mapbox |\n\n## 嵌入 Mapbox（最常用）\n\n```js\nimport { MapboxLayer } from '@deck.gl/mapbox'\nimport { HexagonLayer } from '@deck.gl/aggregation-layers'\n\nmap.addLayer(new MapboxLayer({\n  id: 'hex',\n  type: HexagonLayer,\n  data: trips,\n  getPosition: d => [d.lng, d.lat],\n  radius: 200,\n  extruded: true,\n  getElevationWeight: d => d.count,\n  getColorWeight: d => d.count\n}))\n```\n\nMapbox 负责底图，Deck.gl 负责大数据可视化，坐标系自动同步。\n\n## TileLayer：按需加载瓦片\n\n```js\nnew TileLayer({\n  id: 'tiles',\n  data: 'https://tiles.example.com/{z}/{x}/{y}.pbf',\n  maxZoom: 14,\n  renderSubLayers: props => new MVTLayer(props, {\n    getFillColor: f => colorByType(f.properties.type)\n  })\n})\n```\n\n视口变化自动 fetch 可见瓦片，支持百万级数据按需渲染。\n\n## 性能优化：百万级数据\n\n### 1. Binary 数据格式\n\n```js\n// 普通：对象数组（GC 压力大）\ndata: [{lng, lat, value}, ...]\n\n// Binary：TypedArray（GPU 直传）\ndata: {\n  length: 1000000,\n  attributes: {\n    getPosition: { value: positionsFloat32, size: 2 },\n    getRadius: { value: radiiFloat32, size: 1 }\n  }\n}\n```\n\nBinary 模式省内存 80%，渲染快 3~5 倍。\n\n### 2. WebWorker 预处理\n\n```js\nimport { _WorkerThread } from '@deck.gl/core'\n// loaders.gl + worker 解析大 GeoJSON / CSV\n```\n\n数据解析在 worker，主线程只渲染，不卡 UI。\n\n### 3. 分层加载（LOD）\n\n```js\nnew TileLayer({\n  minZoom: 3, maxZoom: 14,\n  // 低 zoom 用聚合图层，高 zoom 用细图层\n  renderSubLayers: props => props.tile.z < 8 ? new HexagonLayer(...) : new ScatterplotLayer(...)\n})\n```\n\n### 4. 视口剔除 + 聚合\n\n- `extensions`：`DataFilterExtension` 在 GPU 上按属性过滤，不重新加载数据。\n- `updateTriggers`：精确控制哪个属性变化才重算，避免全量重渲染。\n\n```js\nnew ScatterplotLayer({\n  // ...\n  extensions: [new DataFilterExtension({ filterSize: 1 })],\n  getFilterValue: d => d.value > threshold ? 1 : 0,\n  filterRange: [1, 1]\n})\n```\n\n### 5. 关闭不必要的开销\n\n- `pickable: false`（不需要交互的图层关掉，省拾取计算）。\n- `parameters: { depthTest: false }`（无遮挡的 2D 图层）。\n- `transitions` 慎用，动画会触发每帧重算。\n\n## 实战：百万轨迹热力\n\n```js\nnew HeatmapLayer({\n  id: 'trip-heat',\n  data: trips,           // 100w 条\n  getPosition: d => [d.lng, d.lat],\n  radiusPixels: 50,\n  intensity: 1,\n  aggregation: 'SUM',\n  // Binary 模式\n  // data 走 worker 解析\n})\n```\n\n百万点热力图 60fps 流畅。\n\n## 与 Mapbox 原生图层对比\n\n| 维度 | Deck.gl | Mapbox 原生 |\n| --- | --- | --- |\n| 数据规模 | 百万级 | 万级 |\n| GPU 加速 | 强（Binary + 实例化） | 中 |\n| 自定义图层 | 灵活（继承 Layer 写 shader） | 受限 |\n| 底图 | 需配合 Mapbox/Leaflet | 自带 |\n| 学习曲线 | 中 | 中 |\n| 适合 | 大数据可视化 | 业务地图 + 轻量可视化 |\n\n## 坑\n\n- **坐标系**：Deck.gl 默认 [lng, lat]，与 Mapbox 嵌入时自动同步；独立用需设 `coordinateSystem`。\n- **z 轴**：3D 图层高度单位是米，地图坐标系下要乘 `sizeScale`。\n- **图层更新**：改 `data` 全量重渲染，改单个属性用 `updateTriggers` 精确触发。\n- **内存**：百万数据用 Binary，否则浏览器 OOM。\n- **拾取性能**：`pickable` 图层每帧构建拾取数据，大图层开 `autoHighlight: false` + 按需拾取。\n## 在线 Demo（页面可直接运行）\n\n```html\n<script src=\"https://unpkg.com/deck.gl@9.0.32/dist.min.js\"></script>\n<div id=\"map\" style=\"height:280px\"></div>\n<div style=\"font-size:12px;padding:4px 0;display:grid;grid-template-columns:repeat(4,1fr);gap:6px\">\n  <label><input type=\"checkbox\" id=\"lSc\" checked/>🔴 Scatterplot 10w</label>\n  <label><input type=\"checkbox\" id=\"lHex\" checked/>⬣ HexagonLayer 蜂窝聚合 1w</label>\n  <label><input type=\"checkbox\" id=\"lLi\" checked/>➖ LineLayer 路网 1k</label>\n  <label><input type=\"checkbox\" id=\"lAr\" checked/>✈️ ArcLayer OD 飞线 80</label>\n</div>\n<script>\nconst {DeckGL,ScatterplotLayer,HexagonLayer,LineLayer,ArcLayer}=deck\nconst DATA_Scatter=[]\nfor(let i=0;i<100000;i++) DATA_Scatter.push([116.4+(Math.random()-.5)*.8,39.9+(Math.random()-.5)*.7,\n  Math.random()<.02?20:5,[80+Math.random()*150,40,200+Math.random()*55,220]])\nconst DATA_Hex=[]\nfor(let i=0;i<10000;i++) DATA_Hex.push([116.4+(Math.random()-.5)*.6,39.9+(Math.random()-.5)*.5,Math.floor(Math.random()*50)])\nconst DATA_Line=[]\nfor(let i=0;i<1000;i++){const sx=116.35+Math.random()*.1,sy=39.88+Math.random()*.06;\n  DATA_Line.push({s:[sx,sy],e:[sx+Math.random()*.01-Math.random()*.005,sy+Math.random()*.02-Math.random()*.01]})}\nconst OD_FROM=[['北京',116.40,39.91],['上海',121.47,31.23],['成都',104.07,30.67]]\nconst DATA_Arc=[]\nfor(let i=0;i<80;i++){const a=OD_FROM[i%3],b=OD_FROM[(i+1)%3]\n  DATA_Arc.push({from:[a[1],a[2]],to:[b[1],b[2]],w:2+Math.random()*3,col:[200+Math.random()*55,120+Math.random()*80,80,220]})}\nconst deck=new DeckGL({container:'map',controller:true,mapStyle:'',\n  initialViewState:{longitude:116.4,latitude:39.9,zoom:10,pitch:30,bearing:0}})\nfunction render(){\n  const layers=[]\n  if(document.getElementById('lSc').checked)\n    layers.push(new ScatterplotLayer({id:'sc',data:DATA_Scatter,pickable:true,\n      getPosition:d=>[d[0],d[1]],getRadius:d=>d[2],radiusScale:2,radiusMinPixels:1,\n      getFillColor:d=>d[3],getLineColor:[0,0,0,80],getLineWidth:.5}))\n  if(document.getElementById('lHex').checked)\n    layers.push(new HexagonLayer({id:'hex',data:DATA_Hex,getPosition:d=>[d[0],d[1]],getElevationWeight:d=>d[2],\n      radius:400,elevationScale:8,extruded:true,pickable:true,\n      colorRange:[[1,152,189],[73,227,206],[216,254,181],[255,237,111],[255,182,87],[252,116,87]],opacity:.7}))\n  if(document.getElementById('lLi').checked)\n    layers.push(new LineLayer({id:'li',data:DATA_Line,getSourcePosition:d=>d.s,getTargetPosition:d=>d.e,\n      getWidth:1.5,widthScale:3,getWidthPixels:2,getColor:[60,140,255,200]}))\n  if(document.getElementById('lAr').checked)\n    layers.push(new ArcLayer({id:'ar',data:DATA_Arc,getSourcePosition:d=>d.from,getTargetPosition:d=>d.to,\n      getSourceColor:[240,80,80,180],getTargetColor:[80,80,240,180],getWidth:d=>d.w,widthScale:3}))\n  deck.setProps({layers})\n}\n;['lSc','lHex','lLi','lAr'].forEach(id=>document.getElementById(id).onchange=render)\nrender()\n</script>\n```\n"
+},
+{
+  "id": "gis-022",
+  "category": "gis",
+  "difficulty": "简单",
+  "title": "EPSG:4326 与 EPSG:3857 如何互转？写一个实现。",
+  "tags": [
+    "坐标系",
+    "EPSG:4326",
+    "EPSG:3857",
+    "Web Mercator",
+    "投影转换"
+  ],
+  "answer": "## 两个坐标系统的关系\n\n- **EPSG:4326 (WGS84)**：经纬度 (-180~180, -85.05~85.05)，地理坐标系。\n- **EPSG:3857 (Web Mercator / 伪墨卡托)**：米，投影坐标系，是所有 Web 底图瓦片的事实标准。\n\n投影公式：`x = R * lng_rad`，`y = R * ln(tan(π/4 + lat_rad/2))`，`R = 6378137` 米。纬度有效范围 `±85.0511287798066°`（超过 Mercator 会发散）。\n\n## 纯手写实现 (零依赖)\n\n```js\nconst R = 6378137\nconst MAX_LAT = 85.0511287798066\nconst toRad = d => d * Math.PI / 180\nconst toDeg = r => r * 180 / Math.PI\n\nfunction lngLatToMeters([lng, lat]) {\n  const latClamped = Math.max(-MAX_LAT, Math.min(MAX_LAT, lat))\n  const x = R * toRad(lng)\n  const y = R * Math.log(Math.tan(Math.PI / 4 + toRad(latClamped) / 2))\n  return [x, y]\n}\nfunction metersToLngLat([x, y]) {\n  const lng = toDeg(x / R)\n  const lat = toDeg(2 * Math.atan(Math.exp(y / R)) - Math.PI / 2)\n  return [lng, lat]\n}\nconst m = lngLatToMeters([116.397, 39.908])\nconsole.log('天安门 4326 -> 3857 (米):', m.map(v => v.toFixed(2)))\nconsole.log('反算 3857 -> 4326      :', metersToLngLat(m).map(v => v.toFixed(6)))\n```\n\n## 生产环境：proj4\n\n```bash\nnpm i proj4\n```\n```js\nimport proj4 from 'proj4'\nconst [x, y] = proj4('EPSG:4326', 'EPSG:3857', [116.397, 39.908])\nconsole.log('proj4:', [x.toFixed(2), y.toFixed(2)])\nconst pts = [[121.473, 31.230], [113.264, 23.129]]\nconsole.log('批量:', pts.map(p => proj4('EPSG:4326','EPSG:3857', p)))\n```\n\n## 小结\n\n- 手写公式只适合 4326↔3857；任意投影（CGCS2000、UTM）直接用 proj4。\n- 超 85.05° 的纬度要裁掉，否则 Mercator y 值爆炸。\n- Leaflet：`L.CRS.EPSG3857.project/unproject`；OpenLayers：`ol.proj.fromLonLat / toLonLat`。"
+},
+{
+  "id": "gis-023",
+  "category": "gis",
+  "difficulty": "简单",
+  "title": "Leaflet 加载 OSM 底图 + Marker + Popup，在线运行看真实效果",
+  "tags": [
+    "Leaflet",
+    "OSM",
+    "Marker",
+    "Popup",
+    "在线运行",
+    "HTML"
+  ],
+  "answer": "## Leaflet 最小可运行页面\n\nLeaflet 是最轻量的 Web 地图库（~40KB），引入 JS + CSS 后一行代码出图。\n\n▶ 点击代码块右上角 **运行**，可在 iframe 中看到真实地图 + 北京地标 Marker，点 Marker 弹出 Popup。\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<style>\n  body{margin:0;padding:8px;background:#f6f8fa;font-family:system-ui,sans-serif;}\n  h4{margin:0 0 8px;font-size:14px;color:#1f2328;}\n  #map{height:260px;width:100%;border-radius:6px;border:1px solid #d0d7de;}\n  .tip{font-size:12px;color:#57606a;margin-top:6px;}\n</style>\n<h4>🗺️ Leaflet：北京主要地标（点 Marker 可弹窗）</h4>\n<div id=\"map\"></div>\n<p class=\"tip\">底图：OpenStreetMap ｜ 坐标 WGS84 ｜ Leaflet API 永远是 [lat, lng]</p>\n<script>\n  var map = L.map('map').setView([39.908, 116.397], 12)\n  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {\n    maxZoom: 19, attribution: '&copy; OpenStreetMap'\n  }).addTo(map)\n  var marks = [\n    [39.908, 116.397, '🏯 天安门'],\n    [39.916, 116.397, '🏛️ 故宫博物院'],\n    [39.999, 116.275, '🏟️ 颐和园'],\n    [39.882, 116.406, '🛕 天坛公园']\n  ]\n  marks.forEach(function(m){\n    L.marker([m[0], m[1]]).addTo(map)\n      .bindPopup('<b>'+m[2]+'</b><br/>'+m[0].toFixed(4)+', '+m[1].toFixed(4))\n  })\n</script>\n```\n\n## 关键知识点\n\n1. **经纬度顺序**：Leaflet API 永远 `[lat, lng]`，但 GeoJSON 是 `[lng, lat]`。\n2. **`tileLayer`**：XYZ 标准瓦片；OSM、OSMChina、高德（需申请 key）通用模板。\n3. **`bindPopup`**：支持 HTML 字符串。生产可塞 Vue/React 序列化 DOM。"
+},
+{
+  "id": "gis-024",
+  "category": "gis",
+  "difficulty": "中等",
+  "title": "Leaflet 加载 GeoJSON 行政区并高亮，在线运行可视化",
+  "tags": [
+    "Leaflet",
+    "GeoJSON",
+    "Polygon",
+    "高亮",
+    "L.geoJSON",
+    "HTML"
+  ],
+  "answer": "## L.geoJSON 图层体系\n\nLeaflet 原生吃 GeoJSON，`style` 按属性填色，`onEachFeature` 绑定悬浮高亮/点击弹窗，`filter` 做要素筛选。\n\n▶ 运行：京津冀 3 个虚构矩形，按 GDP 分色；悬浮变粗红色边框；点击缩放到面并弹 GDP/人口。\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<style>\n  body{margin:0;padding:8px;background:#f6f8fa;font-family:system-ui,sans-serif;}\n  h4{margin:0 0 8px;font-size:14px;color:#1f2328;}\n  #map{height:260px;width:100%;border-radius:6px;border:1px solid #d0d7de;}\n  .tip{font-size:12px;color:#57606a;margin-top:6px;}\n  .info{background:rgba(255,255,255,.92);padding:6px 10px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.2);font-size:12px;line-height:1.6}\n</style>\n<h4>🧩 GeoJSON 行政区：京津冀分色填充 + 悬浮高亮 + 点击弹窗</h4>\n<div id=\"map\"></div>\n<p class=\"tip\">方法：L.geoJSON({ style, onEachFeature }) + L.control 信息面板</p>\n<script>\n  var map = L.map('map').setView([39.5, 116.8], 7)\n  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map)\n  var geo = { type:'FeatureCollection', features:[\n    { type:'Feature', properties:{ name:'北京市', population:2189, gdp:41611 },\n      geometry:{ type:'Polygon', coordinates:[[[115.5,39.5],[117.4,39.5],[117.4,41.1],[115.5,41.1],[115.5,39.5]]] }},\n    { type:'Feature', properties:{ name:'天津市', population:1363, gdp:16311 },\n      geometry:{ type:'Polygon', coordinates:[[[116.7,38.6],[118.0,38.6],[118.0,40.2],[116.7,40.2],[116.7,38.6]]] }},\n    { type:'Feature', properties:{ name:'河北省', population:7448, gdp:42370 },\n      geometry:{ type:'Polygon', coordinates:[[[113.5,36.0],[119.8,36.0],[119.8,42.6],[113.5,42.6],[113.5,36.0]]] }}\n  ]}\n  function getColor(g){ return g>40000 ? '#2166ac' : g>15000 ? '#67a9cf' : '#d1e5f0' }\n  function style(f){ return {\n    fillColor: getColor(f.properties.gdp), weight:2, color:'#fff',\n    dashArray:'3', fillOpacity:0.7\n  }}\n  function hi(e){\n    var l = e.target\n    l.setStyle({ weight:4, color:'#b2182b', dashArray:'', fillOpacity:0.9 })\n    l.bringToFront(); info.update(l.feature.properties)\n  }\n  function reset(e){ geoL.resetStyle(e.target); info.update() }\n  function onEach(f, l){\n    l.on({ mouseover: hi, mouseout: reset, click: function(e){\n      map.fitBounds(e.target.getBounds())\n      l.bindPopup('<b>'+f.properties.name+'</b><br/>人口：'+f.properties.population+' 万<br/>GDP：'+f.properties.gdp+' 亿').openPopup()\n    }})\n  }\n  var geoL = L.geoJSON(geo, { style: style, onEachFeature: onEach }).addTo(map)\n\n  var info = L.control({ position:'bottomleft' })\n  info.onAdd = function(){ this._div = L.DomUtil.create('div','info'); this.update(); return this._div }\n  info.update = function(p){\n    this._div.innerHTML = p ? '<b>'+p.name+'</b><br/>人口：'+p.population+' 万<br/>GDP：'+p.gdp+' 亿元' : '👆 悬浮查看详情'\n  }\n  info.addTo(map)\n</script>\n```\n\n## API 要点\n\n- **`L.geoJSON(data, { style, onEachFeature, filter, pointToLayer })`**：四个核心参数。\n- **`layer.resetStyle(target)`**：恢复要素默认样式，取消高亮专用。\n- **`map.fitBounds(layer.getBounds())`**：自动缩放到某个面。\n- **`filter(feature)`**：渲染前按属性筛掉不想显示的要素。"
+},
+{
+  "id": "gis-025",
+  "category": "gis",
+  "difficulty": "中等",
+  "title": "Leaflet 轨迹回放（汽车图标沿 Polyline 移动），在线运行",
+  "tags": [
+    "Leaflet",
+    "轨迹回放",
+    "requestAnimationFrame",
+    "动画",
+    "HTML"
+  ],
+  "answer": "## 轨迹回放三步法\n\n1. `L.polyline(line)` 画轨迹线；\n2. 用\"距离累积 + 比例 t∈[0,1]\"线性插值出当前位置；\n3. `requestAnimationFrame` 每帧更新 Marker 的 `setLatLng`。\n\n▶ 运行：🚗 绕北京 → 天津 → 保定 → 北京一圈巡航，周期 6 秒，进度实时显示。\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<style>\n  body{margin:0;padding:8px;background:#f6f8fa;font-family:system-ui,sans-serif;}\n  h4{margin:0 0 8px;font-size:14px;color:#1f2328;}\n  #map{height:260px;width:100%;border-radius:6px;border:1px solid #d0d7de;}\n  .bar{margin-top:6px;font-size:12px;color:#57606a;line-height:1.7}\n  .bar b{color:#0969da}\n  .car{font-size:22px;text-align:center;width:100%;margin-top:-8px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.3))}\n</style>\n<h4>🚗 轨迹回放：北京 → 天津 → 保定 → 北京 循环巡航</h4>\n<div id=\"map\"></div>\n<div class=\"bar\">\n  进度：<b id=\"p\">0%</b> ｜ 当前坐标：<b id=\"c\">-</b> ｜ 速度：<b>1 圈 / 6s</b>\n</div>\n<script>\n  var map = L.map('map').setView([39.5, 116.5], 8)\n  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map)\n\n  var line = [\n    [39.908, 116.397],  // 北京\n    [39.142, 117.200],  // 天津\n    [38.874, 115.464],  // 保定\n    [39.908, 116.397]   // 回北京\n  ]\n  L.polyline(line, { color:'#0969da', weight:4, opacity:.85, dashArray:'8,6' }).addTo(map)\n  line.forEach(function(p,i){\n    L.circleMarker(p,{radius:6,color:'#b2182b',fillColor:'#fff',fillOpacity:1,weight:2}).addTo(map)\n      .bindTooltip('途经点 '+(i+1))\n  })\n  var carIcon = L.divIcon({ className:'', html:'<div class=\"car\">🚗</div>', iconSize:[30,30], iconAnchor:[15,15] })\n  var car = L.marker(line[0], { icon: carIcon }).addTo(map)\n\n  var segs=[], total=0\n  for (var i=0;i<line.length-1;i++){\n    var a=line[i], b=line[i+1]\n    var d = Math.hypot(b[0]-a[0], b[1]-a[1])\n    segs.push({a:a,b:b,d:d}); total += d\n  }\n  function pointAt(t) {\n    var want = t * total\n    for (var i=0;i<segs.length;i++){\n      if (want <= segs[i].d) {\n        var r = segs[i].d===0 ? 0 : want/segs[i].d\n        return [ segs[i].a[0]+(segs[i].b[0]-segs[i].a[0])*r, segs[i].a[1]+(segs[i].b[1]-segs[i].a[1])*r ]\n      }\n      want -= segs[i].d\n    }\n    return line[line.length-1]\n  }\n\n  var start = Date.now(), PERIOD = 6000\n  function tick(){\n    var t = ((Date.now()-start) % PERIOD) / PERIOD\n    var p = pointAt(t)\n    car.setLatLng(p)\n    document.getElementById('p').textContent = Math.round(t*100)+'%'\n    document.getElementById('c').textContent = p[0].toFixed(4)+', '+p[1].toFixed(4)\n    requestAnimationFrame(tick)\n  }\n  tick()\n</script>\n```\n\n## 生产环境增强\n\n- **真实速度**：`t += speed_m_per_s * dt / total_length_m`，总长度用 `turf.length(line,{units:'meters'})`。\n- **长轨迹二分查找**：上面 `pointAt` 是 O(段数)，10w+ 段用\"前缀累积 + 二分\"降 O(log n)。\n- **轨迹纠偏**：GPS 漂移用 `@turf/bezier-spline` 或卡尔曼滤波平滑再回放。\n- **方向箭头**：装 `Leaflet.PolylineDecorator` 插件画沿线箭头。"
+},
+{
+  "id": "gis-026",
+  "category": "gis",
+  "difficulty": "简单",
+  "title": "Leaflet 热力图：500 个随机点 + 可调半径滑块，在线运行",
+  "tags": [
+    "Leaflet",
+    "热力图",
+    "Leaflet.heat",
+    "可视化",
+    "HTML"
+  ],
+  "answer": "## Leaflet.heat 最轻量热力图层\n\nLeaflet.heat 仅 ~2KB，Canvas 2D 渲染，0 配置出热力图。\n\n▶ 运行：北京天安门（300 点）+ 望京（200 点）两个高斯热点渲染热力图，拖滑块实时改\"热度半径\"。\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<script src=\"https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js\"></script>\n<style>\n  body{margin:0;padding:8px;background:#f6f8fa;font-family:system-ui,sans-serif;}\n  h4{margin:0 0 8px;font-size:14px;color:#1f2328;}\n  #map{height:260px;width:100%;border-radius:6px;border:1px solid #d0d7de;}\n  .panel{margin-top:6px;display:flex;align-items:center;gap:10px;font-size:12px;color:#57606a}\n  input[type=range]{width:200px;}\n  b{color:#cf222e}\n</style>\n<h4>🔥 热力图：北京 500 个随机 POI 密度分布（滑块调半径）</h4>\n<div id=\"map\"></div>\n<div class=\"panel\">\n  热度半径：<input id=\"r\" type=\"range\" min=\"5\" max=\"80\" value=\"25\"/>\n  当前 <b id=\"rv\">25</b> px ｜ 共 <b>500</b> 个高斯点\n</div>\n<script>\n  var map = L.map('map').setView([39.908, 116.397], 11)\n  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map)\n  function g(mean,sd){ var u=0,v=0; while(u===0)u=Math.random(); while(v===0)v=Math.random()\n    return mean + sd * Math.sqrt(-2*Math.log(u)) * Math.cos(2*Math.PI*v) }\n  var pts = []\n  for (var i=0;i<300;i++) pts.push([g(39.908,0.05), g(116.397,0.05), Math.random()*0.8+0.2])\n  for (var i=0;i<200;i++) pts.push([g(39.998,0.04), g(116.470,0.04), Math.random()*0.9+0.1])\n  var heat = L.heatLayer(pts, { radius: 25, blur: 15, maxZoom: 14 }).addTo(map)\n\n  var r=document.getElementById('r'), rv=document.getElementById('rv')\n  r.addEventListener('input', function(){\n    var v = parseInt(r.value,10)\n    heat.setOptions({ radius: v, blur: Math.max(5, (v*0.7)|0) })\n    rv.textContent = v\n  })\n</script>\n```\n\n## 参数一览\n\n| 参数 | 含义 | 典型值 |\n| --- | --- | --- |\n| `radius` | 单点影响半径（像素） | 25 |\n| `blur` | 模糊半径，越大越\"虚\" | 15 |\n| `max` | 归一化分母，点数多时调大 | 1 |\n| `maxZoom` | 到此 zoom radius 取原值，其他 zoom 自适应 | 当前最大 |\n| `gradient` | 颜色映射 { 0.2:'blue', 0.6:'lime', 1:'red' } | 默认 |\n\n## 大数据场景 (>1w 点)\n\n- Canvas 不够 → 换 **WebGL**：Deck.gl HeatmapLayer / MapLibre heatmap layer。\n- 更大 → 后端按瓦片聚合 count，前端直接渲染网格热力，不传原始点。"
+},
+{
+  "id": "gis-027",
+  "category": "gis",
+  "difficulty": "中等",
+  "title": "MapLibre GL JS：矢量切片 + 3D 建筑（fill-extrusion），在线运行",
+  "tags": [
+    "MapLibre",
+    "矢量切片",
+    "style spec",
+    "3D 建筑",
+    "fill-extrusion",
+    "HTML"
+  ],
+  "answer": "## MapLibre GL JS 是什么\n\nMapLibre GL JS 是 Mapbox GL JS v1 的开源分支，无需 token、WebGL 渲染矢量瓦片、完全支持 style.json 与 fill-extrusion 3D 建筑，国内开发者首选。\n\n▶ 运行：天安门附近 3D 建筑白模（高度从 OSM 矢量切片 buildings 层读取），**右键拖动倾斜视角**查看。\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css\" />\n<script src=\"https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js\"></script>\n<style>\n  body{margin:0;padding:8px;background:#f6f8fa;font-family:system-ui,sans-serif;}\n  h4{margin:0 0 8px;font-size:14px;color:#1f2328;}\n  #map{height:260px;width:100%;border-radius:6px;border:1px solid #d0d7de;}\n  .tip{margin-top:6px;font-size:12px;color:#57606a;line-height:1.7}\n  kbd{background:#eaeef2;padding:1px 5px;border-radius:3px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:#1f2328}\n</style>\n<h4>🌐 MapLibre：OSM 矢量底图 + fill-extrusion 3D 建筑（天安门）</h4>\n<div id=\"map\"></div>\n<p class=\"tip\">滚轮缩放 · 左键平移 · <kbd>右键拖动</kbd> 倾斜/旋转 · <kbd>Ctrl + 左键</kbd> 旋转</p>\n<script>\n  var map = new maplibregl.Map({\n    container: 'map',\n    style: {\n      version: 8,\n      sources: {\n        'osm': {\n          type: 'vector',\n          tiles: ['https://tile.openstreetmap.org/data/{z}/{x}/{y}.mvt'],\n          maxzoom: 14\n        }\n      },\n      layers: [\n        { id:'bg',   type:'background', paint:{ 'background-color':'#e5e3df' } },\n        { id:'water',type:'fill', source:'osm','source-layer':'water', paint:{ 'fill-color':'#a0c8fa' } },\n        { id:'land', type:'fill', source:'osm','source-layer':'landuse', paint:{ 'fill-color':'#e2efd9' } },\n        { id:'road', type:'line', source:'osm','source-layer':'roads', paint:{ 'line-color':'#ffffff','line-width':['interpolate',['linear'],['zoom'],10,0.5,16,3] } },\n        { id:'bldg', type:'fill-extrusion', source:'osm','source-layer':'buildings',\n          paint:{\n            'fill-extrusion-color':'#d7b26c',\n            'fill-extrusion-height': ['get','render_height'],\n            'fill-extrusion-base':   ['get','render_min_height'],\n            'fill-extrusion-opacity': 0.85\n          }\n        }\n      ]\n    },\n    center: [116.397, 39.908],\n    zoom: 15.2, pitch: 55, bearing: -20, antialias: true\n  })\n  map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right')\n</script>\n```\n\n## style.json 构成\n\nMapLibre/Mapbox 把地图一切用 JSON 描述：\n\n| 字段 | 作用 |\n| --- | --- |\n| `sources` | 数据源：vector / raster / geojson / image / video |\n| `sources[x].tiles` | 矢量瓦片 XYZ 模板（MVT 格式） |\n| `layers` | 渲染层数组，按顺序绘制（后面的在上） |\n| `layers[i].source-layer` | 对于 vector：取 MVT 包内哪个命名层 |\n| `layers[i].paint` | 样式；数据驱动：`['get','height']` 读 feature 属性 |\n| `layers[i].filter` | 过滤条件，例 `['>', 'height', 50]` 只画 50m+ 建筑 |\n\n## 免费矢量底图源\n\n- Stadia Maps、MapTiler Cloud：免费 key、style 完整商用。\n- **自托管**：OSM PBF → `tilemaker` 或 imposm3 + tegola → mbtiles。\n- 政务合规：天地图 WMTS（需 key）。"
+},
+{
+  "id": "gis-028",
+  "category": "gis",
+  "difficulty": "中等",
+  "title": "Turf.js 布尔运算 + Leaflet 可视化：交集/联集/差集/缓冲区",
+  "tags": [
+    "Turf.js",
+    "布尔运算",
+    "联集",
+    "交集",
+    "差集",
+    "缓冲区",
+    "HTML"
+  ],
+  "answer": "## Turf 布尔运算 = GIS 的\"加减乘除\"\n\n- `intersect(A, B)`：A ∩ B 公共重叠面；\n- `union(A, B)`：A ∪ B 合并面；\n- `difference(A, B)`：A \\ B（A 扣掉 B）；\n- `buffer(g, r, {units})`：几何\"外扩\"一圈。\n\n▶ 运行：真实 turf + Leaflet，北京附近两个矩形 + 交集高亮 + 联集虚线外轮廓 + 天安门 5km 缓冲区。\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<script src=\"https://unpkg.com/@turf/turf@6/turf.min.js\"></script>\n<style>\n  body{margin:0;padding:8px;background:#f6f8fa;font-family:system-ui,sans-serif;}\n  h4{margin:0 0 8px;font-size:14px;color:#1f2328;}\n  #map{height:260px;width:100%;border-radius:6px;border:1px solid #d0d7de;}\n  .legend{margin-top:6px;font-size:12px;color:#1f2328;line-height:1.8}\n  .sw{display:inline-block;width:12px;height:12px;border-radius:2px;vertical-align:middle;margin:0 4px 0 10px;border:1px solid #333}\n</style>\n<h4>🧩 Turf 布尔运算 + 缓冲区：2 矩形 + 交集 + 联集 + 天安门缓冲圈</h4>\n<div id=\"map\"></div>\n<div class=\"legend\">\n  <span class=\"sw\" style=\"background:rgba(33,102,172,.4)\"></span>面 A\n  <span class=\"sw\" style=\"background:rgba(178,24,43,.4)\"></span>面 B\n  <span class=\"sw\" style=\"background:rgba(216,179,101,.85)\"></span>A ∩ B 交集\n  <span class=\"sw\" style=\"background:transparent;border:2px dashed #1b7837\"></span>A ∪ B 联集\n  <span class=\"sw\" style=\"border-radius:50%;background:transparent;border:2px dotted #8e44ad\"></span>5km 缓冲区\n</div>\n<script>\n  var map = L.map('map').setView([39.86,116.47], 9)\n  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map)\n\n  var A = turf.polygon([[[116.35,39.82],[116.53,39.82],[116.53,39.96],[116.35,39.96],[116.35,39.82]]])\n  var B = turf.polygon([[[116.43,39.76],[116.61,39.76],[116.61,39.90],[116.43,39.90],[116.43,39.76]]])\n\n  L.geoJSON(A,{style:{color:'#2166ac',weight:2,fillColor:'#2166ac',fillOpacity:.35}}).addTo(map).bindTooltip('面 A')\n  L.geoJSON(B,{style:{color:'#b2182b',weight:2,fillColor:'#b2182b',fillOpacity:.35}}).addTo(map).bindTooltip('面 B')\n\n  var X = turf.intersect(A, B)\n  if (X) L.geoJSON(X,{style:{color:'#8c6d31',weight:3,fillColor:'#d8b365',fillOpacity:.85}}).addTo(map)\n    .bindPopup('A ∩ B 交集<br/>面积：'+ (turf.area(X)/1e6).toFixed(2) +' km²')\n\n  var U = turf.union(A, B)\n  if (U) L.geoJSON(U,{style:{color:'#1b7837',weight:3,fill:false,dashArray:'10 5'}}).addTo(map)\n\n  var P = turf.point([116.397, 39.908])\n  var buf = turf.buffer(P, 5, { units: 'kilometers' })\n  L.geoJSON(buf,{style:{color:'#8e44ad',weight:2,dashArray:'4 3',fill:false}}).addTo(map)\n  L.circleMarker([39.908,116.397],{radius:5,color:'#fff',fillColor:'#8e44ad',weight:2,fillOpacity:1}).addTo(map)\n    .bindTooltip('天安门（+ 5 km 缓冲圈）')\n</script>\n```\n\n## Turf 组合拳速查\n\n```js\nimport * as turf from '@turf/turf'\nturf.booleanPointInPolygon(pt, fence)                // 电子围栏\nturf.buffer(turf.convex(fc), 100, {units:'meters'})  // 多点凸包 → 外扩 100m → 作业区\nturf.buffer(roadLineString, 30, {units:'meters'})    // 道路两侧 30m 施工带\nturf.length(routeLine, {units:'meters'})             // 路径长度\nconst j = turf.area(turf.intersect(a,b)) / turf.area(turf.union(a,b)) // Jaccard 相似度\nturf.isobands(pointGrid, [10,30,50,80], {zProperty:'heat'})            // 密度等值线图\n```"
+},
+{
+  "id": "gis-029",
+  "category": "gis",
+  "difficulty": "中等",
+  "title": "电子围栏：Turf + Leaflet 实现车辆越界 / 接近告警，在线运行",
+  "tags": [
+    "电子围栏",
+    "点在面内",
+    "缓冲区",
+    "booleanPointInPolygon",
+    "LBS",
+    "HTML"
+  ],
+  "answer": "## 电子围栏三层判定\n\nLBS 场景（网约车、共享单车、外卖）每天要判定 N 次某位置是否在允许区域：\n\n1. 在围栏内 → 正常 ✅\n2. 出围栏但在 1.5km 预警圈 → 接近 ⚠️\n3. 出预警圈 → 越界 ❌\n\n▶ 运行：5 辆模拟车辆按真实位置 + 状态着色（绿/黄/红），点击看详情。\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<script src=\"https://unpkg.com/@turf/turf@6/turf.min.js\"></script>\n<style>\n  body{margin:0;padding:8px;background:#f6f8fa;font-family:system-ui,sans-serif;}\n  h4{margin:0 0 8px;font-size:14px;color:#1f2328;}\n  #map{height:260px;width:100%;border-radius:6px;border:1px solid #d0d7de;}\n  .legend{margin-top:6px;font-size:12px;color:#1f2328;line-height:1.8}\n  .sw{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:middle;margin:0 4px 0 10px;border:1px solid #fff}\n</style>\n<h4>🚛 电子围栏：作业区（蓝） + 1.5km 预警圈 + 车辆状态着色</h4>\n<div id=\"map\"></div>\n<div class=\"legend\">\n  <span class=\"sw\" style=\"background:#2166ac;border-radius:2px\"></span>允许作业区\n  <span class=\"sw\" style=\"background:transparent;border:2px dashed #ef6c00;border-radius:2px\"></span>预警 1.5km\n  <span class=\"sw\" style=\"background:#1a7f37\"></span>✅ 在围栏内\n  <span class=\"sw\" style=\"background:#d4a72c\"></span>⚠️ 接近边界\n  <span class=\"sw\" style=\"background:#cf222e\"></span>❌ 越界\n</div>\n<script>\n  var map = L.map('map').setView([39.90, 116.40], 10)\n  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map)\n\n  var fence = turf.polygon([[[116.25,39.78],[116.55,39.78],[116.55,39.99],[116.25,39.99],[116.25,39.78]]])\n  var warn  = turf.buffer(fence, 1.5, { units: 'kilometers' })\n\n  L.geoJSON(fence, {style:{color:'#2166ac',weight:2,fillColor:'#2166ac',fillOpacity:.18}}).addTo(map)\n    .bindTooltip('允许作业区（北京 4 环附近模拟矩形）')\n  L.geoJSON(warn,  {style:{color:'#ef6c00',weight:2,fill:false,dashArray:'6 5'}}).addTo(map)\n    .bindTooltip('1.5km 预警环 (buffer)')\n\n  var trucks = [\n    { plate:'京A·00001', lng:116.400, lat:39.910 },\n    { plate:'京A·00002', lng:116.560, lat:39.890 }, // 越界\n    { plate:'京A·00003', lng:116.255, lat:39.778 }, // 靠近南角\n    { plate:'京A·00004', lng:116.500, lat:39.940 },\n    { plate:'京A·00005', lng:116.239, lat:39.950 }  // 西角外\n  ]\n  trucks.forEach(function(t){\n    var pt = turf.point([t.lng, t.lat])\n    var inside = turf.booleanPointInPolygon(pt, fence)\n    var near   = turf.booleanPointInPolygon(pt, warn)\n    var color  = inside ? '#1a7f37' : (near ? '#d4a72c' : '#cf222e')\n    var status = inside ? '✅ 在围栏内' : (near ? '⚠️ 靠近边界 < 1.5km' : '❌ 越界')\n    L.circleMarker([t.lat, t.lng], {radius:8, color:'#fff', weight:2, fillColor:color, fillOpacity:1})\n      .addTo(map).bindPopup('<b>'+t.plate+'</b><br/>经纬度：'+t.lng.toFixed(3)+','+t.lat.toFixed(3)+'<br/><b style=\"color:'+color+'\">'+status+'</b>')\n  })\n</script>\n```\n\n## 工程化加固\n\n1. **连续 N 次判定**：GPS 抖动，要求**连续 3~5 次都满足**才发告警，避免漂移误报。\n2. **Enter / Leave 事件**：只在状态翻转时（!prev && now 或 prev && !now）触发后端事件。\n3. **海量车辆判定**：用 RBush 空间索引先粗筛 BBOX，再精确 point-in-polygon（见 gis-030）。\n4. **合法性校验**：运算前先 `turf.booleanValid(fence)`，自相交多边形用 `turf.simplify + turf.cleanCoords` 修。"
+},
+{
+  "id": "gis-030",
+  "category": "gis",
+  "difficulty": "困难",
+  "title": "空间索引 RBush：10w 点 × 1k 围栏 从 100 秒 → 几十毫秒",
+  "tags": [
+    "空间索引",
+    "RBush",
+    "R-Tree",
+    "性能优化",
+    "BBOX"
+  ],
+  "answer": "## 为什么必须上索引\n\n朴素\"10w 车 × 1000 围栏 = 1 亿次射线法\"≈100 秒浏览器卡死。**RBush**（2D R-Tree）按 BBOX 分层树：先粗筛 BBOX，只对候选做精确几何判定，复杂度降到 ~`O(P log F)`。\n\n下面可运行 demo：内置极简 RBush，对比\"无索引外推 100 秒\" vs \"RBush < 100 ms\"：\n\n```js\nconsole.log('========== 📊 10w 点 × 1k 围栏 性能对比 ==========')\nfunction rand(a,b){ return Math.random()*(b-a)+a }\n\nconst fences = Array.from({length:1000}, (_,i) => {\n  const x=rand(116.0,116.8), y=rand(39.5,40.1), w=0.1, h=0.1\n  return { id:'F'+i, xmin:x, ymin:y, xmax:x+w, ymax:y+h,\n    poly:[[[x,y],[x+w,y],[x+w,y+h],[x,y+h],[x,y]]] }\n})\nconst points = Array.from({length:100000}, () => [rand(115.5,117.3), rand(39.0,40.5)])\n\nfunction pip(p, poly){\n  let inside=false, ring=poly[0]\n  for (let i=0,j=ring.length-1; i<ring.length; j=i++) {\n    const xi=ring[i][0], yi=ring[i][1]; const xj=ring[j][0], yj=ring[j][1]\n    if (((yi>p[1]) !== (yj>p[1])) && (p[0] < ((xj-xi)*(p[1]-yi))/(yj-yi) + xi)) inside=!inside\n  }\n  return inside\n}\n\n// ======= A) 无索引（只跑 500 点，外推到 10w） =======\nconst t0 = performance.now()\nlet h1 = 0\nfor (let k=0;k<500;k++) {\n  const p = points[k]\n  for (let i=0;i<fences.length;i++) {\n    if (p[0]>=fences[i].xmin && p[0]<=fences[i].xmax && p[1]>=fences[i].ymin && p[1]<=fences[i].ymax) {\n      if (pip(p, fences[i].poly)) { h1++; break }\n    }\n  }\n}\nconst t1 = performance.now()\nconst naiveEst100k = (t1-t0) * (100000/500)\nconsole.log('无索引 500 点命中：'+h1+' 耗时 '+(t1-t0).toFixed(1)+'ms  → 10w 点估算 '+(naiveEst100k/1000).toFixed(1)+' 秒 😵')\n\n// ======= B) Mini RBush（生产用 npm i rbush） =======\nfunction MiniRBush(max){ max = max||9\n  const tree = []\n  this.load = function(items){\n    items.sort((a,b)=>a.minX-b.minX)\n    for (let i=0;i<items.length;i+=max){\n      const ch = items.slice(i,i+max)\n      tree.push({\n        minX: Math.min(...ch.map(c=>c.minX)), minY: Math.min(...ch.map(c=>c.minY)),\n        maxX: Math.max(...ch.map(c=>c.maxX)), maxY: Math.max(...ch.map(c=>c.maxY)),\n        children: ch\n      })\n    }\n  }\n  this.search = function(b){\n    const res=[], st=tree.slice()\n    while(st.length){\n      const n = st.pop()\n      if (n.maxX<b.minX || n.minX>b.maxX || n.maxY<b.minY || n.minY>b.maxY) continue\n      if (n.children) for (const c of n.children) st.push(c)\n      else res.push(n)\n    }\n    return res\n  }\n}\n\nconst t2 = performance.now()\nconst idx = new MiniRBush(9)\nidx.load(fences.map(f => ({ minX:f.xmin, minY:f.ymin, maxX:f.xmax, maxY:f.ymax, ref:f })))\nconst buildMs = performance.now() - t2\n\nconst t3 = performance.now()\nlet h2 = 0\nfor (let k=0;k<100000;k++){\n  const p = points[k]\n  const cands = idx.search({ minX:p[0], minY:p[1], maxX:p[0], maxY:p[1] })\n  for (const c of cands) { if (pip(p, c.ref.poly)) { h2++; break } }\n}\nconst t4 = performance.now()\nconsole.log('RBush 建索引耗时：'+buildMs.toFixed(1)+' ms')\nconsole.log('RBush 10w 点命中：'+h2+'  总耗时：'+(t4-t3).toFixed(1)+' ms  🔥 加速约 '+Math.round(naiveEst100k/Math.max(1,(t4-t3)))+'×')\n```\n\n## 生产用法\n\n```bash\nnpm i rbush @turf/bbox @turf/boolean-point-in-polygon\n```\n```js\nimport RBush from 'rbush'\nimport bbox from '@turf/bbox'\nimport inside from '@turf/boolean-point-in-polygon'\nimport { point } from '@turf/helpers'\n\nconst tree = new RBush()\ntree.load(fencesFC.features.map(f => {\n  const [minX, minY, maxX, maxY] = bbox(f)\n  return { minX, minY, maxX, maxY, ref: f }\n}))\nfunction whichFence([lng, lat]) {\n  const cands = tree.search({ minX:lng, minY:lat, maxX:lng, maxY:lat })\n  const pt = point([lng, lat])\n  return cands.filter(c => inside(pt, c.ref)).map(c => c.ref.properties.id)\n}\n```"
+},
+{
+  "id": "gis-031",
+  "category": "gis",
+  "difficulty": "简单",
+  "title": "gcoord 坐标偏移（WGS84 / GCJ-02 / BD-09）+ Leaflet 可视化",
+  "tags": [
+    "gcoord",
+    "坐标系偏移",
+    "GCJ-02",
+    "BD-09",
+    "WGS84",
+    "纠偏",
+    "HTML"
+  ],
+  "answer": "## 国内三大坐标系\n\n中国公开地图服务都有加密偏移，GPS 原始 WGS84 点直接丢高德/百度底图会\"飘\"几百米：\n\n| 坐标系 | 俗称 | 使用方 |\n| --- | --- | --- |\n| WGS84 EPSG:4326 | 国际原始经纬度 | GPS 芯片、OSM、GeoJSON 默认 |\n| GCJ-02 (Mars) | 国测局加密 / 火星坐标 | 高德、腾讯、阿里云可视化 |\n| BD-09 | 百度再加密 | 百度地图 |\n\n▶ 运行：同一个 GPS 点（天安门 WGS84 116.397, 39.908）直接 → GCJ-02 → BD-09 三枚 Marker 位置差可达**几百米**！\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<script src=\"https://unpkg.com/gcoord@0.3.0/dist/gcoord.js\"></script>\n<style>\n  body{margin:0;padding:8px;background:#f6f8fa;font-family:system-ui,sans-serif;}\n  h4{margin:0 0 8px;font-size:14px;color:#1f2328;}\n  #map{height:260px;width:100%;border-radius:6px;border:1px solid #d0d7de;}\n  .tip{margin-top:6px;font-size:12px;color:#57606a;line-height:1.8}\n  .sw{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:middle;margin:0 4px 0 10px;border:1px solid #fff}\n</style>\n<h4>🧭 坐标偏移可视化：同一 WGS84 点 ➜ GCJ-02 ➜ BD-09 的位置差</h4>\n<div id=\"map\"></div>\n<div class=\"tip\">\n  <span class=\"sw\" style=\"background:#0969da\"></span>GPS 原始 WGS84 (116.397, 39.908)\n  <span class=\"sw\" style=\"background:#1a7f37;margin-left:14px\"></span>GCJ-02（高德底图下应在此）\n  <span class=\"sw\" style=\"background:#cf222e;margin-left:14px\"></span>BD-09（百度底图下应在此）<br/>\n  <b>现象</b>：不纠偏，你的 Marker 就\"飞\"到马路对面甚至河对岸 😱\n</div>\n<script>\n  var map = L.map('map').setView([39.908, 116.399], 15)\n  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map)\n\n  var WGS = [116.397, 39.908]\n  var GCJ = gcoord.transform(WGS, gcoord.WGS84, gcoord.GCJ02)\n  var BD  = gcoord.transform(GCJ, gcoord.GCJ02, gcoord.BD09)\n\n  function distM(a,b){\n    const dx = (a[0]-b[0])*111000 * Math.cos(a[1]*Math.PI/180)\n    const dy = (a[1]-b[1])*111000\n    return Math.round(Math.hypot(dx,dy))\n  }\n  function mk(p,color,label,note){\n    L.circleMarker([p[1],p[0]],{radius:9,color:'#fff',weight:2,fillColor:color,fillOpacity:1}).addTo(map)\n      .bindPopup('<b>'+label+'</b><br/>经纬度：'+p[0].toFixed(6)+','+p[1].toFixed(6)+'<br/>距 WGS84：<b>'+distM(WGS,p)+' m</b><br/>'+note)\n  }\n  mk(WGS,'#0969da','WGS84（GPS 原始）','放到 OSM 底图上才是真实位置')\n  mk(GCJ,'#1a7f37','GCJ-02（国测局）','高德/腾讯底图下必须使用此坐标')\n  mk(BD, '#cf222e','BD-09（百度）','百度地图 SDK / 瓦片下必须使用此坐标')\n  L.polyline([[WGS[1],WGS[0]],[GCJ[1],GCJ[0]],[BD[1],BD[0]]], {color:'#6e7781',weight:2,dashArray:'5 4'}).addTo(map)\n</script>\n```\n\n## gcoord API\n\n```js\nimport gcoord from 'gcoord'\nconst gcj = gcoord.transform([116.397, 39.908], gcoord.WGS84, gcoord.GCJ02)\nconst bd  = gcoord.transform(gcj,            gcoord.GCJ02, gcoord.BD09)\nconst back= gcoord.transform(bd,             gcoord.BD09,  gcoord.WGS84) // 反解\n// 支持：WGS84 / GCJ02 / BD09 / BD09MC (百度墨卡托米制) / AMAP(=GCJ02) / Baidu(=BD09)\n```\n\n## 合规提醒\n\n- 公开发布的地图必须**用有资质底图**（高德/百度/腾讯/天地图），业务数据先转到对应坐标系。\n- WGS84 原始经纬度属涉密级，**禁止**直接在公网交换。\n- GPS → 后端统一 GCJ-02 → 前端配合高德/腾讯瓦片使用。"
+},
+{
+  "id": "gis-032",
+  "category": "gis",
+  "difficulty": "中等",
+  "title": "Canvas 手绘瓦片：从经纬度算 XYZ 并贴栅格底图（0 依赖原生实现）",
+  "tags": [
+    "Canvas",
+    "瓦片计算",
+    "XYZ 瓦片",
+    "Mercator",
+    "栅格渲染",
+    "HTML"
+  ],
+  "answer": "## 从 0 手写一张 Web 地图\n\n理解瓦片原理最好的方式，就是不用任何 GIS 库，用原生 Canvas 按中心经纬度算出需要的 XYZ 瓦片后再贴到画布上。\n\n核心公式（lng/lat → tile XYZ）：\n\n```\nn = 2^z\nx = floor( (lng + 180) / 360 * n )\ny = floor( (1 - ln(tan(lat_rad) + sec(lat_rad)) / π) / 2 * n )\n```\n\n▶ 运行：画一个 3×3 瓦片组成的 768×768 迷你地图，中心锁定天安门、zoom=4，从 OSM 拉瓦片并在 Canvas 上按行列拼贴，**完全不用 Leaflet**。\n\n```html\n<style>\n  body{margin:0;padding:8px;background:#f6f8fa;font-family:system-ui,sans-serif;}\n  h4{margin:0 0 8px;font-size:14px;color:#1f2328;}\n  #stage{background:#fff;border:1px solid #d0d7de;border-radius:6px;padding:6px;}\n  canvas{display:block;margin:0 auto;background:#cfe2f3;}\n  .tip{font-size:12px;color:#57606a;margin-top:6px;line-height:1.8}\n  code{background:#eaeef2;padding:1px 4px;border-radius:3px;font-family:ui-monospace,Consolas,monospace;font-size:11px}\n</style>\n<h4>🎨 纯 Canvas 瓦片渲染器（0 依赖）：XYZ 计算 + 2D 贴图</h4>\n<div id=\"stage\"><canvas id=\"c\" width=\"768\" height=\"768\"></canvas></div>\n<p class=\"tip\">\n  参数：<code>center (116.397, 39.908)</code> · <code>z=4</code> ·\n  拉取 3×3 共 9 张 OSM 瓦片 → 按行列贴到 768×768 Canvas\n</p>\n<script>\n  const cvs = document.getElementById('c')\n  const ctx = cvs.getContext('2d')\n  const CENTER = [116.397, 39.908]\n  const z = 4, tilesX = 3, tilesY = 3, TILE = 256\n  cvs.width = tilesX * TILE; cvs.height = tilesY * TILE\n  const n = Math.pow(2, z)\n\n  function lngLatToTile(lng, lat) {\n    const x = ((lng + 180) / 360) * n\n    const latRad = lat * Math.PI / 180\n    const y = (1 - Math.log(Math.tan(latRad) + 1/Math.cos(latRad)) / Math.PI) / 2 * n\n    return [x, y] // 浮点瓦片坐标；floor 得整数，小数是瓦片内偏\n  }\n  const [cxF, cyF] = lngLatToTile(CENTER[0], CENTER[1])\n  const cx = Math.floor(cxF), cy = Math.floor(cyF)\n  const offX = Math.floor(tilesX/2), offY = Math.floor(tilesY/2)\n  ctx.fillStyle = '#e0ecf4'; ctx.fillRect(0,0,cvs.width,cvs.height)\n\n  let loaded = 0, total = tilesX * tilesY\n  for (let dy = -offY; dy <= offY; dy++) {\n    for (let dx = -offX; dx <= offX; dx++) {\n      const tx = cx + dx, ty = cy + dy\n      const url = 'https://tile.openstreetmap.org/' + z + '/' + tx + '/' + ty + '.png'\n      const img = new Image(); img.crossOrigin = 'anonymous'\n      img.onload = function(){\n        const px = (dx + offX) * TILE\n        const py = (dy + offY) * TILE\n        ctx.drawImage(img, px, py, TILE, TILE)\n        ctx.strokeStyle = 'rgba(0,0,0,.15)'; ctx.strokeRect(px+.5, py+.5, TILE-1, TILE-1)\n        ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(px+4, py+4, 110, 40)\n        ctx.fillStyle = '#fff'; ctx.font = '12px ui-monospace,Consolas,monospace'\n        ctx.fillText('z='+z+' x='+tx, px+10, py+20)\n        ctx.fillText('y='+ty,          px+10, py+36)\n        if (++loaded === total) markCenter()\n      }\n      img.onerror = function(){\n        const px = (dx+offX)*TILE, py=(dy+offY)*TILE\n        ctx.fillStyle = '#fdae6b'; ctx.fillRect(px,py,TILE,TILE)\n        ctx.fillStyle = '#fff'; ctx.font = '14px system-ui'; ctx.fillText('加载失败',px+70,py+130)\n        if (++loaded === total) markCenter()\n      }\n      img.src = url\n    }\n  }\n  function markCenter(){\n    var [cxF2, cyF2] = lngLatToTile(CENTER[0], CENTER[1])\n    var px = (cxF2 - (cx-offX)) * TILE\n    var py = (cyF2 - (cy-offY)) * TILE\n    ctx.beginPath(); ctx.arc(px, py, 10, 0, Math.PI*2)\n    ctx.fillStyle='rgba(207,34,46,.8)'; ctx.fill()\n    ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.stroke()\n    ctx.fillStyle='#cf222e'; ctx.font='bold 14px system-ui'; ctx.fillText('📍 天安门', px+14, py+5)\n  }\n</script>\n```\n\n## 工程启示\n\n1. **瓦片请求核心就是 XYZ 计算**，Leaflet/Mapbox 内部同理，只是加了缓存、预取（z±1）、视口裁剪。\n2. **浮点瓦片坐标 × 256 = 像素内偏移**：做要素渲染时，先转浮点瓦片再乘 256 直接得画布像素位置。\n3. **多 zoom 预加载**：用户滚动 zoom 时先拉新 zoom，旧 zoom 保留作 fallback，就不会\"先白后清\"。"
+},
+{
+  "id": "gis-033",
+  "category": "gis",
+  "difficulty": "简单",
+  "title": "Turf.js 计算距离、长度、面积、方位、里程碑（Vincenty/Haversine）",
+  "tags": [
+    "Turf.js",
+    "距离",
+    "面积",
+    "Haversine",
+    "方位角",
+    "bearing"
+  ],
+  "answer": "## 为什么距离千万别用勾股定理\n\n地球是椭球（WGS84：a=6378137m，扁率 1/298.257），纬度 1° 南北极比赤道长约 1%，经度 1° 随纬度 cos 衰减。用 `hypot(dlng,dlat)*111000` 高纬度误差超 10%。\n\n用 Turf 一行搞定，内置高精度（Vincenty/Haversine/椭球面积分）：\n\n```js\n// 纯数值演示：如果浏览器已加载 turf.min.js，会打印真实精确值\nconst T = (typeof window !== 'undefined' && window.turf) || null\nconst BJ=[116.397,39.908], SH=[121.473,31.230], CD=[104.066,30.572]\nconsole.log('========= 🌐 Turf 地理计算 demo =========')\nif (!T) {\n  console.log('⚠️  下方是 API 速查（npm i @turf/turf 后即得精确数值）：')\n  console.log('  北京→上海 大圆距离          ：distance(BJ,SH,{units:\"kilometers\"}) ≈ 1068 km')\n  console.log('  北京→上海 初始方位角        ：bearing(BJ, SH) ≈ +123° (南偏东)')\n  console.log('  沿方位走 → 抵达点            ：destination(BJ, 1068, bearing_above) ≈ SH')\n  console.log('  折线全长                     ：length(lineString([BJ,SH,CD]), {units:\"km\"})')\n  console.log('  多边形面积                   ：area(poly) / 1e6   单位 km²')\n  console.log('  质心 / 重心 / 几何中心       ：centroid / centerOfMass / center')\n  console.log('  起点沿折线走 500m → 里程碑  ：along(line, 500, {units:\"meters\"}) → Point')\n  console.log('  点到线最近点（垂足+里程）    ：nearestPointOnLine(line, pt) → Feature<Point> & dist')\n} else {\n  const [pBJ,pSH,pCD] = [BJ,SH,CD].map(c => T.point(c))\n  console.log('北京→上海 大圆距离(km):',  T.distance(pBJ, pSH, {units:'kilometers'}).toFixed(1))\n  console.log('上海→成都 大圆距离(km):',  T.distance(pSH, pCD, {units:'kilometers'}).toFixed(1))\n  console.log('北京→上海 初始方位角(°):', T.bearing(pBJ, pSH).toFixed(1))\n  const line = T.lineString([BJ,SH,CD])\n  console.log('北京→上海→成都 折线总长(km):', T.length(line,{units:'kilometers'}).toFixed(1))\n  const sich = T.polygon([[[104,28],[108,28],[108,32],[104,32],[104,28]]])\n  console.log('四川模拟矩形 面积(km²):', (T.area(sich)/1e6).toFixed(0))\n  console.log('四川矩形 质心:',           T.centroid(sich).geometry.coordinates.map(v=>v.toFixed(3)))\n  const mid = T.along(line, 500, {units:'kilometers'})\n  console.log('沿线距北京 500km 处:', mid.geometry.coordinates.map(v=>v.toFixed(4)))\n}\n```\n\n## 常见方法表\n\n| 任务 | 方法 | 可选 units |\n| --- | --- | --- |\n| 点 A→B 球面距离 | `turf.distance(a,b,{units})` | km / m / miles / degrees |\n| 点 A→B 初始方位角 | `turf.bearing(a,b)` | 返回 -180~180°，+ 为东向 |\n| 沿方位走一段 → 点 | `turf.destination(pt, dist, brg, {units})` | 同上 |\n| 折线全长 | `turf.length(line,{units})` | 支持 LineString / MultiLineString |\n| 多边形面积 | `turf.area(poly)` | 平方米，÷ 1e6 → km² |\n| 质心 | `turf.centroid / centerOfMass / center` | 三者定义不同，别混淆 |\n| 沿线段取里程点 | `turf.along(line, dist, {units})` | 里程碑/路牌坐标 |\n| 点→线最近点 | `turf.nearestPointOnLine(line, pt)` | 返回 Feature + 里程 distance + index |\n```\n\n"
+},
+{
+  "id": "gis-034",
+  "category": "gis",
+  "difficulty": "中等",
+  "framework": "openlayers",
+  "title": "OpenLayers 加载 OSM 底图 + 鼠标点击测距离（LineString + 动态 tooltip），在线运行",
+  "tags": [
+    "OpenLayers",
+    "距离测量",
+    "交互",
+    "矢量图层",
+    "tooltip"
+  ],
+  "answer": "## 思路\n1. 初始化 `ol.Map` 绑定容器；\n2. 新建 Vector Layer 存用户画的线；\n3. 监听 `singleclick`，依次 push 点 → 重算 LineString 长度；\n4. 最后一个点 tooltip 实时展示累计长度（米/km 自动换算）。\n\n## 在线运行\n\n```html\n<link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/ol@9.2.4/ol.css\" />\n<script src=\"https://cdn.jsdelivr.net/npm/ol@9.2.4/dist/ol.js\"></script>\n<div id=\"map\" style=\"height:300px\"></div>\n<div style=\"margin:6px 0\"><button id=\"clearBtn\">🗑 重新画</button>\n  <span id=\"info\">🔘 点击地图依次打点，可看到线段长度实时累加。双击结束。</span>\n</div>\n<script>\nvar source = new ol.source.Vector()\nvar lineLayer = new ol.layer.Vector({\n  source: source,\n  style: function(feat){\n    var g = feat.getGeometry().getType()\n    return g === 'LineString'\n      ? new ol.style.Style({stroke: new ol.style.Stroke({color:'#38f',width:3}),\n          text: new ol.style.Text({\n            text: fmtLen(ol.sphere.getLength(feat.getGeometry())),\n            font:'bold 13px sans-serif', fill: new ol.style.Fill({color:'#fff'}),\n            stroke: new ol.style.Stroke({color:'#06c',width:3}),\n            overflow:true\n          })})\n      : new ol.style.Style({image: new ol.style.Circle({\n          radius:5, fill:new ol.style.Fill({color:'#f33'}),\n          stroke: new ol.style.Stroke({color:'#fff',width:2})})})\n  }\n})\nvar map = new ol.Map({\n  target:'map',\n  layers: [ new ol.layer.Tile({source: new ol.source.OSM()}), lineLayer ],\n  view: new ol.View({center: ol.proj.fromLonLat([116.397,39.908]), zoom: 12})\n})\nvar coords = [], lineFeat = null, ptsFeat = null\nfunction fmtLen(m){ return m>=1000 ? (m/1000).toFixed(2)+' km' : m.toFixed(0)+' m' }\nfunction redraw(){\n  source.clear()\n  if (coords.length){\n    ptsFeat = new ol.Feature({geometry: new ol.geom.MultiPoint(coords)})\n    source.addFeature(ptsFeat)\n  }\n  if (coords.length >= 2){\n    lineFeat = new ol.Feature({geometry: new ol.geom.LineString(coords)})\n    source.addFeature(lineFeat)\n    var len = ol.sphere.getLength(lineFeat.getGeometry())\n    document.getElementById('info').textContent = '✅ 点数='+coords.length+' 累计长度='+fmtLen(len)\n  }\n}\nmap.on('singleclick', function(e){\n  coords.push(e.coordinate)\n  redraw()\n})\nmap.on('dblclick', function(e){ e.preventDefault() })\ndocument.getElementById('clearBtn').onclick = function(){\n  coords = []; source.clear()\n  document.getElementById('info').textContent = '🔘 点击地图依次打点...'\n}\n</script>\n```\n\n## 要点\n\n| 场景 | API |\n| --- | --- |\n| 经纬度 ⇄ 投影 | `ol.proj.fromLonLat / toLonLat` |\n| LineString 测长 | `ol.sphere.getLength(line)` |\n| Polygon 测面积 | `ol.sphere.getArea(poly)` |\n| 画点/线/面 | `ol.interaction.Draw`（生产直接用，上面纯手写为了面试讲清楚） |\n| 样式动态文字 | `ol.style.Text` 挂在 Feature Style 里，长度变自动重绘 |\n"
+},
+{
+  "id": "gis-035",
+  "category": "gis",
+  "difficulty": "中等",
+  "framework": "leaflet",
+  "title": "Leaflet 2000 个 POI 点，MarkerCluster 聚合 + 点击展开，在线运行",
+  "tags": [
+    "Leaflet",
+    "MarkerCluster",
+    "聚合",
+    "性能",
+    "POI"
+  ],
+  "answer": "## 思路\n2000 个 Marker 直接挂 Leaflet 会卡顿，用 Leaflet.markercluster 做 K-means 聚类：半径内聚成圆形带数字图标，点击圈下钻，双击自动缩放到视野。\n\n## 在线运行\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css\" />\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<script src=\"https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js\"></script>\n<div id=\"map\" style=\"height:300px\"></div>\n<div style=\"padding:6px\">共 <b id=\"cnt\">0</b> 个点，缩放到 3~5 级可看到聚合圈。</div>\n<script>\nvar map = L.map('map').setView([39.9, 116.4], 10)\nL.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map)\nvar mc = L.markerClusterGroup({ maxClusterRadius: 60, spiderfyOnMaxZoom:true })\nvar N = 2000, names=['便利店','咖啡馆','加油站','公交站','地铁站','银行','餐厅','酒店']\nfor (var i=0;i<N;i++){\n  var lat = 39.9 + (Math.random()-.5)*1.2\n  var lng = 116.4 + (Math.random()-.5)*1.4\n  var n = names[i % names.length]\n  var m = L.marker([lat,lng], {title:n})\n  m.bindPopup('🏪 '+n+' #'+i+'<br>经纬度: '+lat.toFixed(5)+','+lng.toFixed(5))\n  mc.addLayer(m)\n}\nmap.addLayer(mc)\ndocument.getElementById('cnt').textContent = N\nmap.on('clusterclick', function(e){\n  // 可选：展开蜘蛛脚 / 缩放下钻。默认行为已够。\n})\n</script>\n```\n\n## 常见面试点\n\n1. **聚合半径 maxClusterRadius 怎么选**：屏幕像素 40~80，手机端小一些。\n2. **自定义聚合数字样式**：覆盖 `createClusterMarker(cluster)`。\n3. **SuperCluster vs MarkerCluster**：前者算法纯 JS 跨框架（Mapbox/Leaflet 都能用），后者 Leaflet 插件绑定 DOM，不超 5w 都流畅。\n4. **超 10w 点怎么办**：换矢量瓦片 → 服务端切片，或 Deck.gl ScreenGridLayer。\n"
+},
+{
+  "id": "gis-036",
+  "category": "gis",
+  "difficulty": "中等",
+  "framework": "mapbox",
+  "title": "MapLibre GL JS 用内置 cluster 做 1w 点 WebGL 聚合 + 热力，在线运行",
+  "tags": [
+    "MapLibre",
+    "cluster",
+    "WebGL",
+    "点聚合",
+    "热力"
+  ],
+  "answer": "## 要点\nMapLibre/Mapbox 的 GeoJSON source 自带 `cluster:true`，底层是 Supercluster 的 WebGL 版本，比 Leaflet DOM 聚合快 5~10 倍。再加一个 heatmap layer 做氛围层。\n\n## 在线运行\n\n```html\n<link href=\"https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css\" rel=\"stylesheet\" />\n<script src=\"https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js\"></script>\n<style>#map{height:300px}</style>\n<div id=\"map\"></div>\n<div style=\"padding:6px\">✅ 1 万点真实 WebGL 聚合，缩放看聚合圈大小/数字变化。</div>\n<script>\nvar map = new maplibregl.Map({\n  container:'map',\n  style: 'https://demotiles.maplibre.org/style.json',\n  center: [116.4,39.9], zoom: 9\n})\nmap.on('load', function(){\n  var feats = []\n  for (var i=0;i<10000;i++){\n    feats.push({type:'Feature',\n      geometry:{type:'Point',coordinates:[116.4+(Math.random()-.5)*2.6, 39.9+(Math.random()-.5)*2.2]},\n      properties:{v: Math.floor(Math.random()*100)}\n    })\n  }\n  map.addSource('pt',{type:'geojson', data:{type:'FeatureCollection',features:feats},\n    cluster:true, clusterRadius:50, clusterMaxZoom:14})\n\n  map.addLayer({id:'hm',type:'heatmap',source:'pt',\n    paint:{'heatmap-weight':['/',['get','v'],100], 'heatmap-radius':14,\n      'heatmap-color':['interpolate',['linear'],['heatmap-density'],0,'rgba(0,0,255,0)',\n        0.3,'#0ff',0.6,'#0f0',0.85,'#ff0',1,'#f00'],\n      'heatmap-opacity':.7\n    }})\n\n  map.addLayer({id:'cl',type:'circle',source:'pt',filter:['has','point_count'],\n    paint:{'circle-radius':['step',['get','point_count'],14,50,20,300,28],\n      'circle-color':['step',['get','point_count'],'#51bbd6',50,'#f1f075',300,'#f28cb1'],\n      'circle-stroke-color':'#fff','circle-stroke-width':2}})\n  map.addLayer({id:'cl-lbl',type:'symbol',source:'pt',filter:['has','point_count'],\n    layout:{'text-field':'{point_count_abbreviated}','text-size':12,'text-font':['Open Sans Bold']},\n    paint:{'text-color':'#fff'}})\n\n  map.addLayer({id:'uncl',type:'circle',source:'pt',filter:['!',['has','point_count']],\n    paint:{'circle-radius':3,'circle-color':'#f33','circle-stroke-color':'#fff','circle-stroke-width':1}})\n})\n</script>\n```\n\n## 常见坑\n- **聚合半径 pixel vs 经纬度**：`clusterRadius` 是屏幕像素，不是地理距离，缩放自动重算。\n- **点数量超大**：超过 20w 改成 MVT 矢量瓦片或换 Deck.gl Scatterplot。\n- **聚合圈跨级别跳变**：加 `clusterProperties` 求聚合属性和（如订单总金额）。\n"
+},
+{
+  "id": "gis-037",
+  "category": "gis",
+  "difficulty": "困难",
+  "title": "道格拉斯-普克（Douglas-Peucker）轨迹抽稀：手写 + Turf 对比 + Leaflet 可视化",
+  "tags": [
+    "抽稀",
+    "Douglas-Peucker",
+    "轨迹",
+    "Turf.js",
+    "性能"
+  ],
+  "answer": "## 为什么要抽稀\nGPS 轨迹 1 秒 1 点，1 小时 = 3600 点，100 车 × 24h = 百万级。渲染/存库/传输都贵，DP 抽稀用角度误差删除\"共线/近似共线\"点，误差阈值控制精度。\n\n## 面试手写 DP（0 依赖）\n\n```js\nfunction perpendicularDist(p, a, b) {\n  if (a[0]===b[0] && a[1]===b[1]) return Math.hypot(p[0]-a[0], p[1]-a[1])\n  const dx=b[0]-a[0], dy=b[1]-a[1]\n  const t = ((p[0]-a[0])*dx + (p[1]-a[1])*dy) / (dx*dx+dy*dy)\n  const px = a[0] + Math.max(0,Math.min(1,t))*dx\n  const py = a[1] + Math.max(0,Math.min(1,t))*dy\n  return Math.hypot(p[0]-px, p[1]-py)\n}\nfunction dpSimplify(points, tol) {\n  if (points.length < 3) return points.slice()\n  let maxD = 0, idx = 0\n  const end = points.length - 1\n  for (let i=1; i<end; i++){\n    const d = perpendicularDist(points[i], points[0], points[end])\n    if (d > maxD){ maxD = d; idx = i }\n  }\n  if (maxD > tol) {\n    const L = dpSimplify(points.slice(0, idx+1), tol)\n    const R = dpSimplify(points.slice(idx), tol)\n    return L.slice(0, -1).concat(R)\n  }\n  return [points[0], points[end]]\n}\n// 在北京天安门附近模拟一条\"弯弯曲曲\"的轨迹\nconst N = 200, raw = []\nlet [x,y] = [116.39, 39.90]\nfor (let i=0;i<N;i++){\n  x += (Math.random()-.5) * 0.0012\n  y += (Math.random()-.5) * 0.0012 + Math.sin(i/6)*0.0003\n  raw.push([x,y])\n}\nconst tol = 0.00015  // 约 15m\nconst simple = dpSimplify(raw, tol)\nconsole.log('原始点数:', raw.length, ' 抽稀后:', simple.length,\n            ' 压缩率:', (100 - simple.length/raw.length*100).toFixed(0)+'%')\n```\n\n## 在线可视化（Leaflet 原图 vs 抽稀结果）\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<div id=\"map\" style=\"height:300px\"></div>\n<div><label>抽稀阈值(度): <input type=\"range\" id=\"tol\" min=\"1e-5\" max=\"5e-4\" step=\"1e-5\" value=\"1.5e-4\"/>\n  <span id=\"v\">1.5e-4</span></label>\n  <span id=\"st\" style=\"margin-left:16px\"></span>\n</div>\n<script>\n// 复制上面两个函数\nfunction perpendicularDist(p,a,b){\n  if(a[0]===b[0]&&a[1]===b[1])return Math.hypot(p[0]-a[0],p[1]-a[1])\n  const dx=b[0]-a[0],dy=b[1]-a[1]\n  const t=((p[0]-a[0])*dx+(p[1]-a[1])*dy)/(dx*dx+dy*dy)\n  const px=a[0]+Math.max(0,Math.min(1,t))*dx,py=a[1]+Math.max(0,Math.min(1,t))*dy\n  return Math.hypot(p[0]-px,p[1]-py)\n}\nfunction dpSimplify(pts,tol){\n  if(pts.length<3)return pts.slice()\n  let md=0,idx=0,end=pts.length-1\n  for(let i=1;i<end;i++){const d=perpendicularDist(pts[i],pts[0],pts[end]);if(d>md){md=d;idx=i}}\n  if(md>tol){const L=dpSimplify(pts.slice(0,idx+1),tol);const R=dpSimplify(pts.slice(idx),tol);return L.slice(0,-1).concat(R)}\n  return [pts[0],pts[end]]\n}\nconst N=200;const raw=[];let x=116.39,y=39.90\nfor(let i=0;i<N;i++){x+=(Math.random()-.5)*0.0012;y+=(Math.random()-.5)*0.0012+Math.sin(i/6)*0.0003;raw.push([x,y])}\nvar map=L.map('map').fitBounds(raw)\nL.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map)\nvar rawLine = L.polyline(raw.map(p=>[p[1],p[0]]),{color:'#bbb',weight:3,opacity:.8}).addTo(map).bindTooltip('原始轨迹 '+raw.length+' 点')\nvar simpMarkers\nfunction redraw(){\n  const tol=+document.getElementById('tol').value\n  document.getElementById('v').textContent=tol.toFixed(5)\n  const simp=dpSimplify(raw,tol)\n  if(window.simpLine) map.removeLayer(window.simpLine)\n  if(simpMarkers) map.removeLayer(simpMarkers)\n  window.simpLine=L.polyline(simp.map(p=>[p[1],p[0]]),{color:'#e33',weight:4}).addTo(map)\n    .bindTooltip('抽稀后 '+simp.length+' 点 / 原 '+raw.length+' = '+Math.round((1-simp.length/raw.length)*100)+'% 压缩')\n  simpMarkers=L.layerGroup(simp.map(p=>L.circleMarker([p[1],p[0]],{radius:3,color:'#c00',fillColor:'#f66',fillOpacity:1}).bindPopup(p[1].toFixed(5)+', '+p[0].toFixed(5))))\n  simpMarkers.addTo(map)\n  document.getElementById('st').innerHTML='🔻 压缩率: <b>'+Math.round((1-simp.length/raw.length)*100)+'%</b>'\n}\ndocument.getElementById('tol').oninput = redraw\nredraw()\n</script>\n```\n\n## 小结\n- 面试 3 个常见实现：`dpSimplify`（递归）、`simplify-js`（Radial-Distance + DP 两步）、`turf.simplify`（内置多算法）。\n- 轨迹抽稀**只在空间/存储**使用，不要对\"时间序列轨迹抽稀\"用于轨迹回放（时间信息丢失了）。\n- Turf 一行：`turf.simplify(line, {tolerance: 0.0002, highQuality: true})`\n"
+},
+{
+  "id": "gis-038",
+  "category": "gis",
+  "difficulty": "困难",
+  "title": "路网最短路径：Dijkstra 手写 + Leaflet 可视化起终点高亮",
+  "tags": [
+    "Dijkstra",
+    "最短路径",
+    "路网",
+    "算法"
+  ],
+  "answer": "## 面试场景\n地图业务\"路径规划\"本质是图搜索：节点=路口、边=路段、权重=距离/时间。经典算法 Dijkstra（非负权）、A*（加启发式更快）、CH（双向+预处理毫秒级）。\n\n## 手写 Dijkstra + Leaflet 可视化\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<div id=\"map\" style=\"height:300px\"></div>\n<div>\n  <label>起点节点:\n    <select id=\"a\"></select>\n  </label>\n  <label style=\"margin-left:12px\">终点节点:\n    <select id=\"b\"></select>\n  </label>\n  <button id=\"go\" style=\"margin-left:12px\">🔍 求最短路</button>\n  <b id=\"out\" style=\"margin-left:12px\"></b>\n</div>\n<script>\n// 10 个节点（模拟北京几条路）\nconst V = [\n  ['A',[39.900,116.390]],['B',[39.905,116.395]],['C',[39.910,116.400]],\n  ['D',[39.903,116.402]],['E',[39.908,116.407]],['F',[39.913,116.405]],\n  ['G',[39.916,116.400]],['H',[39.912,116.392]],['I',[39.906,116.388]],['J',[39.901,116.398]]\n]\n// 无向边\nconst E = [['A','B'],['B','C'],['C','D'],['D','E'],['C','F'],['F','G'],['G','H'],\n           ['H','I'],['A','I'],['B','J'],['J','D'],['H','C'],['B','H'],['F','E']]\n// 用 haversine 算权重（米）\nfunction hav(a,b){const R=6371000;const [la1,ln1]=V[a][1].map(v=>v*Math.PI/180)\n  ;const [la2,ln2]=V[b][1].map(v=>v*Math.PI/180)\n  return 2*R*Math.asin(Math.sqrt(Math.sin((la2-la1)/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin((ln2-ln1)/2)**2))}\nconst idOf={};V.forEach((v,i)=>idOf[v[0]]=i)\nconst g=Array.from({length:V.length},()=>[])\nfor (const [u,v] of E){const a=idOf[u],b=idOf[v],w=hav(a,b);g[a].push([b,w]);g[b].push([a,w])}\nfunction dijkstra(s,t){\n  const d=Array(V.length).fill(1/0),prev=Array(V.length).fill(-1),vis=Array(V.length).fill(0)\n  d[s]=0\n  for (let it=0;it<V.length;it++){\n    let u=-1,md=1/0\n    for (let i=0;i<V.length;i++) if(!vis[i]&&d[i]<md){md=d[i];u=i}\n    if (u<0||u===t) break\n    vis[u]=1\n    for (const [v,w] of g[u]) if (d[u]+w<d[v]){d[v]=d[u]+w;prev[v]=u}\n  }\n  const path=[];for(let cur=t;cur!==-1;cur=prev[cur])path.unshift(cur)\n  return {dist:d[t], path: path[0]===s?path:[]}\n}\nvar map = L.map('map').setView([39.908,116.397], 13)\nL.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map)\nconst edgeLayer = L.layerGroup(E.map(([u,v])=>L.polyline([V[idOf[u]][1],V[idOf[v]][1]],{color:'#6a6',weight:3,dashArray:'6 4'}))).addTo(map)\nconst nodeLayer = L.layerGroup(V.map((n,i)=>L.circleMarker(n[1],{radius:9,color:'#06c',fillColor:'#6cf',fillOpacity:1}).bindTooltip(n[0]+' '+V[i][1][0].toFixed(3)+','+V[i][1][1].toFixed(3)))).addTo(map)\nvar pathLine, hl\nconst selA=document.getElementById('a'), selB=document.getElementById('b')\nV.forEach(n=>{selA.innerHTML+='<option>'+n[0]+'</option>';selB.innerHTML+='<option>'+n[0]+'</option>'})\nselA.value='A'; selB.value='F'\ndocument.getElementById('go').onclick = function(){\n  const r = dijkstra(idOf[selA.value], idOf[selB.value])\n  document.getElementById('out').textContent = r.path.length ? '路程 '+(r.dist/1000).toFixed(2)+' km，节点数 '+r.path.length : '不可达'\n  if (pathLine) map.removeLayer(pathLine); if (hl) map.removeLayer(hl)\n  if (!r.path.length) return\n  const pts = r.path.map(i=>V[i][1])\n  pathLine = L.polyline(pts,{color:'#e33',weight:6}).addTo(map).bringToFront()\n  hl = L.layerGroup([\n    L.marker(pts[0]).bindTooltip('起点 '+selA.value).openTooltip(),\n    L.marker(pts[pts.length-1]).bindTooltip('终点 '+selB.value).openTooltip()\n  ]).addTo(map)\n  map.fitBounds(pathLine.getBounds(),{padding:[20,20]})\n}\ndocument.getElementById('go').click()\n</script>\n```\n\n## 延伸\n- **A***：加入启发函数 `h(n) ≤ 真实剩余距离`（Haversine 就是完美下界），搜索节点数少一半以上。\n- **多对多 + 全国路网**：用 Contraction Hierarchies 或 OSRM / GraphHopper 现成服务，别自己写。\n- **多模式**：驾车权重车速，步行权重禁止高速，公交要换乘时间窗。\n"
+},
+{
+  "id": "gis-039",
+  "category": "gis",
+  "difficulty": "中等",
+  "title": "多边形点击拾取：Ray Casting（射线法）手写 + Turf 对照 + Leaflet 高亮",
+  "tags": [
+    "point-in-polygon",
+    "射线法",
+    "Ray Casting",
+    "Turf.js",
+    "拾取"
+  ],
+  "answer": "## 核心算法\n从点向右打一射线，数穿过多边形边次数：奇=内，偶=外。边上点单独判断。面试手写 O(n)，n=多边形顶点数。\n\n## 在线运行 + 手写作图\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<div id=\"map\" style=\"height:300px\"></div>\n<div id=\"out\" style=\"margin:6px\">🖱 点击地图上任意点，判断它是否落在红色多边形内部。</div>\n<script>\n// 北京三环附近一个不规则多边形（手绘凹多边形）\nconst poly = [[39.920,116.380],[39.925,116.400],[39.912,116.410],[39.900,116.406],\n              [39.898,116.392],[39.906,116.380],[39.920,116.380]]\nvar map = L.map('map').fitBounds(poly)\nL.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map)\nvar polyLayer = L.polygon(poly,{color:'#e33',fillColor:'#f66',weight:3,fillOpacity:.35}).addTo(map)\n// ===== 面试手写：射线法 =====\nfunction pointInRing(pt, ring){\n  let inside=false, n=ring.length, j=n-1\n  for (let i=0;i<n;j=i++){\n    const xi=ring[i][1], yi=ring[i][0], xj=ring[j][1], yj=ring[j][0]\n    const intersect = ((yi>pt[0]) !== (yj>pt[0])) &&\n      (pt[1] < (xj-xi) * (pt[0]-yi) / (yj-yi+1e-12) + xi)\n    if (intersect) inside = !inside\n  }\n  return inside\n}\n// ===== /手写 =====\nvar mLayer = L.layerGroup().addTo(map)\nmap.on('click', e => {\n  const p = [e.latlng.lat, e.latlng.lng]\n  const ok = pointInRing(p, poly)\n  mLayer.clearLayers()\n  L.marker(p).addTo(mLayer).bindPopup((ok?'✅ 内部':'❌ 外部')+'<br>'+p[0].toFixed(5)+','+p[1].toFixed(5)).openPopup()\n  polyLayer.setStyle({fillColor: ok?'#0c6':'#f66', color:ok?'#093':'#e33'})\n  document.getElementById('out').innerHTML = ok\n    ? '✅ 点 <b>在</b> 多边形内（射线法奇数次相交）。'\n    : '❌ 点 <b>不在</b> 多边形内（射线法偶数次相交）。'\n})\n</script>\n```\n\n## 对比：Turf 一行\n```js\nconst inside = turf.booleanPointInPolygon(turf.point([lng,lat]), turf.polygon([ring]))\n```\n面试时先手写射线法讲思路，再补一句：**生产直接用 Turf，顺便支持 MultiPolygon / holes**。\n\n## 性能\n- 单多边形顶点 ≤ 500 直接手写 O(n) 没问题。\n- 10w 点 × 500 多边形必用 **RBush / Supercluster 空间索引** 先粗筛再精算（见 gis-030）。\n- 点在线上/\"恰好过顶点\"的边界情况，Turf 都处理过了，手写面试不用纠结。\n"
+},
+{
+  "id": "gis-040",
+  "category": "gis",
+  "difficulty": "困难",
+  "title": "Canvas 手绘等值线（Marching Squares）：温度/气压栅格 → 等压线可视化",
+  "tags": [
+    "等值线",
+    "Marching Squares",
+    "Canvas",
+    "栅格",
+    "可视化"
+  ],
+  "answer": "## 算法\nMarching Squares：栅格 2×2 单元逐格判定 4 个顶点与阈值关系（16 种形态），根据查表直接画线段。是高程等值线、等压线、渲染 contour、气象 fill 必备基础。\n\n## 在线运行：生成温度场 + 多阈值等值线\n\n```html\n<canvas id=\"c\" width=\"600\" height=\"340\" style=\"border:1px solid #ddd;background:#0b1b3a\"></canvas>\n<div>阈值(°C): <input type=\"range\" id=\"th\" min=\"5\" max=\"35\" step=\"1\" value=\"20\"/>\n  <b id=\"thT\">20°C 等值线（橙色）</b>\n  <label style=\"margin-left:16px\"><input type=\"checkbox\" id=\"fill\" checked/>填色</label>\n</div>\n<script>\nconst W=100,H=60  // grid\nconst grid=[] // 2D 温度场\nfor (let y=0;y<H;y++){\n  grid[y]=[]\n  for (let x=0;x<W;x++){\n    // 合成几个\"暖中心\"\n    const dx1=x-20,dy1=y-15;const dx2=x-70,dy2=y-45;const dx3=x-45,dy3=y-35\n    grid[y][x] = 28*Math.exp(-(dx1*dx1+dy1*dy1)/200)\n              + 23*Math.exp(-(dx2*dx2+dy2*dy2)/250)\n              + 18*Math.exp(-(dx3*dx3+dy3*dy3)/180)\n              + 10 + Math.sin(x/7)*Math.cos(y/5)*2.5\n  }\n}\nconst canvas = document.getElementById('c'), ctx = canvas.getContext('2d')\nconst SX = canvas.width / W, SY = canvas.height / H\n// 线性插值求等值点在边上的坐标\nfunction interp(x0,y0,v0,x1,y1,v1,t){\n  const a=(t-v0)/(v1-v0+1e-12)\n  return [x0+a*(x1-x0), y0+a*(y1-y0)]\n}\n// 16 种情况线段表（0001 ~ 1111），每格 4 顶点：右下左下左上右上（bit0~bit3，各资料定义略有差异）\nconst edgeLines = {\n  0:[],1:[[[0,3],[3,0]]],2:[[[0,3],[1,2]]],3:[[[3,0],[1,2]]],4:[[[2,1],[3,0]]],\n  5:[[[0,3],[2,1]]],6:[[[0,3],[1,2]],[[2,1],[3,0]]],7:[[[2,1],[1,2]]],8:[[[1,2],[2,1]]],\n  9:[[[0,3],[3,0]],[[1,2],[2,1]]],10:[[[0,3],[2,1]]],11:[[[3,0],[2,1]]],12:[[[1,2],[3,0]]],\n  13:[[[0,3],[1,2]]],14:[[[0,3],[3,0]]],15:[]\n}\nconst edges = [\n  [[0.5,0],[1,0.5]], // edge 0 top-right\n  [[1,0.5],[0.5,1]], // edge 1 right-bottom\n  [[0.5,1],[0,0.5]], // edge 2 bottom-left\n  [[0,0.5],[0.5,0]]  // edge 3 left-top\n]\nfunction cellLines(cx,cy,v,v00,v10,v11,v01,t){\n  // v00 左下, v10 右下, v11 右上, v01 左上 (约定)\n  const bit = (v00>t?1:0) | (v10>t?2:0) | (v11>t?4:0) | (v01>t?8:0)\n  const seg = edgeLines[bit] || []\n  const pts4 = [\n    interp(cx+0,cy+1,v00, cx+1,cy+1,v10, t),\n    interp(cx+1,cy+1,v10, cx+1,cy+0,v11, t),\n    interp(cx+1,cy+0,v11, cx+0,cy+0,v01, t),\n    interp(cx+0,cy+0,v01, cx+0,cy+1,v00, t)\n  ]\n  return seg.map(([a,b]) => [pts4[a[0]*2+a[1]], pts4[b[0]*2+b[1]]])\n  // 简化：直接用边中点坐标（上 edges）做近似；生产用 pts4 精确\n}\n// 简化实现：直接取两条边的中点画线（误差≤格子对角线/2，面试通过）\nfunction cellLinesFast(cx,cy,v00,v10,v11,v01,t){\n  const bit = (v00>t?1:0) | (v10>t?2:0) | (v11>t?4:0) | (v01>t?8:0)\n  const seg = edgeLines[bit] || []\n  const e = [\n    [cx+1,cy+0.5], // 0 right mid\n    [cx+0.5,cy+1], // 1 bottom mid\n    [cx,cy+0.5],   // 2 left mid\n    [cx+0.5,cy]    // 3 top mid\n  ]\n  return seg.map(([a,b])=>[[e[a[0]][a[1]],e[a[1]][a[0]]],[e[b[0]][b[1]],e[b[1]][b[0]]]]\n    .map(x=>[x[0],x[1]])) // already [x,y]\n}\nfunction drawContour(t, color, doFill){\n  // 先画填色（简化：只画等值线之下范围用半透明，生产可多级 threshold）\n  if (doFill){\n    for (let y=0;y<H;y++) for (let x=0;x<W;x++){\n      const v=grid[y][x]\n      if (v>=t){\n        ctx.fillStyle='rgba(255,180,80,'+Math.min(.55,(v-t)/40+.15)+')'\n        ctx.fillRect(x*SX,y*SY,SX+1,SY+1)\n      }\n    }\n  }\n  ctx.strokeStyle=color; ctx.lineWidth=1.8\n  for (let y=0;y<H-1;y++){\n    for (let x=0;x<W-1;x++){\n      const v00=grid[y+1][x], v10=grid[y+1][x+1], v11=grid[y][x+1], v01=grid[y][x]\n      const lines = cellLinesFast(x,y,v00,v10,v11,v01,t)\n      for (const ln of lines){\n        ctx.beginPath()\n        ctx.moveTo(ln[0][0]*SX, ln[0][1]*SY)\n        ctx.lineTo(ln[1][0]*SX, ln[1][1]*SY)\n        ctx.stroke()\n      }\n    }\n  }\n}\nfunction render(){\n  ctx.clearRect(0,0,canvas.width,canvas.height)\n  const t=+document.getElementById('th').value\n  document.getElementById('thT').textContent = t+'°C 等值线（橙色）'\n  const fill = document.getElementById('fill').checked\n  // 画几条常用等温\n  drawContour(15, 'rgba(80,160,255,.6)', fill)\n  drawContour(20, 'rgba(255,180,60,.9)', false)\n  drawContour(25, 'rgba(255,80,80,.8)', false)\n  drawContour(30, 'rgba(255,40,200,.85)', false)\n}\ndocument.getElementById('th').oninput = render\ndocument.getElementById('fill').onchange = render\nrender()\n</script>\n```\n\n## 扩展\n- **多阈值 + 等高距**：`[5,10,15,20,25,30,35]` 循环画出来就是一张天气图。\n- **d3-contour**：生产直接用，内置 Marching Squares + 自动找闭环。\n- **TopoJSON / 等值面 fill**：先找外环内环，再用 Canvas 2D fill。\n"
+},
+{
+  "id": "gis-041",
+  "category": "gis",
+  "difficulty": "中等",
+  "title": "GeoJSON 多边形自相交（蝴蝶结/bowtie）如何检测与修复？+ 在线可视化",
+  "tags": [
+    "GeoJSON",
+    "拓扑",
+    "自相交",
+    "修复",
+    "Turf.js"
+  ],
+  "answer": "## 常见拓扑错误\n1. 自相交（bowtie 蝴蝶结）；2. 重复点/共线点；3. 首尾不闭合；4. 外环顺时针但内环也顺时针（OGC 规范是外环逆时针/内环顺时针，GeoJSON RFC 正好相反）。\n\n## 在线演示：画一个蝴蝶结，用 Turf.unkinkPolygon 解开\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/@turf/turf@6.5.0/turf.min.js\"></script>\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<div id=\"map\" style=\"height:300px\"></div>\n<div id=\"out\" style=\"margin:6px\"></div>\n<script>\n// 北京附近一个蝴蝶结（8 字形）Polygon：顶点顺序错导致穿过自己\nconst badRing = [[116.38,39.92],[116.41,39.92],[116.39,39.905],\n                 [116.40,39.92],[116.37,39.905],[116.38,39.92]]\nvar map=L.map('map').setView([39.91,116.39],12)\nL.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map)\nvar bad = L.polygon(badRing.map(p=>[p[1],p[0]]),{color:'#b00',fillColor:'#f33',fillOpacity:.45,weight:3,dashArray:'8 4'})\n  .bindTooltip('❌ 自相交多边形（bowtie）：Turf boolean/area 结果不可靠').addTo(map).openTooltip()\n\n// 修复\nconst poly = turf.polygon([badRing])\ntry {\n  const fixed = turf.unkinkPolygon(poly)\n  const colors=['#093','#06c','#a80']\n  fixed.features.forEach((f,i)=>{\n    L.geoJSON(f,{style:{color:colors[i%3],fillColor:colors[i%3],fillOpacity:.4,weight:3}})\n      .bindTooltip('✅ 修复后 简单多边形 #'+i+'<br>面积 = '+(turf.area(f)/1e6).toFixed(3)+' km²')\n      .addTo(map)\n  })\n  const totalA = turf.area(fixed)\n  document.getElementById('out').innerHTML =\n    '修复前单 poly 面积 = <b style=\"color:#b00\">'+(turf.area(poly)/1e6).toFixed(4)+\n    ' km²</b>（自相交会被当两个三角形的面积相减）<br>'+\n    '修复后 MultiPolygon 总面积 = <b style=\"color:#093\">'+(totalA/1e6).toFixed(4)+' km² ✅</b>'\n} catch(e){\n  document.getElementById('out').textContent = '修复失败: '+e.message\n}\n</script>\n```\n\n## 面试回答步骤\n1. **检测**：用 JSTS / turf-unkink / polygon-selfintersect（逐边两两判交，O(n²)，n 大先 RBush）。\n2. **修复**：`turf.unkinkPolygon(poly)` → 得到简单多边形组成的 FeatureCollection；再 `turf.cleanCoords` 去重 + 共线点；必要时 `turf.buffer(p, 0)` 让 JSTS 自动\"重走一遍\"。\n3. **生产验证**：QGIS 拓扑检查器、PostGIS `ST_IsValid`、`ST_MakeValid`。\n"
+},
+{
+  "id": "gis-042",
+  "category": "gis",
+  "difficulty": "中等",
+  "title": "DEM 栅格算坡度/坡向（斜率法），附 Canvas 伪彩色坡度图在线实现",
+  "tags": [
+    "DEM",
+    "坡度",
+    "坡向",
+    "栅格分析",
+    "可视化"
+  ],
+  "answer": "## 面试公式\n对 3×3 窗口 Z 值 `Z1..Z9`（中间 Z5）：\n\n```\nZ1 Z2 Z3\nZ4 Z5 Z6   →  dzdx = ((Z3+2Z6+Z9) - (Z1+2Z4+Z7)) / (8*cellSize)\nZ7 Z8 Z9       dzdy = ((Z7+2Z8+Z9) - (Z1+2Z2+Z3)) / (8*cellSize)\n坡度 = atan(√(dzdx²+dzdy²)) × 180/π\n坡向 = atan2(dzdx, -dzdy) × 180/π   （0°=北，顺时针）\n```\n\n## 在线运行：合成 DEM + 实时坡度伪彩色\n```html\n<canvas id=\"c\" width=\"620\" height=\"300\" style=\"border:1px solid #ccc\"></canvas>\n<div> 显示：\n  <label><input type=\"radio\" name=\"m\" value=\"0\" checked/>高程</label>\n  <label><input type=\"radio\" name=\"m\" value=\"1\"/>坡度</label>\n  <label><input type=\"radio\" name=\"m\" value=\"2\"/>坡向</label>\n  单元大小(m)：<input type=\"number\" id=\"cs\" value=\"30\" min=\"1\" style=\"width:60px\"/>\n</div>\n<script>\nconst W=155,H=75, csEl=document.getElementById('cs')\nconst Z=[]\nfor (let y=0;y<H;y++){\n  Z[y]=[]\n  for (let x=0;x<W;x++){\n    // 两座山 + 噪声\n    const dx1=x-40,dy1=y-20,dx2=x-115,dy2=y-55\n    const h = 600*Math.exp(-(dx1*dx1+dy1*dy1)/800)\n           + 900*Math.exp(-(dx2*dx2+dy2*dy2)/1200)\n           + (Math.sin(x/4)+Math.cos(y/3))*15\n    Z[y][x] = Math.max(0, h)\n  }\n}\nfunction sample(y,x){ return y<0?Z[0][x]:y>=H?Z[H-1][x]:x<0?Z[y][0]:x>=W?Z[y][W-1]:Z[y][x] }\nconst cv = document.getElementById('c'), ctx = cv.getContext('2d')\nconst img = ctx.createImageData(cv.width, cv.height)\nfunction render(){\n  const mode = +document.querySelector('input[name=m]:checked').value\n  const cs = Math.max(1,+csEl.value || 30)\n  const sx = cv.width / W, sy = cv.height / H\n  for (let j=0;j<cv.height;j++) for (let i=0;i<cv.width;i++){\n    const x=Math.floor(i/sx), y=Math.floor(j/sy)\n    const z1=sample(y-1,x-1),z2=sample(y-1,x),z3=sample(y-1,x+1)\n    const z4=sample(y,x-1),z6=sample(y,x+1)\n    const z7=sample(y+1,x-1),z8=sample(y+1,x),z9=sample(y+1,x+1)\n    const dzdx=((z3+2*z6+z9)-(z1+2*z4+z7))/(8*cs)\n    const dzdy=((z7+2*z8+z9)-(z1+2*z2+z3))/(8*cs)\n    let r,g,b\n    if (mode===0){ // 高程彩色\n      const v = Math.min(1, Z[y][x]/1000)\n      r=Math.floor(20+210*v);g=Math.floor(80+140*(1-v));b=Math.floor(230-220*v)\n    } else if (mode===1){\n      const slope = Math.atan(Math.hypot(dzdx,dzdy))*180/Math.PI\n      const v = Math.min(1, slope/50)\n      r=Math.floor(50+205*v);g=Math.floor(220-200*v);b=60\n    } else {\n      const aspect = (Math.atan2(dzdx,-dzdy)*180/Math.PI + 360) % 360\n      const h = aspect/360, s=.85, l=.5\n      const c=(1-Math.abs(2*l-1))*s, x2=c*(1-Math.abs((h*6)%2-1)), m=l-c/2\n      ;[r,g,b]= (h<1/6?[c,x2,0]:h<2/6?[x2,c,0]:h<3/6?[0,c,x2]:h<4/6?[0,x2,c]:h<5/6?[x2,0,c]:[c,0,x2]).map(v=>Math.floor((v+m)*255))\n    }\n    const o = (j*cv.width+i)*4\n    img.data[o]=r;img.data[o+1]=g;img.data[o+2]=b;img.data[o+3]=255\n  }\n  ctx.putImageData(img,0,0)\n  ctx.fillStyle='#fff';ctx.font='13px sans-serif';ctx.fillText(\n    ['高程 (m) 0~1000','坡度 (°) 陡→红 平→青','坡向 颜色=朝向 (红=北)'][mode],8,18)\n}\ndocument.querySelectorAll('input[name=m]').forEach(e=>e.onchange=render)\ncsEl.oninput = render\nrender()\n</script>\n```\n\n## 常见面试追问\n- **为什么用 8 邻域不是 4 邻域？**：抗噪强，对 DEM 条带误差鲁棒。\n- **坡度 85° 正常吗？**：不可能，DEM 分辨率粗会\"抹平\"真实陡坡，一般 DEM 坡度>60°就要怀疑噪声。\n- **生产工具**：QGIS Raster Calculator / ArcGIS Slope/Aspect / GDAL `gdaldem slope`。\n"
+},
+{
+  "id": "gis-043",
+  "category": "gis",
+  "difficulty": "中等",
+  "framework": "openlayers",
+  "title": "用 OpenLayers + WFS-T 编辑矢量要素（增删改）并提交 GeoServer",
+  "tags": [
+    "OpenLayers",
+    "WFS",
+    "WFS-T",
+    "GeoServer",
+    "编辑"
+  ],
+  "answer": "## 核心流程\nOpenLayers Draw/Modify/Select 交互 → 收集 `added/updated/deleted` Features → 按 WFS 1.1.0 规范拼成 Transaction XML → `POST` 到 GeoServer `/ows`。\n\n## 最小代码\n```js\nimport 'ol/ol.css'\nimport Map from 'ol/Map'\nimport View from 'ol/View'\nimport TileLayer from 'ol/layer/Tile'\nimport VectorLayer from 'ol/layer/Vector'\nimport OSM from 'ol/source/OSM'\nimport VectorSource from 'ol/source/Vector'\nimport GeoJSON from 'ol/format/GeoJSON'\nimport WFS from 'ol/format/WFS'\nimport {Draw, Modify, Select, defaults as defItxn} from 'ol/interaction'\nimport {fromLonLat} from 'ol/proj'\nimport {bbox as bboxStrategy} from 'ol/loadingstrategy'\n\n// ======== 1) 加载 WFS 要素 =========\nconst WFSEndpoint = 'http://localhost:8080/geoserver/tk/ows'\nconst FEATURE_TYPE  = 'tk:buildings'\nconst GEOJSON_NS    = 'EPSG:3857'\n\nconst source = new VectorSource({\n  format: new GeoJSON(),\n  url: function(bbox){\n    return (WFSEndpoint+'?service=WFS&version=1.1.0&request=GetFeature'\n      +'&typeName='+FEATURE_TYPE+'&outputFormat=application/json'\n      +'&srsname='+GEOJSON_NS+'&bbox='+bbox.join(',')+','+GEOJSON_NS).replace(/\ns+/g,'')\n  },\n  strategy: bboxStrategy\n})\nconst vec = new VectorLayer({ source })\nconst map = new Map({\n  target: 'map',\n  layers: [new TileLayer({source: new OSM()}), vec],\n  view: new View({center: fromLonLat([116.4,39.9]), zoom: 13})\n})\n\n// ======== 2) 编辑交互 =========\nconst select = new Select()\nconst modify = new Modify({features: select.getFeatures()})\nconst draw   = new Draw({source, type:'Polygon'})\nmap.addInteraction(select); map.addInteraction(modify); map.addInteraction(draw)\n\n// 记录被改了什么\nconst dirty = new Set()\nsource.on('addfeature', e => dirty.add(e.feature))\nmodify.on('modifyend',  e => e.features.forEach(f => dirty.add(f)))\nselect.on('select', (e) => {\n  window._selected = e.selected[0]  // 用来\"删除\"按钮取\n})\n\n// ======== 3) 提交 Transaction（WFS-T）=========\nfunction saveWFS(deletedList){\n  const added   = [...dirty].filter(f => f.getId()===undefined)\n  const updated = [...dirty].filter(f => f.getId()!==undefined)\n  if (!added.length && !updated.length && !deletedList.length) return\n  const formatWFS = new WFS()\n  const xs = new XMLSerializer()\n  const node = formatWFS.writeTransaction(added, updated, deletedList, {\n    gmlOptions: {srsName: GEOJSON_NS},\n    featureNS:   'http://tk.example.com',\n    featureType: FEATURE_TYPE.split(':')[1]\n  })\n  return fetch(WFSEndpoint, {\n    method: 'POST',\n    body: xs.serializeToString(node),\n    headers:{'Content-Type':'application/xml'}\n  }).then(r=>r.text()).then(xml=>{\n    // GeoServer 会返回 <wfs:TransactionResponse><wfs:totalInserted>\n    console.log('WFS-T 响应:', xml)\n    dirty.clear()\n    source.refresh()\n  })\n}\ndocument.getElementById('btnSave').onclick = () => saveWFS([])\ndocument.getElementById('btnDel').onclick  = () => {\n  if (!window._selected) return alert('先选一个要素再删')\n  saveWFS([window._selected]).then(()=>source.removeFeature(window._selected))\n}\n```\n\n## 坑清单\n| 坑 | 解法 |\n|---|---|\n| 跨域 CORS | GeoServer 开 CORS filter 或同机反向代理 |\n| 命名空间错 | `featureNS` / `featurePrefix` 对着 GeoServer 的 Namespaces 抄 |\n| srsName 写死 4326 但图层是 3857 | 始终和 source 的投影保持一致 |\n| ID 字段自增 | 新增后 read TransactionResponse 的 `<ogc:FeatureId fid=\"xxx\">` 回填 |\n| 几何轴序 | WFS 1.1.0 GML 坐标是 `(lat,lng)`，WFS 2.0 看 `axisOrder` 开关，避开坑直接 1.0.0 也行 |\n"
+},
+{
+  "id": "gis-044",
+  "category": "gis",
+  "difficulty": "简单",
+  "title": "已知经纬度和缩放等级，算 XYZ 瓦片号？纯 JS 手写并在线可视化",
+  "tags": [
+    "瓦片",
+    "XYZ",
+    "算法",
+    "坐标计算",
+    "Web Mercator"
+  ],
+  "answer": "## 公式\nWeb Mercator 把世界 [-180,-85.05]~[180,85.05] 展成 2^z × 2^z 的瓦片矩阵：\n\n```\nn = 2^z\nx = floor( (lng+180)/360 * n )\ny = floor( (1 - ln(tan(lat°)+sec(lat°))/π ) / 2 * n )\n```\n\n## 在线运行：鼠标悬停地图显示当前瓦片\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<div id=\"map\" style=\"height:300px\"></div>\n<div id=\"info\" style=\"padding:6px;font-family:Consolas,monospace;background:#000;color:#0f0\">\n  当前点瓦片 x/y/z:  -\n</div>\n<script>\n// ===== 面试手写 XYZ 换算 =====\nfunction lngLatToTile(lng,lat,z){\n  const n = Math.pow(2,z)\n  const x = Math.floor((lng+180)/360 * n)\n  const latRad = lat * Math.PI/180\n  const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1/Math.cos(latRad))/Math.PI)/2 * n)\n  return {x, y, z, n}\n}\nfunction tileToBBox(x,y,z){\n  const n = Math.pow(2,z)\n  const lng1 = x/n*360 - 180, lng2 = (x+1)/n*360 - 180\n  const latRad1 = Math.atan(Math.sinh(Math.PI*(1 - 2*y/n)))\n  const latRad2 = Math.atan(Math.sinh(Math.PI*(1 - 2*(y+1)/n)))\n  const lat1 = latRad1 * 180/Math.PI, lat2 = latRad2 * 180/Math.PI\n  return [[lat2,lng1],[lat1,lng2]] // SW, NE\n}\n// ===== /手写 =====\nvar map = L.map('map').setView([39.908,116.397], 12)\nL.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map)\nvar box = L.rectangle([[0,0],[0,0]],{color:'#e33',weight:2,fill:false,dashArray:'6 4'}).addTo(map)\nmap.on('mousemove', e => {\n  const z = map.getZoom()\n  const t = lngLatToTile(e.latlng.lng, e.latlng.lat, z)\n  const b = tileToBBox(t.x,t.y,t.z)\n  box.setBounds(b)\n  document.getElementById('info').innerHTML =\n    '<span style=\"color:#ff0\">lng,lat</span> = '+e.latlng.lng.toFixed(5)+', '+e.latlng.lat.toFixed(5)+\n    '&nbsp; → <span style=\"color:#ff0\">x/y/z</span> = '+t.x+' / '+t.y+' / '+t.z+\n    '<br>瓦片 BBox: SW '+b[0][1].toFixed(5)+','+b[0][0].toFixed(5)+' → NE '+b[1][1].toFixed(5)+','+b[1][0].toFixed(5)+\n    '&nbsp; 尺寸 ≈ '+((b[1][1]-b[0][1])*111000*Math.cos(e.latlng.lat*Math.PI/180)).toFixed(0)+' × '+\n    ((b[1][0]-b[0][0])*111000).toFixed(0)+' m'\n})\n</script>\n```\n\n## 要点\n- z=0 全世界 1×1 张瓦片；每级放大一倍像素尺寸固定 256px。\n- **反算 BBox**：加载 WMS / WFS 时用 `bbox=[w,s,e,n]` 就是这个值。\n- **TMS vs XYZ**：TMS 的 y 轴反向（原点左下角），`y_TMS = (2^z - 1) - y_XYZ`。\n"
+},
+{
+  "id": "gis-045",
+  "category": "gis",
+  "difficulty": "中等",
+  "title": "Geohash 网格聚合：点落在哪个网格？手写 encode/decode + 可视化",
+  "tags": [
+    "Geohash",
+    "网格",
+    "S2",
+    "聚合",
+    "H3"
+  ],
+  "answer": "## 面试点\n- **Geohash**：Z-order 曲线，位交叉存经纬度；前缀相同 = 同网格。相邻网格不一定前缀相同（跨\"大边界\"突变）。\n- **S2 (Google)**：Hilbert 曲线，球面四叉树，变形小；S2Cell 1km 粒度是 level 16。\n- **H3 (Uber)**：六边形网格，大小均匀、邻居形状规整，适合轨迹/打车。\n\n## 手写 Geohash + 在线可视化\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<div id=\"map\" style=\"height:300px\"></div>\n<div>精度 level:\n  <select id=\"prec\">\n    <option>3</option><option>4</option><option>5</option><option selected>6</option>\n    <option>7</option><option>8</option>\n  </select>\n  <span style=\"margin-left:16px\">🖱 点击地图查看该点 Geohash / 网格 / 8 邻居。</span>\n</div>\n<script>\nconst BITS=[16,8,4,2,1], BASE32='0123456789bcdefghjkmnpqrstuvwxyz'\nfunction geohashEncode(lng,lat,prec=6){\n  let bits=0, val=0, out='', isLng=true, minLat=-90,maxLat=90,minLng=-180,maxLng=180\n  while (out.length<prec){\n    if (isLng){\n      const mid=(minLng+maxLng)/2\n      if (lng>=mid){val|=BITS[bits];minLng=mid}else maxLng=mid\n    } else {\n      const mid=(minLat+maxLat)/2\n      if (lat>=mid){val|=BITS[bits];minLat=mid}else maxLat=mid\n    }\n    isLng=!isLng\n    if (bits<4) bits++\n    else { out+=BASE32[val]; val=0; bits=0 }\n  }\n  return out\n}\nfunction geohashDecode(h){\n  let isLng=true, minLat=-90,maxLat=90,minLng=-180,maxLng=180\n  for (const ch of h){\n    const cd = BASE32.indexOf(ch)\n    for (let k=4;k>=0;k--){\n      const bit = (cd>>k)&1\n      if (isLng){const m=(minLng+maxLng)/2;if(bit)minLng=m;else maxLng=m}\n      else     {const m=(minLat+maxLat)/2;if(bit)minLat=m;else maxLat=m}\n      isLng=!isLng\n    }\n  }\n  return {lat:(minLat+maxLat)/2,lng:(minLng+maxLng)/2,\n          sw:{lat:minLat,lng:minLng},ne:{lat:maxLat,lng:maxLng}}\n}\nconst NEIGHBORS=[ [1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1] ]\nfunction neighbors(h){\n  const c = geohashDecode(h)\n  const dx=c.ne.lng-c.sw.lng, dy=c.ne.lat-c.sw.lat\n  const center=c.lat\n  return NEIGHBORS.map(([a,b])=>{\n    const x=c.lng+a*dx, y=c.lat+b*dy/Math.max(.0001,Math.cos(center*Math.PI/180))\n    return geohashEncode(x, y, h.length)\n  })\n}\nvar map=L.map('map').setView([39.908,116.397],12)\nL.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map)\nvar lg=L.layerGroup().addTo(map)\nfunction show(lng,lat,prec){\n  lg.clearLayers()\n  const h=geohashEncode(lng,lat,prec)\n  const d=geohashDecode(h)\n  L.rectangle([[d.sw.lat,d.sw.lng],[d.ne.lat,d.ne.lng]],{color:'#e33',fillColor:'#f66',fillOpacity:.35})\n    .bindTooltip('✅ Geohash = <b>'+h+'</b>').addTo(lg).openTooltip()\n  L.marker([lat,lng]).addTo(lg)\n  const cols=['#06c','#093','#a80','#909','#f90','#099','#c33','#69c']\n  neighbors(h).forEach((n,i)=>{\n    const r=geohashDecode(n)\n    L.rectangle([[r.sw.lat,r.sw.lng],[r.ne.lat,r.ne.lng]],{color:cols[i],fillColor:cols[i],fillOpacity:.2,weight:1,dashArray:'4 2'})\n      .bindTooltip('邻居 #'+i+' = '+n).addTo(lg)\n  })\n}\nmap.on('click', e => show(e.latlng.lng, e.latlng.lat, +document.getElementById('prec').value))\ndocument.getElementById('prec').onchange = e => {\n  const center=map.getCenter(); show(center.lng,center.lat,+e.target.value)\n}\nshow(116.397, 39.908, 6)\n</script>\n```\n\n## 面试回答顺序\n1. **存库**：Geohash 存单独列，加普通索引即可范围 `LIKE 'wx4g0%'` 做粗筛。\n2. **索引选型**：PostGIS 开 GIST，ES 开 geo_point，MongoDB 开 2dsphere，别手搓。\n3. **邻接坑**：Geohash 跨 0°、±180°、±85° 要手动查 8 邻居再精算距离（Haversine）。\n4. **H3/S2 替代**：H3 六边形同面积，S2 球面保真，现在生产用得比 Geohash 多。\n"
+},
+{
+  "id": "gis-046",
+  "category": "gis",
+  "difficulty": "困难",
+  "title": "GPS 轨迹抖动怎么平滑？实现 1D Kalman filter + Leaflet 轨迹前后对比",
+  "tags": [
+    "Kalman",
+    "GPS",
+    "轨迹平滑",
+    "移动端",
+    "噪声"
+  ],
+  "answer": "## 为什么会抖\nGPS 误差 5~20m（城市峡谷/高楼间更差），走路 1.5m/s 采样 1Hz 每帧跳 10m。朴素均值会\"拖尾转弯\"，Kalman 可根据速度/加速度估计给出更合理的位置。\n\n## 面试版 1D Kalman（对 lat/lng 分别独立滤波）\n\n```js\nclass Kalman1D {\n  constructor(q=0.001, r=0.1){\n    this.q = q   // process noise：过程噪声（越大越跟测量）\n    this.r = r   // measurement noise：测量噪声（越大越信预测）\n    this.x = 0; this.p = 1; this.k = 0\n  }\n  update(z /* measurement */){\n    // Predict\n    this.p += this.q\n    // Update\n    this.k = this.p / (this.p + this.r)\n    this.x = this.x + this.k * (z - this.x)\n    this.p = (1 - this.k) * this.p\n    return this.x\n  }\n}\n// 对 lng / lat 各跑一份 Kalman1D，这是工程常用的解耦近似\nclass KalmanLatLng {\n  constructor(ql=0.0000005, rl=0.00002){\n    this.lat = new Kalman1D(ql, rl)\n    this.lng = new Kalman1D(ql, rl)\n  }\n  init(lat,lng){ this.lat.x=lat; this.lng.x=lng }\n  step(lat,lng){\n    return [this.lat.update(lat), this.lng.update(lng)]\n  }\n}\n```\n\n## 在线运行：轨迹对比（黑线原始 → 红线 Kalman）\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<div id=\"map\" style=\"height:300px\"></div>\n<div>\n  Q (过程噪声): <input type=\"range\" id=\"Q\" min=\"1e-8\" max=\"1e-5\" step=\"5e-8\" value=\"5e-7\"/>\n  R (测量噪声): <input type=\"range\" id=\"R\" min=\"1e-7\" max=\"1e-4\" step=\"5e-7\" value=\"2e-5\"/>\n  <b id=\"stat\" style=\"margin-left:16px\"></b>\n</div>\n<script>\nclass Kalman1D{constructor(q=.001,r=.1){this.q=q;this.r=r;this.x=0;this.p=1;this.k=0}\nupdate(z){this.p+=this.q;this.k=this.p/(this.p+this.r);this.x+=this.k*(z-this.x);this.p*=(1-this.k);return this.x}}\nclass KLL{constructor(q,r){this.la=new Kalman1D(q,r);this.ln=new Kalman1D(q,r)}\ninit(a,b){this.la.x=a;this.ln.x=b}step(a,b){return[this.la.update(a),this.ln.update(b)]}}\n// 模拟一条走路：沿长安街从西向东，加 GPS 白噪声（σ≈10m≈0.00009度）\nconst raw=[], truePath=[]\nlet x=116.380, y=39.9080\nconst N=180, sigma=.00009, stepLng=.00016\nfor (let i=0;i<N;i++){\n  x += stepLng; y += Math.sin(i/12)*0.00002\n  truePath.push([y,x])\n  const jx = x + (Math.random()-.5+Math.random()-.5+Math.random()-.5)*sigma*2\n  const jy = y + (Math.random()-.5+Math.random()-.5+Math.random()-.5)*sigma*2\n  raw.push([jy,jx])\n}\nvar map = L.map('map').fitBounds(raw)\nL.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map)\nvar rawL=L.polyline(raw,{color:'#444',weight:3,opacity:.7}).bindTooltip('原始 GPS 抖动轨迹：'+raw.length+' 点').addTo(map)\nvar trueL=L.polyline(truePath,{color:'#0a6',weight:4,opacity:.6,dashArray:'10 6'}).bindTooltip('真实轨迹（参考）').addTo(map)\nvar kfLine\nfunction applyKF(Q,R){\n  const k=new KLL(Q,R);k.init(raw[0][0],raw[0][1])\n  const smooth=[raw[0].slice()]\n  for (let i=1;i<raw.length;i++) smooth.push(k.step(raw[i][0],raw[i][1]))\n  // 计算 平均到真值的距离（米）\n  function havM(a,b){const R=6371000;const [la1,ln1]=a.map(v=>v*Math.PI/180);const [la2,ln2]=b.map(v=>v*Math.PI/180);return 2*R*Math.asin(Math.sqrt(Math.sin((la2-la1)/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin((ln2-ln1)/2)**2))}\n  let e1=0,e2=0\n  for (let i=0;i<raw.length;i++){e1+=havM(raw[i],truePath[i]);e2+=havM(smooth[i],truePath[i])}\n  e1/=raw.length; e2/=raw.length\n  document.getElementById('stat').innerHTML = '原始→真值 MAE=<b style=\"color:#b00\">'+e1.toFixed(1)+'m</b>；Kalman→真值 MAE=<b style=\"color:#083\">'+e2.toFixed(1)+'m</b>，改善 '+((1-e2/e1)*100|0)+'%'\n  if (kfLine) map.removeLayer(kfLine)\n  kfLine = L.polyline(smooth,{color:'#e33',weight:4}).bindTooltip('Kalman 平滑后').addTo(map)\n}\ndocument.getElementById('Q').oninput = ()=>applyKF(+document.getElementById('Q').value,+document.getElementById('R').value)\ndocument.getElementById('R').oninput = ()=>applyKF(+document.getElementById('Q').value,+document.getElementById('R').value)\napplyKF(5e-7, 2e-5)\n</script>\n```\n\n## 工程上更好的方案\n1. **SMA / EWMA 均值**：最简单，EWMA `x_t = α·z_t + (1-α)·x̂_{t-1}` 对非机动够用。\n2. **Kalman 含速度模型**：状态向量扩展到 [x,vx,y,vy]（恒速模型 CV），急转弯更稳。\n3. **粒子滤波 / UKF**：非线性非高斯场景（IMU + GPS 融合）。\n4. **地图匹配 Map Matching**：把轨迹点\"吸附\"到路网上才是真正的车辆导航方案（OSRM / Valhalla / GraphHopper 内置）。\n"
+},
+{
+  "id": "gis-047",
+  "category": "gis",
+  "difficulty": "中等",
+  "title": "批量将一批 GCJ-02 坐标转成 WGS84 / BD-09，并用 gcoord + Leaflet 验证偏移",
+  "tags": [
+    "gcoord",
+    "坐标转换",
+    "GCJ-02",
+    "BD-09",
+    "偏移"
+  ],
+  "answer": "## 为什么一定要 gcoord\n国内偏移\"算法\"是公开的但数值误差大，手写转一次误差 1~3m；转两次就漂了。gcoord 是 GitHub Star 最多的开源实现，腾讯/高德/百度/阿里的地图 SDK 文档里都有对应坐标系。\n\n## 在线运行：三种坐标同一经纬度 可视化偏移差\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<script src=\"https://unpkg.com/gcoord@0.3.0/dist/gcoord.js\"></script>\n<div id=\"map\" style=\"height:300px\"></div>\n<div>\n  原始坐标(lng,lat):\n  <input id=\"lng\" value=\"116.397\" style=\"width:90px\"/>,\n  <input id=\"lat\" value=\"39.908\" style=\"width:90px\"/>\n  <select id=\"src\"><option value=\"WGS84\">WGS84 (GPS/OSM)</option><option value=\"GCJ02\">GCJ-02 (高德/腾讯)</option><option value=\"BD09\">BD-09 (百度)</option></select>\n  <button id=\"go\">转换</button>\n</div>\n<table id=\"tbl\" style=\"margin-top:8px;font-size:12px;border-collapse:collapse\" border=\"1\"></table>\n<script>\nvar map = L.map('map').setView([39.908,116.397], 16)\nL.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map)\nconst COLORS={WGS84:'#000', GCJ02:'#e00', BD09:'#06c'}\nvar mks = L.layerGroup().addTo(map)\nfunction run(){\n  mks.clearLayers(); document.getElementById('tbl').innerHTML=''\n  const src = document.getElementById('src').value\n  const lng = +document.getElementById('lng').value, lat = +document.getElementById('lat').value\n  const trs = ['WGS84','GCJ02','BD09']\n  const thead = '<tr><th>坐标系</th><th>lng</th><th>lat</th><th>距原始 米</th></tr>'\n  let html=thead\n  function hav(a,b){const R=6371000;const [la1,ln1]=[a[1],a[0]].map(v=>v*Math.PI/180);const [la2,ln2]=[b[1],b[0]].map(v=>v*Math.PI/180);return 2*R*Math.asin(Math.sqrt(Math.sin((la2-la1)/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin((ln2-ln1)/2)**2))}\n  trs.forEach(tgt=>{\n    const p = gcoord.transform([lng,lat], gcoord[src], gcoord[tgt])\n    const d = hav([lng,lat], p)\n    html += '<tr><td><b style=\"color:'+COLORS[tgt]+'\">● '+tgt+'</b></td><td>'+p[0].toFixed(6)+'</td><td>'+p[1].toFixed(6)+'</td><td>'+d.toFixed(1)+'</td></tr>'\n    const mk = L.marker([p[1],p[0]]).addTo(mks)\n    mk._icon && (mk._icon.style.filter = 'drop-shadow(0 0 3px '+COLORS[tgt]+')')\n    mk.bindTooltip(tgt+' 坐标 '+p[1].toFixed(6)+', '+p[0].toFixed(6),{permanent:true,direction:'top'})\n      .openTooltip()\n    L.circleMarker([p[1],p[0]],{radius:6,color:COLORS[tgt],fillColor:COLORS[tgt],fillOpacity:.8}).addTo(mks)\n  })\n  document.getElementById('tbl').innerHTML = html\n}\ndocument.getElementById('go').onclick = run\nrun()\n</script>\n```\n\n## 面试速查\n| 地图 / 数据源 | 坐标系 | 正确转换 |\n|---|---|---|\n| 高德、腾讯、Google 国内 | GCJ-02 | `gcoord.transform(p, gcoord.GCJ02, gcoord.WGS84)` |\n| 百度地图 | BD-09 | 先 BD→GCJ，再 GCJ→WGS |\n| GPS / OSM / Mapbox | WGS84 | 原始值 |\n| 天地图 CGCS2000 | 近似 WGS84 | 业务场景可直接当 WGS84 用，精度不够用 7 参数 |\n\n**不要：** 嵌套互相转两次以上（数值误差累积）；一条轨一半 GCJ 一半 WGS（视觉上断裂 500m+）。\n"
+},
+{
+  "id": "gis-048",
+  "category": "gis",
+  "difficulty": "中等",
+  "title": "前端分别接入 WMS（GeoServer）与 WMTS 栅格瓦片，Leaflet + OpenLayers 两种代码",
+  "tags": [
+    "WMS",
+    "WMTS",
+    "GeoServer",
+    "Leaflet",
+    "OpenLayers"
+  ],
+  "answer": "## 区别一句话\n- **WMS**：每次请求当前 bbox，服务器\"动态出图\"一张 PNG；要素查询方便（GetFeatureInfo）。\n- **WMTS**：预切瓦片（金字塔），跟 XYZ 一样 CDN 分发；快，但样式改了要重切。\n\n## Leaflet 接入 WMS（直接 `L.tileLayer.wms`）\n\n```js\nvar wmsLayer = L.tileLayer.wms('http://localhost:8080/geoserver/tk/wms', {\n  layers: 'tk:province,tk:roads',  // 逗号分隔按顺序叠\n  format: 'image/png',\n  transparent: true,\n  version: '1.1.1',   // 1.3.0 轴序变成 (lat,lng)，Leaflet 下要写 crs + uppercase bbox\n  styles: '',\n  CQL_FILTER: \"pop>1000000 AND name LIKE '北京%'\",   // 动态过滤\n  opacity: .85\n}).addTo(map)\n\n// 点击像素 → 查询要素（WMS 核心价值）\nmap.on('click', e => {\n  const {x,y} = map.latLngToContainerPoint(e.latlng)\n  const url = wmsLayer.getFeatureInfoUrl(e.latlng, {\n    info_format: 'application/json',\n    propertyName: 'name,pop,code',\n    feature_count: 5\n  })\n  fetch(url).then(r=>r.json()).then(j=>{\n    const first = j.features?.[0]?.properties\n    first && L.popup().setLatLng(e.latlng)\n      .setContent('<b>'+first.name+'</b><br>人口:'+first.pop).openOn(map)\n  })\n})\n```\n\n## Leaflet 接入 WMTS（把 TileMatrix 拼进 URL）\n\n```js\n// 大多数 WMTS 服务都提供 RESTful 模板：\nvar wmts = L.tileLayer(\n  'http://localhost:8080/geoserver/gwc/service/wmts/rest' +\n  '/tk:buildings/{style}/{TileMatrixSet}/{TileMatrix}/{TileRow}/{TileCol}?format=image/png',\n  {\n    style: '', TileMatrixSet: 'EPSG:900913',\n    // 将 Leaflet 的 {z}/{y}/{x} 映射到模板变量\n    tileTransform: (tile, z) => ({\n      TileMatrix: 'EPSG:900913:'+z,\n      TileRow:    tile.y,\n      TileCol:    tile.x\n    })\n  }\n).addTo(map)\n```\n\n## OpenLayers 接入 WMTS（推荐，官方有 `ol/source/WMTS` 自动算分辨率矩阵）\n\n```js\nimport WMTS from 'ol/source/WMTS'\nimport WMTSTileGrid from 'ol/tilegrid/WMTS'\nimport TileLayer from 'ol/layer/Tile'\nimport {get as getProjection, getWidth} from 'ol/proj'\nimport {getTopLeft} from 'ol/tilegrid/common'\n\nconst proj = getProjection('EPSG:3857')\nconst projExtent = proj.getExtent()\nconst resolutions = new Array(19)\nconst matrixIds = new Array(19)\nfor (let z=0; z<19; ++z) {\n  resolutions[z] = getWidth(projExtent) / 256 / Math.pow(2,z)\n  matrixIds[z] = 'EPSG:3857:' + z\n}\nconst layer = new TileLayer({\n  source: new WMTS({\n    url: 'http://localhost:8080/geoserver/gwc/service/wmts',\n    layer: 'tk:buildings',\n    matrixSet: 'EPSG:3857',\n    format: 'image/png',\n    projection: proj,\n    tileGrid: new WMTSTileGrid({\n      origin: getTopLeft(projExtent),\n      resolutions, matrixIds\n    }),\n    style: '',\n    wrapX: true\n  })\n})\nmap.addLayer(layer)\n```\n\n## 选型建议\n- **实时变化 / 动态样式 / 要点击查询**：WMS + Leaflet WMS GetFeatureInfo。\n- **高并发 / 生产静态底图**：WMTS 或 GeoWebCache 切片到 S3/CDN。\n- **国内涉密数据**：天地图 WMTS 走官方授权 Key，不要拿 OSM 垫着画。\n"
+},
+{
+  "id": "gis-049",
+  "category": "gis",
+  "difficulty": "中等",
+  "title": "给定 DEM + 任意折线，取沿线高程并画地形剖面图（Canvas 实现）",
+  "tags": [
+    "DEM",
+    "地形剖面",
+    "可视化",
+    "Canvas",
+    "采样"
+  ],
+  "answer": "## 流程\n1. 把折线按等间距（比如 100m）做里程采样；\n2. 每个采样点从 DEM 双线性插值取高程；\n3. 里程-高程画折线 + 渐变填充。\n\n## 在线运行：点 A→B 画剖面\n\n```html\n<link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" />\n<script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\"></script>\n<div style=\"display:flex;gap:8px;flex-wrap:wrap\">\n  <div id=\"map\" style=\"height:280px;width:62%;min-width:320px\"></div>\n  <canvas id=\"c\" width=\"320\" height=\"280\" style=\"border:1px solid #ccc;background:#fff\"></canvas>\n</div>\n<div style=\"padding:6px\">🟢 地图上有一条绿色采样线 A→B，拖动标记重算，下方 canvas 实时画剖面图。</div>\n<script>\n// 1) 合成 DEM（两座山）\nconst DX=80, DY=60, METERS_PER_PX = 200  // 栅格分辨率 200m\nconst DEM=[], ORG=[116.30,39.85]\nfor (let y=0;y<DY;y++){\n  DEM[y]=[]\n  for (let x=0;x<DX;x++){\n    const ax=x-20,ay=y-30,bx=x-55,by=y-18\n    DEM[y][x]= Math.max(0,\n      500*Math.exp(-(ax*ax+ay*ay)/280) +\n      800*Math.exp(-(bx*bx+by*by)/220) +\n      (Math.sin(x/3)+Math.cos(y/5))*10 +\n      40\n    )\n  }\n}\nfunction lngLatToGrid(lng,lat){\n  // 线性伪投影：北京附近 1 度 lng ≈ 85km\n  const gx=(lng-ORG[0])/(85000/METERS_PER_PX)   // 1度lng ≈ 85000 米 / 200m px\n  const gy=(ORG[1]-lat)/(111000/METERS_PER_PX)  // 1度lat ≈ 111000 米\n  return [gx,gy]\n}\nfunction gridToLngLat(gx,gy){\n  const lng=ORG[0]+gx*(85000/METERS_PER_PX)\n  const lat=ORG[1]-gy*(111000/METERS_PER_PX)\n  return [lng,lat]\n}\nfunction bilinear(x,y){\n  const x0=Math.floor(x), y0=Math.floor(y)\n  const u=x-x0, v=y-y0\n  const z00=DEM[Math.min(DY-1,Math.max(0,y0))]?.[Math.min(DX-1,Math.max(0,x0))] ?? 0\n  const z10=DEM[Math.min(DY-1,Math.max(0,y0))]?.[Math.min(DX-1,Math.max(0,x0+1))] ?? 0\n  const z01=DEM[Math.min(DY-1,Math.max(0,y0+1))]?.[Math.min(DX-1,Math.max(0,x0))] ?? 0\n  const z11=DEM[Math.min(DY-1,Math.max(0,y0+1))]?.[Math.min(DX-1,Math.max(0,x0+1))] ?? 0\n  return (1-u)*(1-v)*z00 + u*(1-v)*z10 + (1-u)*v*z01 + u*v*z11\n}\n// 2) Leaflet map + A/B draggable\nvar map = L.map('map').setView([39.89,116.36], 11)\nL.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map)\n// 画 DEM 阴影作底（简易 hillshade）\nconst cvHill=document.createElement('canvas');cvHill.width=DX*3;cvHill.height=DY*3\nconst hx=cvHill.getContext('2d'), img=hx.createImageData(cvHill.width,cvHill.height)\nfor (let j=0;j<cvHill.height;j++) for (let i=0;i<cvHill.width;i++){\n  const gx=i/3, gy=j/3\n  const z=bilinear(gx,gy), dzx=bilinear(gx+1,gy)-z, dzy=bilinear(gx,gy+1)-z\n  const shade = 128 + (dzx - dzy) * 3 + (z-80)/4\n  const c=Math.max(40,Math.min(240,shade))\n  const v=Math.min(1,z/900)\n  const o=(j*cvHill.width+i)*4\n  img.data[o]=Math.floor(80+140*v);img.data[o+1]=Math.floor(c*.9+20)\n  img.data[o+2]=Math.floor(70+(1-v)*60);img.data[o+3]=255\n}\nhx.putImageData(img,0,0)\nL.imageOverlay(cvHill.toDataURL(),\n  [ORG[1]-DY*(111000/METERS_PER_PX), ORG[0]],\n  [ORG[1], ORG[0]+DX*(85000/METERS_PER_PX)],{opacity:.75}).addTo(map)\nconst A=[39.860,116.312], B=[39.906,116.405]\nconst mkA=L.marker(A,{draggable:true}).addTo(map).bindTooltip('A 起点',{permanent:true,direction:'right'})\nconst mkB=L.marker(B,{draggable:true}).addTo(map).bindTooltip('B 终点',{permanent:true,direction:'left'})\nconst line=L.polyline([A,B],{color:'#0c6',weight:4,dashArray:'8 4'}).addTo(map)\n// 3) 剖面 canvas\nconst cv=document.getElementById('c'), ctx=cv.getContext('2d')\nfunction drawProfile(){\n  ctx.clearRect(0,0,cv.width,cv.height)\n  const a=mkA.getLatLng(), b=mkB.getLatLng()\n  line.setLatLngs([a,b])\n  const N=200, pts=[]\n  let totalMeters=0, last=[lngLatToGrid(a.lng,a.lat)]\n  for (let i=0;i<=N;i++){\n    const t=i/N\n    const lng=a.lng+(b.lng-a.lng)*t, lat=a.lat+(b.lat-a.lat)*t\n    const g=lngLatToGrid(lng,lat)\n    totalMeters += Math.hypot((g[0]-last[0])*METERS_PER_PX, (g[1]-last[1])*METERS_PER_PX)\n    pts.push({s:totalMeters, z:bilinear(g[0],g[1])})\n    last=g\n  }\n  const minZ=Math.min(...pts.map(p=>p.z)), maxZ=Math.max(...pts.map(p=>p.z))\n  const pad={l:40,r:10,t:20,b:32}, W=cv.width,H=cv.height\n  function sx(s){return pad.l+(s/totalMeters)*(W-pad.l-pad.r)}\n  function sy(z){return H-pad.b-((z-minZ)/(maxZ-minZ+1))*(H-pad.t-pad.b)}\n  // background\n  ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H)\n  // grid\n  ctx.strokeStyle='#ddd';ctx.lineWidth=1;ctx.fillStyle='#666';ctx.font='11px sans-serif'\n  for (let i=0;i<=5;i++){\n    const x=pad.l+i*(W-pad.l-pad.r)/5\n    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,H-pad.b);ctx.stroke()\n    ctx.fillText((totalMeters*i/5/1000).toFixed(1)+'km',x-14,H-10)\n  }\n  for (let i=0;i<=4;i++){\n    const y=pad.t+i*(H-pad.t-pad.b)/4\n    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke()\n    const z = maxZ - (maxZ-minZ)*i/4\n    ctx.fillText((z|0)+'m',4,y+4)\n  }\n  // gradient area\n  const grd=ctx.createLinearGradient(0,pad.t,0,H-pad.b)\n  grd.addColorStop(0,'#e55');grd.addColorStop(.5,'#ec8');grd.addColorStop(1,'#4c8')\n  ctx.beginPath()\n  ctx.moveTo(sx(0), sy(pts[0].z))\n  for (const p of pts) ctx.lineTo(sx(p.s), sy(p.z))\n  ctx.lineTo(sx(totalMeters), H-pad.b); ctx.lineTo(sx(0), H-pad.b); ctx.closePath()\n  ctx.fillStyle=grd; ctx.fill()\n  ctx.strokeStyle='#a22'; ctx.lineWidth=2\n  ctx.beginPath();ctx.moveTo(sx(0), sy(pts[0].z))\n  for (const p of pts) ctx.lineTo(sx(p.s), sy(p.z));ctx.stroke()\n  ctx.fillStyle='#000';ctx.font='bold 13px sans-serif'\n  ctx.fillText('🗻 地形剖面 A→B', pad.l+6, pad.t+10)\n  ctx.font='11px sans-serif'\n  ctx.fillText('总长 '+(totalMeters/1000).toFixed(2)+' km · 高差 '+((maxZ-minZ)|0)+' m · 最大 '+Math.round(maxZ)+'m',\n    pad.l+6, H-10)\n}\nmkA.on('drag',drawProfile); mkB.on('drag',drawProfile)\ndrawProfile()\n</script>\n```\n\n## 面试点\n- **采样间距**：必须 ≤ DEM 分辨率的 1/2（奈奎斯特），否则会\"丢峰\"。\n- **双线性 vs 最近邻**：最近邻出锯齿，工程用双线性；1m 高精度 LiDAR 用 bicubic。\n- **真实 DEM 数据**：SRTM 90m / ASTER GDEM 30m / ALOS 12.5m，生产转成 COG（Cloud-Optimized GeoTIFF）后 `@planet/gdal3.js` 浏览器端即可切片。\n"
+},
+{
+  "id": "gis-050",
+  "category": "gis",
+  "difficulty": "中等",
+  "framework": "deckgl",
+  "title": "Deck.gl ScatterplotLayer 渲染 10 万点 + 悬浮高亮 + 框选（React-less 原生）",
+  "tags": [
+    "Deck.gl",
+    "WebGL",
+    "Scatterplot",
+    "大规模",
+    "拾取"
+  ],
+  "answer": "## 代码（原生 HTML，不用 React）\n\n```html\n<script src=\"https://unpkg.com/deck.gl@9.0.32/dist.min.js\"></script>\n<script src=\"https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js\"></script>\n<link href=\"https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css\" rel=\"stylesheet\" />\n<div id=\"map\" style=\"height:320px\"></div>\n<div id=\"st\" style=\"margin:6px\"></div>\n<script>\nconst {DeckGL, ScatterplotLayer, PolygonLayer} = deck\nconst map = new maplibregl.Map({\n  container:'map', style:'https://demotiles.maplibre.org/style.json',\n  center:[116.4,39.9], zoom:9\n})\n// 10 万个点\nconst DATA=[]\nfor (let i=0;i<100000;i++){\n  DATA.push({\n    c:[116.4+(Math.random()-.5)*2.8, 39.9+(Math.random()-.5)*2.2],\n    w:Math.random()<.02 ? 40 : 18,\n    cat:i%5\n  })\n}\nconst colors=[[240,80,80],[80,160,240],[80,200,100],[240,180,60],[180,90,220]]\nconst deck = new DeckGL({\n  container:'map', mapStyle:'', controller:true,\n  initialViewState:{longitude:116.4, latitude:39.9, zoom:9, pitch:0},\n  onViewStateChange: ({viewState}) => map.jumpTo({center:[viewState.longitude, viewState.latitude], zoom:viewState.zoom-1})\n})\nlet boxSel = null\nfunction renderLayers(){\n  const [xmin,xmax,ymin,ymax] = boxSel || [-Infinity,Infinity,-Infinity,Infinity]\n  deck.setProps({\n    layers:[\n      new ScatterplotLayer({\n        id:'sc', data:DATA, pickable:true, autoHighlight:true,\n        highlightColor:[255,255,200,255],\n        getPosition: d => d.c,\n        getRadius: d => d.w,\n        radiusScale:2, radiusMinPixels:1, radiusMaxPixels:8,\n        getFillColor: d => {\n          const c = colors[d.cat]\n          const inBox = d.c[0]>=xmin&&d.c[0]<=xmax&&d.c[1]>=ymin&&d.c[1]<=ymax\n          return inBox ? [255,255,255,255] : [...c, 230]\n        },\n        getLineColor:[0,0,0,60], getLineWidth:.5, lineWidthMinPixels:0,\n        onClick: info => info.object && (document.getElementById('st').innerHTML =\n          '点击点：经纬度 <b>'+info.object.c[0].toFixed(5)+','+info.object.c[1].toFixed(5)+\n          '</b>；类别 #'+info.object.cat+'；半径 '+info.object.w)\n      }),\n      boxSel && new PolygonLayer({\n        id:'bb', data:[{polygon:[[[xmin,ymin],[xmax,ymin],[xmax,ymax],[xmin,ymax]]]}],\n        stroked:true, getLineColor:[255,0,0], lineWidthMinPixels:2,\n        filled:true, getFillColor:[255,0,0,30]\n      })\n    ],\n    onHover: info => info.object && (document.getElementById('st').innerHTML =\n      '悬浮点: '+(info.index+1)+'/'+DATA.length+'　lng='+info.object.c[0].toFixed(5)+' lat='+info.object.c[1].toFixed(5))\n  })\n}\nrenderLayers()\n// 框选：Shift + 拖拽\nlet sx,sy, dragging=false\ndocument.getElementById('map').addEventListener('pointerdown',e=>{\n  if (!e.shiftKey) return\n  dragging=true; sx=e.clientX;sy=e.clientY; boxSel=null\n})\ndocument.getElementById('map').addEventListener('pointermove',e=>{\n  if (!dragging) return\n  const vs=deck.getViewState ? deck.getViewState() : deck.props.initialViewState\n  const [xmin,ymax] = deck.unproject([Math.min(sx,e.clientX), Math.min(sy,e.clientY)])\n  const [xmax,ymin] = deck.unproject([Math.max(sx,e.clientX), Math.max(sy,e.clientY)])\n  boxSel = [xmin,xmax,ymin,ymax]\n  renderLayers()\n})\ndocument.getElementById('map').addEventListener('pointerup',e=>{\n  if (!dragging) return\n  dragging=false\n  const [xmin,xmax,ymin,ymax] = boxSel || []\n  const n = DATA.filter(p=>p.c[0]>=xmin&&p.c[0]<=xmax&&p.c[1]>=ymin&&p.c[1]<=ymax).length\n  document.getElementById('st').innerHTML = '✅ 框选数量: <b style=\"color:#e33\">'+n+'</b> / '+DATA.length\n})\n</script>\n```\n\n## 性能关键\n| 问题 | Deck 做法 |\n|---|---|\n| 10w 点 DOM 绘制崩 | ScatterplotLayer 是 WebGL instance，Draw Call ≈ 1 |\n| 点大小随缩放变 | `radiusScale` + `radiusMinPixels` 控制下限 |\n| 悬浮每帧重绘？ | `autoHighlight:true` 内置 GPU picking，不重传 buffer |\n| 50w+ 点？ | 用 `data` 传二进制 Float32Array (`binary + attributes`)，GC 从 200ms 降到 <10ms |\n| 点击极慢？ | `pickable:true` + `pickingRadius:4`，且不要给 polygon layer 开 pickable |\n"
+},
+{
+  "id": "gis-051",
+  "category": "gis",
+  "difficulty": "困难",
+  "title": "GIS 前端 9 大可视化场景选型速查表（含数据量上限、技术栈、注意事项）",
+  "tags": [
+    "选型",
+    "决策树",
+    "可视化",
+    "Mapbox",
+    "Leaflet",
+    "Cesium",
+    "Deck.gl"
+  ],
+  "answer": "## 一张表打天下（面试当\"大局观\"讲）\n\n| 场景 | 数据规模 | 推荐 1 | 推荐 2 | 一句话心法 |\n|---|---|---|---|---|\n| 简单打点 / 行政区域 / 小项目 | < 2000 | Leaflet + OSM | MapLibre GL JS | 能 Leaflet 就 Leaflet，DOM API 好调试 |\n| 矢量切片 + 样式化 2D | 任意 | MapLibre GL JS | Mapbox GL JS | 样式是\"数据驱动样式\"，设计和前端解耦 |\n| 3D 建筑 / 3D 路网 | 百万要素 | MapLibre fill-extrusion + MVT | Deck H3TileLayer | 用 MVT 切片到 S3，别让前端吃整城 GeoJSON |\n| 大规模点/线/面(WebGL) | 10 万 ~ 百万 | Deck.gl Scatterplot / Line / PolygonLayer | L7 (AntV) | `binary: true` + 顶点打包 Float32Array 省 CPU |\n| 3D 城市 (白模/LiDAR) | 百万面 | Three.js (BufferGeometry + InstancedMesh) | 超图 iClient3D | 贴地用 threebox 或自己算经纬度→ ENU 矩阵 |\n| 三维地球/卫星/倾斜摄影 | 地形/3D Tiles | CesiumJS | NASA WorldWind | 3D Tiles 一定要走 Draco + 渐进流 |\n| 天气/风场/海面(流场) | 栅格 + 向量场 | Deck.gl WindLayer / GLOBE | L7 WindLayer | 用 WebGL 顶点纹理读风场，别跑 JS forEach |\n| 轨迹 / OD / 飞线 | 10 万条线 | Deck LineLayer / ArcLayer | AntV L7 LineLayer | 顶点压缩 Float16 + 按时间分段加载 |\n| 真正移动端 App 内嵌 | RN/Flutter | MapLibre Native / Mapbox SDK | Amap 3D SDK | 别用 H5 Canvas，直接走 Native SDK 省电十倍 |\n\n## 面试回答三层话术（从简单→难）\n1. **功能层**：先讲 Leaflet 怎么 marker / popup / geojson，能不能满足？\n2. **性能层**：过 1w 元素就上 WebGL；过 50w 就 MVT + Deck；过百万就二进制 + 服务端切片。\n3. **工程层**：瓦片 CDN、坐标系一致性（国内项目统一 GCJ-02！）、回退到 Canvas 2D（兼容老浏览器）、截图导出（map.once(\"idle\") 再 canvas.toDataURL）。\n\n## 最后两个\"踩坑\"代码\n**坑 1：Leaflet 转图片下载（面试考：如何把地图导出 png？）**\n```js\nimport html2canvas from 'html2canvas'\nasync function exportMap(map){\n  await new Promise(r=>map.once('idle', r))  // 等瓦片加载完！\n  const canvas = await html2canvas(map.getContainer(),\n    {useCORS:true, backgroundColor:'#fff', scale:2})\n  const a=document.createElement('a')\n  a.href = canvas.toDataURL('image/png')\n  a.download='map-export.png'; a.click()\n}\n```\n注意：`html2canvas` 跨域瓦片要开 CORS，否则瓦片变空白。MapLibre 直接用 `map.getCanvas().toDataURL()`。\n\n**坑 2：国内 GCJ 偏移一眼识别不了 → 统一写死转换**\n```js\nimport gcoord from 'gcoord'\n// 项目统一：所有写入数据库的坐标先转 WGS84；渲染高德/腾讯底图再转回 GCJ-02\nconst toWGS = ([lng,lat]) => gcoord.transform([lng,lat], gcoord.GCJ02, gcoord.WGS84)\nconst toGCJ = ([lng,lat]) => gcoord.transform([lng,lat], gcoord.WGS84, gcoord.GCJ02)\n```\n> \"输入就纠偏，输出就还原\"——否则同一经纬度 A 地图看对，B 地图漂几百米是 100% 会出的线上事故。\n\n"
 }
-\`\`\`
-
-关键字段：
-- **sources**：数据源（vector / raster / geojson / image / video）。geojson source 用于前端临时数据，不走瓦片。
-- **layers**：渲染图层。每层有 type（fill / line / symbol / circle / fill-extrusion / heatmap / hillshade / raster / background）。
-- **paint** vs **layout**：paint 可平滑插值动画（如 fill-color），layout 改变布局需重排（如 text-field）。
-- **表达式**：\`["match", ["get", "class"], "motorway", "#f00", "#ccc"]\` 实现"按属性动态着色"。
-
-## 数据驱动画画（Data-Driven Styling）
-
-\`\`\`js
-// 按人口密度给区块上色
-map.setPaintProperty('population', 'fill-color', [
-  'interpolate',
-  ['linear'],
-  ['get', 'density'],
-  0, '#fff',
-  1000, '#f00',
-  5000, '#800'
-])
-\`\`\`
-
-这是矢量瓦片最大的威力：**数据不重新拉取，样式实时改**。
-
-## 前端代码骨架
-
-\`\`\`js
-import mapboxgl from 'mapbox-gl'
-mapboxgl.accessToken = 'pk.xxxx'
-
-const map = new mapboxgl.Map({
-  container: 'map',
-  style: './style.json',     // 可托管自己的 style JSON
-  center: [116.39, 39.91],
-  zoom: 10,
-  hash: true
-})
-
-map.on('load', () => {
-  // 动态加一个 GeoJSON 图层
-  map.addSource('route', { type: 'geojson', data: geojson })
-  map.addLayer({
-    id: 'route-line',
-    type: 'line',
-    source: 'route',
-    paint: { 'line-color': '#38f', 'line-width': 4 }
-  })
-})
-\`\`\`
-
-## 离线 / 自建瓦片
-
-- **MapLibre GL JS**：Mapbox GL JS 的开源 fork（Mapbox v2 改协议后社区分叉），完全开源免费，style spec 兼容。
-- 自建瓦片：Tippecanoe（命令行切 MVT）、Martin（Rust server）、postgis + pg_tileserv。
-- 瓦片存储：MBTiles（SQLite 单文件）/ PMTiles（云原生平铺文件，无需 server）。
-
-## 易错点
-
-- **source-layer 写错**：MVT 内部按 source-layer 分组，写错图层空白但不报错。
-- **zoom 范围**：\`minzoom/maxzoom\` 控制可见，矢量瓦片切到 z14，再放大需要 \`maxzoom\` + 内插。
-- **图层顺序**：layers 数组顺序 = z-index，先画的在下面，symbol 类一般放最后。
-- **raster vs vector 混用**：底图栅格 + 业务矢量是常见组合，注意 source 类型别混。`
-  },
-  {
-    id: 'gis-008',
-    category: 'gis',
-    framework: 'leaflet',
-    title: 'Leaflet 的图层体系与常用插件？',
-    difficulty: '中等',
-    tags: ['Leaflet', '图层', '插件', 'L.LayerGroup', 'Marker'],
-    answer: `## Leaflet 图层抽象
-
-Leaflet 把一切可视元素抽象为 \`L.Layer\`，统一通过 \`map.addLayer/removeLayer\` 管理。
-
-\`\`\`
-L.Layer（基类）
-├── L.TileLayer        底图瓦片
-│   └── L.TileLayer.WMS
-├── L.Path             矢量图形（线/面）
-│   ├── L.Polyline / L.Polygon / L.Rectangle / L.Circle
-│   └── L.GeoJSON      （解析 GeoJSON 自动分发到上面）
-├── L.Marker           点标记（DOM）
-├── L.LayerGroup       图层组（批量操作）
-│   └── L.FeatureGroup （带事件 + bindPopup 的增强组）
-├── L.ImageOverlay     图片叠加
-├── L.VideoOverlay     视频叠加
-└── L.Popup / L.Tooltip 弹窗/提示
-\`\`\`
-
-## 常用 API
-
-\`\`\`js
-const map = L.map('map').setView([39.91, 116.39], 10)
-
-// 1. 底图瓦片
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 19,
-  attribution: '© OpenStreetMap'
-}).addTo(map)
-
-// 2. GeoJSON 业务数据
-const layer = L.geoJSON(geojson, {
-  style: f => ({ color: f.properties.color || '#38f' }),
-  pointToLayer: (f, latlng) => L.marker(latlng, { icon: myIcon }),
-  onEachFeature: (f, lyr) => lyr.bindPopup(f.properties.name)
-}).addTo(map)
-
-// 3. 图层组：批量切换
-const group = L.layerGroup([m1, m2, m3]).addTo(map)
-group.clearLayers()
-
-// 4. 控件：图层显隐
-L.control.layers(null, {
-  '业务图层': layer,
-  '热力图': heatLayer
-}).addTo(map)
-\`\`\`
-
-## 必装插件
-
-| 插件 | 用途 | 备注 |
-| --- | --- | --- |
-| **leaflet.markercluster** | 海量点聚合 | 1k+ marker 必装，替代方案 Leaflet.CanvasLayer |
-| **Leaflet.heat** | 热力图 | 基于 canvas，性能不错 |
-| **leaflet-draw** | 绘制点/线/面 | 测距、框选、采集 |
-| **Proj4Leaflet** | 自定义投影 | 国内 CGCS2000、局域投影必备 |
-| **Leaflet.VectorGrid** | 矢量瓦片 | 渲染 MVT/PBF，性能接近 Mapbox |
-| **Leaflet.Mask** | 区域外遮罩 | 突出某一行政区 |
-| **leaflet-measure-path** | 测距测面 | 直接显示在图形上 |
-| **Leaflet.Sleep** | 滚动不抢占滚轮 | 内嵌页面时防误触 |
-
-## 渲染器选择
-
-\`\`\`js
-// 默认 SVG，1k+ 要素切 Canvas
-L.Map.addInitHook(function () {
-  this.options.preferCanvas = true   // 全局用 Canvas 渲染器
-})
-\`\`\`
-
-- **SVG**：每个要素独立 DOM 节点，事件好绑，500 以内最佳。
-- **Canvas**：所有要素画一张 canvas，性能强，事件需空间索引命中检测，1000~5w 适用。
-- 超过 5w → 上 VectorGrid（MVT）或换 Mapbox/Deck.gl。
-
-## 坑
-
-- **\`L.geoJSON\` 坐标顺序**：GeoJSON 是 \`[lng, lat]\`，Leaflet API 是 \`[lat, lng]\`，但 \`L.geoJSON\` 内部自动转换，**直接传 GeoJSON 不要手动翻转**。
-- **markercluster 性能**：\`disableClusteringAtZoom\` 防止高 zoom 仍聚合；\`removeOutsideVisibleBounds\` 必开。
-- **图层 zIndex**：TileLayer 默认 200，矢量默认 400，业务数据可用 pane 提层。
-- ** CRS**：默认 EPSG:3857，要做 EPSG:4326 底图需 \`L.CRS.EPSG4326\` + tile 源支持。`
-  },
-  {
-    id: 'gis-009',
-    category: 'gis',
-    title: '地图交互事件体系与坐标转换（屏幕/经纬度/投影）？',
-    difficulty: '中等',
-    tags: ['事件', '坐标转换', 'project', 'unproject', 'epsg'],
-    answer: `## 三套坐标
-
-前端地图交互必须搞清楚三套坐标系：
-
-| 坐标系 | 单位 | 用途 | 例子 |
-| --- | --- | --- | --- |
-| **地理坐标** (lng/lat) | 度 | 数据存储、API 通信 | [116.39, 39.91] |
-| **投影坐标** (x/y) | 米 | 渲染、距离计算 | [12958200, 4852000] |
-| **像素坐标** (px) | px | DOM 事件、交互 | [320, 240] |
-| **屏幕坐标** (clientX/Y) | px | 鼠标事件 | [820, 540] |
-
-Web Mercator (EPSG:3857) 是 Web 地图事实标准：x = lng × R × π/180，y = R × ln(tan(π/4 + lat/2))。
-
-## 事件体系（以 Mapbox 为例）
-
-\`\`\`js
-map.on('click', e => {
-  // e.point      像素坐标（相对地图容器）
-  // e.lngLat     经纬度（自动 unproject）
-  console.log(e.point, e.lngLat)
-})
-
-map.on('mousemove', 'route-layer', e => {
-  // 命中要素：e.features
-  const f = e.features[0]
-  popup.setLngLat(e.lngLat).setHTML(f.properties.name).addTo(map)
-})
-\`\`\`
-
-事件类型：
-- **地图事件**：click / dblclick / mousemove / mouseout / contextmenu / zoom / move / rotate / pitch / load / idle。
-- **图层事件**：\`map.on('click', 'layerId', fn)\`，命中检测由渲染器内部空间索引完成，性能远好于遍历要素。
-- **要素状态**：\`setFeatureState\` 改 hover 态不重渲染图层。
-
-## 坐标转换核心方法
-
-\`\`\`js
-// Mapbox / MapLibre
-map.project([lng, lat])      // → {x, y} 像素坐标
-map.unproject({x, y})        // → {lng, lat}
-map.getBounds()              // → LngLatBounds（视口经纬度范围）
-map.queryRenderedFeatures()  // 查询视口内要素
-
-// Leaflet
-map.latLngToLayerPoint(latlng)    // → Point（像素）
-map.layerPointToLatLng(point)
-map.project(latlng, zoom)         // → 任意 zoom 的像素
-map.unproject(point, zoom)
-map.getBounds().toBBoxString()    // → "west,south,east,north" 给 WMS
-\`\`\`
-
-## 投影转换：proj4
-
-\`\`\`js
-import proj4 from 'proj4'
-proj4.defs('EPSG:4490', '+proj=longlat +ellps=GRS80 +no_defs')
-
-// WGS84 → Web Mercator
-const [x, y] = proj4('EPSG:4326', 'EPSG:3857', [116.39, 39.91])
-
-// Web Mercator → 国测局 GCJ-02（需 gcoord）
-import gcoord from 'gcoord'
-const gcj = gcoord.transform([116.39, 39.91], gcoord.WGS84, gcoord.GCJ02)
-\`\`\`
-
-## 实战：点击地图测距
-
-\`\`\`js
-let line = []
-map.on('click', e => {
-  line.push([e.lngLat.lng, e.lngLat.lat])
-  if (line.length >= 2) {
-    const dist = turf.length(turf.lineString(line), { units: 'kilometers' })
-    popup.setLngLat(e.lngLat).setHTML(\`距离: \${dist.toFixed(2)} km\`).addTo(map)
-  }
-})
-\`\`\`
-
-## 常见坑
-
-- **lng/lat 顺序**：Turf、GeoJSON 是 [lng, lat]；Leaflet API、高德/百度 SDK 是 [lat, lng]，混用必出 bug。
-- **投影 EPSG**：底图 EPSG:3857，业务数据 EPSG:4326，库会自动转，但 WMS 自定义投影要显式声明 CRS。
-- **Web Mercator 纬度上限**：约 ±85.05°，再高拉不到极地，极地要用其他投影。
-- **像素坐标 zoom 相关**：\`project(lnglat)\` 是当前 zoom 像素，换 zoom 需 \`project(lnglat, targetZoom)\`。
-- **拖拽 vs 点击**：用户拖拽后会触发 click，用 \`map.on('mousedown') + mouseup + 未移动\` 判断真点击，或 \`moveend\` 设置标志位。`
-  },
-  {
-    id: 'gis-010',
-    category: 'gis',
-    title: '热力图、飞线图、聚类图等可视化图层如何实现？',
-    difficulty: '中等',
-    tags: ['热力图', '飞线', '聚类', '可视化', 'Deck.gl', 'Turf'],
-    answer: `## 1. 热力图（Heatmap）
-
-**原理**：每个点贡献一个高斯核，叠加成密度场，按阈值映射颜色。
-
-\`\`\`js
-// Mapbox 内置 heatmap 图层
-map.addLayer({
-  id: 'heat',
-  type: 'heatmap',
-  source: 'points',
-  paint: {
-    'heatmap-weight': ['interpolate', ['linear'], ['get', 'value'], 0, 0, 100, 1],
-    'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 0, 1, 9, 3],
-    'heatmap-color': [
-      'interpolate', ['linear'], ['heatmap-density'],
-      0, 'rgba(0,0,0,0)',
-      0.2, '#00f', 0.4, '#0f0', 0.6, '#ff0', 0.8, '#f00', 1, '#fff'
-    ],
-    'heatmap-radius': 30,
-    'heatmap-opacity': 0.7
-  }
-})
-\`\`\`
-
-适用：连续型密度（人口、订单、事故）。**不适合**离散型分类（用聚类图）。
-
-## 2. 飞线图（迁徙图）
-
-**原理**：两点之间画弧线（贝塞尔/大圆弧），沿路径动画流光。
-
-\`\`\`js
-// Deck.gl ArcLayer
-new ArcLayer({
-  id: 'flight',
-  data: flights,   // [{from: [lng,lat], to: [lng,lat], count}]
-  getSourcePosition: d => d.from,
-  getTargetPosition: d => d.to,
-  getSourceColor: [0, 200, 255],
-  getTargetColor: [255, 60, 0],
-  getWidth: d => Math.sqrt(d.count) / 10,
-  greatCircle: true,             // 大圆弧
-  pickable: true
-})
-
-// 流光动画：用 TripsLayer 或在 Mapbox 用 line-gradient + 实时改 paint
-map.setPaintProperty('flight', 'line-gradient', [
-  'interpolate', ['linear'], ['line-progress'],
-  0, 'rgba(0,200,255,0)', 0.5, '#0cf', 1, 'rgba(0,200,255,0)'
-])
-\`\`\`
-
-要点：
-- 弧线高度 = 距离函数，太低看不清，太高喧宾夺主。
-- 流光用 \`line-dasharray\` + \`dasharray-step\` 动画，或 canvas 自绘纹理。
-
-## 3. 聚类图（Cluster）
-
-**原理**：相邻点合并成大圆，zoom 增大再展开。
-
-\`\`\`js
-// Mapbox 内置 cluster
-map.addSource('points', {
-  type: 'geojson',
-  data,
-  cluster: true,
-  clusterRadius: 50,
-  clusterMaxZoom: 14
-})
-
-// 聚合圆
-map.addLayer({
-  id: 'cluster', type: 'circle', source: 'points', filter: ['has', 'point_count'],
-  paint: {
-    'circle-radius': ['step', ['get', 'point_count'], 15, 50, 20, 100, 25],
-    'circle-color': ['step', ['get', 'point_count'], '#0f0', 50, '#ff0', 100, '#f00']
-  }
-})
-
-// 点击展开
-map.on('click', 'cluster', e => {
-  const id = e.features[0].properties.cluster_id
-  source.getClusterExpansionZoom(id).then(z => map.easeTo({ center: e.lngLat, zoom: z }))
-})
-\`\`\`
-
-适用：1k~50w POI，能保持交互流畅。
-
-## 4. 六边形网格（Hexbin）
-
-把点按六边形单元聚合，比聚类的"圆形"更稳定，适合密度对比。
-
-\`\`\`js
-// Turf 生成网格
-const grid = turf.hexGrid(bbox, 0.5, { units: 'kilometers' })
-const counted = turf.collect(grid, points, 'value', 'sum')
-\`\`\`
-
-Deck.gl 的 \`HexagonLayer\` 直接 GPU 聚合，百万点实时。
-
-## 5. 等值面/分级填色（Choropleth）
-
-\`\`\`js
-map.setPaintProperty('province', 'fill-color', [
-  'interpolate', ['linear'], ['get', 'gdp'],
-  0, '#fff', 1000, '#fdd', 5000, '#f88', 10000, '#800'
-])
-\`\`\`
-
-数据驱动 + 颜色阶梯，最常见的政务地图可视化。
-
-## 选型速查
-
-| 场景 | 推荐方案 |
-| --- | --- |
-| 人口密度、热区 | Heatmap（内置） |
-| 50w+ 点密度 | Hexbin / 3D 热力图（Deck.gl） |
-| 迁徙、流向 | ArcLayer（Deck.gl） |
-| POI 分布 | Cluster（内置） |
-| 区域指标 | Choropleth |
-| 时序轨迹 | TripsLayer（Deck.gl） |
-| 3D 柱状 | FillExtrusionLayer（内置） / ColumnLayer |
-
-## 性能心法
-
-- 1w 以内用 Mapbox 原生图层 + GeoJSON source。
-- 1w~50w 开 \`cluster\` 或转 MVT。
-- 50w+ 必上 Deck.gl（WebGL + 二进制）或矢量瓦片。`
-  },
-  {
-    id: 'gis-011',
-    category: 'gis',
-    title: '前端如何实现海量轨迹回放与轨迹纠偏？',
-    difficulty: '困难',
-    tags: ['轨迹回放', 'Turf', '插值', 'requestAnimationFrame', '纠偏'],
-    answer: `## 轨迹回放的核心问题
-
-1. **数据量大**：一辆车一天 1w+ 点，1k 辆车 = 千万级。
-2. **流畅播放**：60fps 下每帧画 1k 条线 + 时间窗口。
-3. **时间对齐**：不同车采样间隔不同，要按"虚拟时钟"对齐推进。
-4. **轨迹质量**：GPS 漂移、跳点、信号丢失，要纠偏/插值。
-
-## 单车回放（基础版）
-
-\`\`\`js
-const coords = track.map(p => [p.lng, p.lat])
-const line = turf.lineString(coords)
-const totalLen = turf.length(line, { units: 'kilometers' })
-
-let progress = 0
-function step() {
-  progress += 0.001  // 每帧前进 1m
-  if (progress > totalLen) return
-  const pt = turf.along(line, progress, { units: 'kilometers' })
-  marker.setLngLat(pt.geometry.coordinates)
-  requestAnimationFrame(step)
-}
-step()
-\`\`\`
-
-要点：用 \`turf.along\` 沿线取点，**比按数组索引推进更平滑**（采样不均也能匀速）。
-
-## 多车同步回放（关键：虚拟时钟）
-
-\`\`\`js
-const tracks = [...]  // 每条轨迹: { points: [{t, lng, lat}], id }
-const startTime = Math.min(...tracks.map(t => t.points[0].t))
-const endTime = Math.max(...tracks.map(t => t.points.at(-1).t))
-const speed = 100   // 倍速
-
-let virtualTime = startTime
-let lastFrame = performance.now()
-
-function frame(now) {
-  const dt = (now - lastFrame) / 1000
-  lastFrame = now
-  virtualTime += dt * 1000 * speed
-
-  // 每条轨迹找当前时刻的插值位置
-  tracks.forEach(t => {
-    const p = interpolateAtTime(t.points, virtualTime)
-    if (p) updateMarker(t.id, p)
-  })
-  if (virtualTime < endTime) requestAnimationFrame(frame)
-}
-requestAnimationFrame(frame)
-
-// 二分查找 + 线性插值
-function interpolateAtTime(points, t) {
-  let lo = 0, hi = points.length - 1
-  if (t < points[0].t || t > points[hi].t) return null
-  while (lo < hi - 1) {
-    const mid = (lo + hi) >> 1
-    points[mid].t <= t ? lo = mid : hi = mid
-  }
-  const a = points[lo], b = points[hi]
-  const r = (t - a.t) / (b.t - a.t)
-  return [a.lng + (b.lng - a.lng) * r, a.lat + (b.lat - a.lat) * r]
-}
-\`\`\`
-
-## 性能优化（万车级）
-
-1. **数据预处理转二进制**：\`Float32Array\` 存坐标 + 时间戳，比对象数组省 80% 内存。
-2. **WebWorker 计算**：插值放 worker，主线程只画。
-3. **按时间分块加载**：把轨迹按 1 分钟切块，按虚拟时钟 fetch。
-4. **WebGL 渲染**：Deck.gl TripsLayer 内部就是这套，万车实时。
-
-\`\`\`js
-new TripsLayer({
-  id: 'trips',
-  data: trips,
-  getPath: d => d.path,        // [[lng,lat,t],...]
-  getTimestamps: d => d.path.map(p => p[2]),
-  getColor: [0, 200, 255],
-  widthMinPixels: 2,
-  currentTime: virtualTime / 1000,
-  trailLength: 30              // 拖尾时长
-})
-\`\`\`
-
-## 轨迹纠偏与平滑
-
-GPS 原始轨迹常有：跳点、漂移、信号丢失。
-
-\`\`\`js
-// 1. 速度过滤：超过 200km/h 的点视为跳点
-const cleaned = points.filter((p, i) => {
-  if (i === 0) return true
-  const prev = points[i - 1]
-  const dist = turf.distance([prev.lng, prev.lat], [p.lng, p.lat], { units: 'kilometers' })
-  const dt = (p.t - prev.t) / 3600
-  return dist / dt < 200
-})
-
-// 2. 卡尔曼滤波（npm: kalman-filter）
-import { KalmanFilter } from 'kalman-filter'
-const kf = new KalmanFilter({ observation: 2 })
-const smoothed = cleaned.map(p => kf.filter([p.lng, p.lat]))
-
-// 3. 路网匹配（map-matching）
-// OSRM / Valhalla 提供服务端匹配 API
-fetch(\`https://router.project-osrm.org/match/v1/driving/\${coords.join(';')}\`)
-  .then(r => r.json())
-  .then(matched => drawLine(matched.tracepoints))
-\`\`\`
-
-## 时间轴控件
-
-\`\`\`js
-// 拖动时间轴 → 跳转到对应时刻
-slider.oninput = e => {
-  const ratio = e.target.value / 1000
-  virtualTime = startTime + (endTime - startTime) * ratio
-  cancelAnimationFrame(rafId)
-  renderFrame()   // 立即渲染一帧
-}
-playBtn.onclick = () => requestAnimationFrame(frame)
-\`\`\`
-
-## 实战坑
-
-- **跨日期线**：lng 从 179 跳到 -179 直接画线横穿地图，需检测并拆段。
-- **时区**：所有时间戳统一存 UTC，前端按用户时区显示。
-- **轨迹回放卡顿**：90% 是 DOM marker 太多，改 canvas/WebGL 立竿见影。
-- **暂停后再播放**：要重置 \`lastFrame = performance.now()\`，否则 dt 巨大导致瞬移。`
-  },
-  {
-    id: 'gis-012',
-    category: 'gis',
-    title: '离线地图部署方案与瓦片切片流程？',
-    difficulty: '中等',
-    tags: ['离线地图', '瓦片切片', 'Tippecanoe', 'MBTiles', 'PMTiles'],
-    answer: `## 为什么要离线
-
-- **政务/内网项目**：数据不外泄，无法访问公网地图服务。
-- **车载/船载**：弱网或无网环境。
-- **降本**：Mapbox 商业瓦片按量计费，内网部署可省费用。
-
-## 离线地图三件套
-
-1. **底图瓦片**（栅格或矢量）
-2. **瓦片服务**（HTTP server 或静态文件）
-3. **前端库**（Leaflet / Mapbox / MapLibre）
-
-## 方案 1：栅格瓦片 + 静态文件
-
-最简单，适合中小项目。
-
-\`\`\`bash
-# 1. 下载瓦片（开源工具 download-osm-tiles / tile-downloader）
-# 2. 按标准 XYZ 目录组织
-tiles/
-├── 5/
-│   ├── 21/
-│   │   ├── 13.png
-│   │   └── 14.png
-\`\`\`
-
-\`\`\`js
-// Leaflet 直接指向本地目录
-L.tileLayer('http://内网IP/tiles/{z}/{x}/{y}.png', { maxZoom: 16 }).addTo(map)
-\`\`\`
-
-缺点：放大后模糊，样式不可改，体积大（一个城市 z5~16 约 5GB）。
-
-## 方案 2：MBTiles + tile server
-
-**MBTiles** 是 SQLite 单文件，存储所有瓦片，便于分发。
-
-\`\`\`bash
-# 服务端：用 tileserver-gl（开源）
-docker run -p 8080:80 -v $(pwd):/data maptiler/tileserver-gl
-# 自动识别 *.mbtiles 并提供 XYZ / WMTS API
-\`\`\`
-
-\`\`\`js
-L.tileLayer('http://内网:8080/data/v3/{z}/{x}/{y}.png').addTo(map)
-\`\`\`
-
-## 方案 3：矢量瓦片 + MapLibre（推荐）
-
-矢量瓦片可动态换样式、旋转无失真、体积小。
-
-### 切片：Tippecanoe
-
-\`\`\`bash
-# GeoJSON → MVT 矢量瓦片
-tippecanoe -o china.mbtiles \\
-  -Z 4 -z 14 \\
-  --drop-densest-as-needed \\
-  --extend-zooms-if-still-dropping \\
-  roads.geojson buildings.geojson
-
-# 转 PMTiles（云原生平铺存储，无需 server）
-pmtiles convert china.mbtiles china.pmtiles
-\`\`\`
-
-### 服务
-
-- **tileserver-gl**：本地 MBTiles，提供 MVT + style。
-- **PMTiles + 任意静态服务器**：前端用 \`pmtiles\` 协议直接 range 请求，**无需瓦片服务端**。
-
-\`\`\`js
-import { Protocol } from 'pmtiles'
-import maplibregl from 'maplibre-gl'
-
-const p = new Protocol()
-maplibregl.addProtocol('pmtiles', p.tile)
-
-const map = new maplibregl.Map({
-  container: 'map',
-  style: './style.json',
-  // style.json 里 source.tiles: ["pmtiles://china.pmtiles/{z}/{x}/{y}"]
-})
-\`\`\`
-
-## 切片策略要点
-
-| 数据规模 | 切片 zoom | 工具 |
-| --- | --- | --- |
-| 全国路网 | 4~14 | Tippecanoe |
-| 单省建筑 | 10~16 | Tippecanoe / postgis |
-| 几百 POI | 不切片，前端直载 GeoJSON | — |
-| 卫星影像 | 5~18 | rio-tiler / gdal2tiles |
-
-Tippecanoe 关键参数：
-- \`-Z 4 -z 14\`：起止 zoom。
-- \`--drop-densest-as-needed\`：自动抽稀防瓦片超 500K。
-- \`--layer=name\`：source-layer 名。
-- \`--no-tile-compression\`：若 nginx 不解压，需关掉 gzip。
-- \`--simplification=10\`：简化几何减体积。
-
-## 字体与图标
-
-矢量瓦片的文字标注需要字体 PBF：
-- 字体切片工具：\`font-maker\` / \`genfont\`。
-- 把 \`{fontstack}/{range}.pbf\` 放静态服务器。
-- style.json 的 \`glyphs\` 指向 \`http://内网/fonts/{fontstack}/{range}.pbf\`。
-
-图标 sprite：
-\`spritezero\` 把 SVG 打包成 \`sprite.json + sprite.png\`。
-
-## 完整离线部署清单
-
-\`\`\`
-/static
-├── tiles/china.pmtiles       # 矢量瓦片
-├── fonts/{fontstack}/{range}.pbf
-├── sprite/sprite.json + sprite.png
-├── style.json                # 引用以上资源
-└── index.html                # 引入 maplibre-gl
-\`\`\`
-
-任一静态服务器（nginx / express）即可，零后端逻辑。
-
-## 内网坐标系坑
-
-- 内网底图常用 CGCS2000 (EPSG:4490) 或高斯投影，需 \`Proj4Leaflet\` 自定义 CRS。
-- 矢量瓦片默认 EPSG:3857，其他投影需自定义切片 + 自定义 MapLibre projection（v3+ 支持）。
-- 与高德/百度底图叠加：业务数据要先 WGS84 → GCJ-02/BD-09。
-
-## 更新策略
-
-- 瓦片按区域切片，**只重切变化区域**，用 \`tippecanoe-decode\` + diff。
-- PMTiles 支持 \`pmtiles extract\` 按 bbox 抽取子集，便于增量更新。
-- 缓存策略：HTTP \`Cache-Control: immutable\`（瓦片永不变化）+ 资源加 hash。`
-  },
-  {
-    id: 'gis-013',
-    category: 'gis',
-    framework: 'openlayers',
-    title: 'OpenLayers 的 Map / View / Layer / Source 体系？',
-    difficulty: '中等',
-    tags: ['OpenLayers', 'Map', 'View', 'Layer', 'Source', '架构'],
-    answer: `## OpenLayers 的核心抽象
-
-OpenLayers（OL）是功能最全的开源 GIS 库，采用严格的四层抽象：
-
-\`\`\`
-Map          容器，管理图层、控件、交互、overlay
- ├── View        视图：projection / center / zoom / rotation
- ├── Layer[]     图层：决定"怎么画"（可见性、透明度、样式）
- │    └── Source    数据源：决定"画什么"（瓦片、矢量、图片）
- ├── Control[]   控件：缩放、比例尺、全屏、图层切换（DOM）
- ├── Interaction[] 交互：拖拽、滚轮、绘制、选取、修改
- └── Overlay[]   覆盖物：弹窗、HTML 定位元素
-\`\`\`
-
-**关键理解**：Layer 和 Source 是分离的——同一个 Source 可被多个 Layer 用不同样式渲染（如一个面数据同时画填充和边界）。
-
-## 最小示例
-
-\`\`\`js
-import Map from 'ol/Map'
-import View from 'ol/View'
-import TileLayer from 'ol/layer/Tile'
-import VectorLayer from 'ol/layer/Vector'
-import OSM from 'ol/source/OSM'
-import VectorSource from 'ol/source/Vector'
-import GeoJSON from 'ol/format/GeoJSON'
-import { Style, Fill, Stroke } from 'ol/style'
-
-const map = new Map({
-  target: 'map',
-  view: new View({
-    projection: 'EPSG:3857',
-    center: [12958200, 4852000],   // 投影坐标（米）
-    zoom: 10
-  }),
-  layers: [
-    new TileLayer({ source: new OSM() }),
-    new VectorLayer({
-      source: new VectorSource({
-        url: './areas.geojson',
-        format: new GeoJSON()
-      }),
-      style: new Style({
-        fill: new Fill({ color: 'rgba(0,150,255,0.3)' }),
-        stroke: new Stroke({ color: '#06f', width: 2 })
-      })
-    })
-  ]
-})
-\`\`\`
-
-## View：视图与投影
-
-\`\`\`js
-new View({
-  projection: 'EPSG:4326',        // 用经纬度（center 直接传 [lng, lat]）
-  center: [116.39, 39.91],
-  zoom: 10,
-  minZoom: 3,
-  maxZoom: 18,
-  extent: [73, 3, 136, 53]        // 限制平移范围（中国境域）
-})
-
-// 动画跳转
-map.getView().animate({ center: [116.39, 39.91], zoom: 12, duration: 800 })
-\`\`\`
-
-注意：projection 决定 center 单位。EPSG:3857 用米，EPSG:4326 用度。
-
-## Layer / Source 常用组合
-
-| Layer 类型 | Source 类型 | 用途 |
-| --- | --- | --- |
-| TileLayer | OSM / XYZ / WMTS / BingMaps | 栅格底图 |
-| VectorLayer | Vector / Cluster / VectorTile | 矢量数据 |
-| VectorTileLayer | VectorTile | MVT 矢量瓦片 |
-| ImageLayer | ImageWMS / ImageArcGISRest | 单张 WMS 图 |
-| Graticule | — | 经纬网 |
-
-## 加载矢量数据并设置样式
-
-\`\`\`js
-const vector = new VectorLayer({
-  source: new VectorSource({ url: './pois.geojson', format: new GeoJSON() }),
-  style: (feature, resolution) => {
-    const level = feature.get('level')
-    return new Style({ /* 按 level 返回不同样式 */ })
-  }
-})
-
-// 动态改样式不重新加载数据
-vector.setStyle(feature => new Style({ /* ... */ }))
-\`\`\`
-
-\`resolution\`（米/像素）让样式随 zoom 缩放：\`feature.get('size') / resolution\`。
-
-## 控件与交互
-
-\`\`\`js
-import { defaults, ScaleLine, FullScreen } from 'ol/control'
-import { Select, Draw, Modify, Snap } from 'ol/interaction'
-
-map.addControl(new ScaleLine({ units: 'metric' }))
-map.addInteraction(new Select({ style: selectedStyle }))
-
-// 绘制 + 修改 + 吸附
-const draw = new Draw({ source, type: 'Polygon' })
-const modify = new Modify({ source })
-const snap = new Snap({ source })
-map.addInteraction(draw); map.addInteraction(modify); map.addInteraction(snap)
-\`\`\`
-
-## 与 Leaflet/Mapbox 的取舍
-
-| 维度 | OpenLayers | Leaflet | Mapbox GL |
-| --- | --- | --- | --- |
-| 功能 | 最全（OGC 全协议、编辑、拓扑） | 中等 | 强（矢量瓦片、3D） |
-| 体积 | ~200KB+（按需 import） | ~40KB | ~600KB |
-| 学习曲线 | 陡（抽象多） | 平缓 | 中 |
-| 投影 | 任意 EPSG（proj4 集成） | 预设几个 | 3857 为主 |
-| 适合 | 政企级 GIS、复杂业务 | 轻量展示 | 高度自定义可视化 |
-
-## 坑
-
-- **坐标顺序**：OL 内部统一 [x, y]（即 [lng, lat] 或 [east, north]），和 GeoJSON 一致；但 \`fromLonLat([lng,lat])\` 转投影别漏。
-- **proj4 注册**：用非标准 EPSG 必须 \`proj4.defs\` + \`register(OlProjection)\`。
-- **样式函数性能**：每帧每个要素都调 style function，复杂样式要缓存 Style 实例。
-- **图层销毁**：\`map.removeLayer(layer); layer.dispose()\` 才彻底释放。`
-  },
-  {
-    id: 'gis-014',
-    category: 'gis',
-    framework: 'openlayers',
-    title: 'OpenLayers 如何对接 WMS / WFS / WMTS 与矢量编辑？',
-    difficulty: '困难',
-    tags: ['OpenLayers', 'WMS', 'WFS', 'WMTS', 'OGC', '矢量编辑'],
-    answer: `## OGC 服务三件套
-
-| 服务 | 返回 | OL Source | 典型用途 |
-| --- | --- | --- | --- |
-| **WMS** | 服务端渲染的图片 | ImageWMS / TileWMS | 出图（不改样式） |
-| **WFS** | 矢量数据（GML/GeoJSON） | VectorSource + format | 取要素、编辑回写 |
-| **WMTS** | 预切片瓦片 | WMTS（TileImage） | 高性能底图 |
-
-## WMS：服务端出图
-
-\`\`\`js
-import ImageLayer from 'ol/layer/Image'
-import ImageWMS from 'ol/source/ImageWMS'
-
-new ImageLayer({
-  source: new ImageWMS({
-    url: 'https://geo.example.com/geoserver/wms',
-    params: {
-      LAYERS: 'topo:roads',
-      FORMAT: 'image/png',
-      TRANSPARENT: true,
-      CQL_FILTER: "type='highway'"   // 服务端过滤
-    },
-    ratio: 1,
-    serverType: 'geoserver'         // 优化 GetMap 请求
-  })
-})
-\`\`\`
-
-WMS 适合"样式写死在服务端、前端只出图"。
-
-## WMTS：预切片高性能底图
-
-\`\`\`js
-import WMTS from 'ol/source/WMTS'
-import WMTSTileGrid from 'ol/tilegrid/WMTS'
-
-const grid = new WMTSTileGrid({
-  origin: [-20037508.34, 20037508.34],
-  resolutions: [156543, 78271, 39135, /* ... */],
-  matrixIds: [0, 1, 2, /* ... */]
-})
-
-new TileLayer({
-  source: new WMTS({
-    url: 'https://geo.example.com/geoserver/gwc/service/wmts',
-    layer: 'topo:base',
-    matrixSet: 'EPSG:3857',
-    format: 'image/png',
-    tileGrid: grid,
-    style: ''
-  })
-})
-
-// 也可用 ol/source/WMTS.createFromCapabilities() 自动解析 GetCapabilities
-\`\`\`
-
-## WFS：取矢量数据
-
-\`\`\`js
-import VectorSource from 'ol/source/Vector'
-import GeoJSON from 'ol/format/GeoJSON'
-
-const vectorSource = new VectorSource({
-  url: (extent) => 'https://geo.example.com/geoserver/wfs?' + new URLSearchParams({
-    service: 'WFS',
-    version: '1.1.0',
-    request: 'GetFeature',
-    typeName: 'topo:buildings',
-    outputFormat: 'application/json',
-    srsName: 'EPSG:3857',
-    bbox: extent.join(',') + ',EPSG:3857'   // 视口过滤：只取可见范围
-  }),
-  format: new GeoJSON(),
-  strategy: bbox                          // 滚动时按视口增量加载
-})
-\`\`\`
-
-\`strategy: bbox\` 是关键：每移图自动按新视口请求，避免一次拉全量。
-
-## WFS-T：前端编辑回写服务端
-
-\`\`\`js
-import { Draw, Modify, Snap } from 'ol/interaction'
-import WFS from 'ol/format/WFS'
-import GML3 from 'ol/format/GML3'
-
-const wfst = new WFS({ featureNS: 'https://topo', featureType: 'buildings', srsName: 'EPSG:3857' })
-
-modify.on('modifyend', e => {
-  const feat = e.features.item(0)
-  const txn = wfst.writeTransaction([], [feat], [], new GML3())  // update
-  fetch('https://geo.example.com/geoserver/wfs', {
-    method: 'POST',
-    body: new XMLSerializer().serializeToString(txn),
-    headers: { 'Content-Type': 'text/xml' }
-  })
-})
-\`\`\`
-
-WFS-T（Transactional WFS）支持 insert/update/delete，是 OL 在政企 GIS 里独有的强项。
-
-## GetFeatureInfo：点查询 WMS 要素属性
-
-\`\`\`js
-map.on('singleclick', e => {
-  const viewResolution = map.getView().getResolution()
-  const url = wmsSource.getFeatureInfoUrl(e.coordinate, viewResolution, 'EPSG:3857', {
-    INFO_FORMAT: 'application/json',
-    FEATURE_COUNT: 10
-  })
-  fetch(url).then(r => r.json()).then(showPopup)
-})
-\`\`\`
-
-不取整图层，只查询点击位置的要素属性。
-
-## 常见坑
-
-- **bbox 的 srsName**：WFS bbox 必须带 EPSG，否则服务端按默认投影解析错位。
-- **CORS**：GeoServer 默认不开 CORS，需配 \`cors-allow-all\` 或同域代理。
-- **GML 版本**：WFS 1.0.0 用 GML2，1.1.0 用 GML3，版本不匹配解析失败。
-- **WMTS 矩阵**：\`matrixIds\` 必须和服务端 GetCapabilities 一致，否则瓦片错位。
-- **strategy: all vs bbox**：小数据用 all 一次拉，大数据用 bbox 但要处理去重（feature id）。`
-  },
-  {
-    id: 'gis-015',
-    category: 'gis',
-    framework: 'mapbox',
-    title: 'Mapbox GL 的表达式系统与数据驱动样式？',
-    difficulty: '中等',
-    tags: ['Mapbox', '表达式', 'interpolate', 'match', '数据驱动'],
-    answer: `## 表达式是 Mapbox 的"DSL"
-
-Mapbox style 的 paint/layout 属性值除了字面量，还支持**表达式数组**，类似 Lisp：
-
-\`\`\`
-[operator, argument1, argument2, ...]
-\`\`\`
-
-\`\`\`json
-"fill-color": ["match", ["get", "type"], "park", "#0f0", "water", "#0af", "#ccc"]
-\`\`\`
-
-等价于：\`type === 'park' ? '#0f0' : type === 'water' ? '#0af' : '#ccc'\`。
-
-## 表达式分类
-
-| 类别 | 代表 | 用途 |
-| --- | --- | --- |
-| **数据获取** | \`get\`, \`has\`, \`at\`, \`length\` | 读要素属性 |
-| **类型转换** | \`to-number\`, \`to-string\`, \`to-boolean\`, \`to-color\` | 强转 |
-| **数学** | \`+\`, \`*\`, \`%\`, \`round\`, \`ln2\` | 运算 |
-| **字符串** | \`concat\`, \`upcase\`, \`downcase\`, \`slice\` | 字符串处理 |
-| **逻辑** | \`case\`, \`match\`, \`coalesce\`, \`all\`, \`any\`, \`!\` | 条件分支 |
-| **插值** | \`interpolate\`, \`step\` | 连续/阶梯映射 |
-| **变量** | \`let\`, \`var\` | 复用子表达式 |
-| **zoom** | \`["zoom"]\` | 当前缩放级别 |
-| **feature-state** | \`["feature-state", "hover"]\` | 要素状态（hover/selected） |
-
-## 数据驱动（Data-Driven Styling）
-
-把 \`["get", "field"]\` 喂给 paint 属性，样式随要素属性变化：
-
-\`\`\`js
-// 按人口密度连续插值上色
-'fill-color': [
-  'interpolate', ['linear'], ['get', 'density'],
-  0, '#fffbeb',
-  100, '#fcd34d',
-  500, '#f59e0b',
-  2000, '#b91c1c'
-]
-
-// 按类型枚举匹配
-'circle-color': [
-  'match', ['get', 'category'],
-  'A', '#0f0', 'B', '#00f', 'C', '#f00',
-  '#999'   // default
-]
-\`\`\`
-
-## zoom 驱动：随缩放变化
-
-\`\`\`js
-// 线宽随 zoom 增大
-'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1, 15, 4]
-
-// zoom + 属性双驱动
-'circle-radius': [
-  'interpolate', ['linear'], ['zoom'],
-  5, ['interpolate', ['linear'], ['get', 'mag'], 0, 2, 5, 10],
-  15, ['interpolate', ['linear'], ['get', 'mag'], 0, 8, 5, 30]
-]
-\`\`\`
-
-## let / var 复用
-
-\`\`\`js
-'fill-color': [
-  'let', 'd', ['get', 'density'],
-  ['case', ['>', ['var', 'd'], 1000], '#f00', '#0f0']
-]
-\`\`\`
-
-## feature-state：无重渲染的交互态
-
-\`\`\`js
-// 设置要素状态（不触发图层重绘，性能好）
-map.setFeatureState({ source: 'pois', id: featId }, { hover: true })
-
-'circle-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#f00', '#06f']
-\`\`\`
-
-适合 hover/select 高亮，万级要素也流畅。
-
-## 运行时改样式
-
-\`\`\`js
-map.setPaintProperty('buildings', 'fill-color', newExpr)
-map.setLayoutProperty('labels', 'text-size', 14)
-map.setFilter('roads', ['==', ['get', 'class'], 'motorway'])   // 过滤
-\`\`\`
-
-## 调试技巧
-
-- Mapbox 内置表达式校验：错误会在控制台报 \`layers[N].paint.X: expression must be...\`。
-- 用 \`["literal", [...]]\` 包裹数组字面量，否则被当成表达式解析。
-- \`["format", ...]\` 实现多段不同样式文字标注。
-
-## 性能边界
-
-- 表达式越简单越快：\`match\` > \`case\`，\`interpolate\` 比 \`step\` 略慢。
-- 数据驱动属性会让 GPU 每要素算一次，万级以下无感，10w+ 注意简化。
-- \`feature-state\` 比直接改 paint 便宜，优先用它做交互态。`
-  },
-  {
-    id: 'gis-016',
-    category: 'gis',
-    framework: 'mapbox',
-    title: 'Mapbox 3D 地形、fill-extrusion 与自定义图层？',
-    difficulty: '困难',
-    tags: ['Mapbox', '3D', '地形', 'fill-extrusion', 'terrain', 'CustomLayer'],
-    answer: `## Mapbox 3D 三大能力
-
-1. **pitch + bearing**：相机倾斜与旋转
-2. **terrain**：真实地形高程（DEM）
-3. **fill-extrusion**：面拉伸成 3D 体（建筑）
-4. **CustomLayer**：自定义 WebGL 图层（接 Three.js / Deck.gl）
-
-## 相机：倾斜与旋转
-
-\`\`\`js
-map.setPitch(60)        // 0~85 度
-map.setBearing(30)      // 旋转
-map.easeTo({ pitch: 70, bearing: 90, duration: 1000 })
-
-// 鼠标拖拽倾斜：TouchZoomRotateHandler / dragRotate
-\`\`\`
-
-## terrain：真实地形
-
-\`\`\`js
-map.on('load', () => {
-  map.addSource('dem', {
-    type: 'raster-dem',
-    url: 'mapbox://mapbox.terrain-rgb',   // 或自建 DEM 瓦片
-    tileSize: 512,
-    maxzoom: 14
-  })
-  map.setTerrain({ source: 'dem', exaggeration: 1.5 })   // exaggeration 高程夸张系数
-
-  // 天空层（远景天空）
-  map.addLayer({ id: 'sky', type: 'sky', paint: { 'sky-color': '#cfd', 'sky-horizon-blend': 0.5 } })
-})
-\`\`\`
-
-要点：
-- \`terrain-rgb\`：每个像素 RGB 编码高程（红×256×256 + 绿×256 + 蓝 - 32768）。
-- \`exaggeration\`：1 = 真实，1.5~2 视觉冲击强，地形细节弱时适当夸张。
-- 开启 terrain 后所有图层自动贴合地形，无需手动算高度。
-
-## fill-extrusion：3D 建筑
-
-\`\`\`js
-map.addLayer({
-  id: 'buildings-3d',
-  type: 'fill-extrusion',
-  source: 'buildings',
-  sourceLayer: 'building',
-  minzoom: 14,
-  paint: {
-    'fill-extrusion-color': ['interpolate', ['linear'], ['get', 'height'], 0, '#ddd', 50, '#faa', 200, '#f55'],
-    'fill-extrusion-height': ['get', 'height'],          // 楼高（米）
-    'fill-extrusion-base': ['get', 'min_height'],        // 底部高（架空/裙楼）
-    'fill-extrusion-opacity': 0.85
-  }
-})
-\`\`\`
-
-技巧：
-- 无 height 属性可用 \`['interpolate', ['zoom'], 14, 0, 16, 50]\` 假高度。
-- \`fill-extrusion-base\` 让架空层（地铁、连廊）悬空。
-- 配合 \`terrain\` 自动贴地。
-
-## 自定义图层（CustomLayerInterface）
-
-直接在 Mapbox 渲染管线里插入 WebGL 代码，常用于集成 Three.js / Deck.gl：
-
-\`\`\`js
-class ThreeLayer {
-  constructor() { this.id = 'three'; this.type = 'custom'; this.renderingMode = '3d' }
-  onAdd(map, gl) {
-    this.map = map
-    this.camera = new THREE.Camera()
-    this.scene = new THREE.Scene()
-    this.renderer = new THREE.WebGLRenderer({ canvas: map.getCanvas(), context: gl })
-    this.renderer.autoClear = false
-    // 加模型...
-  }
-  render(gl, matrix) {
-    const m = new THREE.Matrix4().fromArray(matrix)
-    this.camera.projectionMatrix = m
-    this.renderer.resetState()
-    this.renderer.render(this.scene, this.camera)
-    this.map.triggerRepaint()
-  }
-}
-map.addLayer(new ThreeLayer())
-\`\`\`
-
-Mapbox 提供 \`map.transform\`（相机矩阵），可同步 Three.js 相机。社区有 \`threebox\`、\`deck.gl@mapbox\` 封装。
-
-## 实战：3D 城市可视化
-
-\`\`\`js
-// 1. 底图 + 地形
-map.setTerrain({ source: 'dem', exaggeration: 1.2 })
-// 2. 建筑 fill-extrusion 按高度上色
-// 3. 业务图层用 CustomLayer 接 Deck.gl ArcLayer 画飞线
-// 4. 加 fog 雾化远景
-map.setFog({ range: [1, 10], color: '#fff', 'high-color': '#add8e6' })
-\`\`\`
-
-## 性能与坑
-
-- **pitch 太大卡顿**：远距离渲染像素多，限制 \`maxPitch: 70\`。
-- **terrain + fill-extrusion**：开 terrain 后 fill-extrusion 高度是相对地形还是海拔？答：相对海平面，会自动加地形高程，所以楼顶 = terrain + height。
-- **CustomLayer 状态泄漏**：必须 \`renderer.resetState()\` 否则污染 Mapbox WebGL 上下文。
-- **相机同步**：Three.js 相机每帧从 \`map.transform\` 取，不要自己 OrbitControls。
-- **terrain-rgb 数据源**：自建需用 \`rio-tiler\` 或 \`gdal2tiles\` 切 DEM，颜色编码别搞错。`
-  },
-  {
-    id: 'gis-017',
-    category: 'gis',
-    framework: 'threejs',
-    title: 'Three.js 如何构建 3D 城市地图与建筑白模？',
-    difficulty: '困难',
-    tags: ['Three.js', '3D 城市地图', '白模', 'ExtrudeGeometry', 'WebGL'],
-    answer: `## 为什么用 Three.js 做地图
-
-Mapbox/Cesium 的 3D 是"地图带高度"，Three.js 的 3D 是"完全自由的场景"：
-- 完全控制光照、材质、后处理（泛光、辉光、景深）。
-- 可做非真实地图（科技风、数据艺术、元宇宙城市）。
-- 性能极致（百万面片 60fps）。
-
-代价：要自己处理坐标系、相机、瓦片调度，没有现成地图交互。
-
-## 核心：GeoJSON Polygon → 3D 建筑
-
-\`\`\`js
-import * as THREE from 'three'
-import { ExtrudeGeometry } from 'three'
-import { GeoJSON } from 'geojson'
-
-function buildingToMesh(feature, height) {
-  const coords = feature.geometry.coordinates[0]   // 外环 [lng,lat][]
-  const shape = new THREE.Shape()
-  coords.forEach(([x, y], i) => i === 0 ? shape.moveTo(x, y) : shape.lineTo(x, y))
-
-  const geo = new ExtrudeGeometry(shape, {
-    depth: height,            // 楼高
-    bevelEnabled: false,
-    steps: 1
-  })
-  geo.rotateX(-Math.PI / 2)   // 让高度沿 Y 轴向上
-  return new THREE.Mesh(geo, buildingMaterial)
-}
-
-buildings.features.forEach(f => {
-  const h = f.properties.height || 20
-  scene.add(buildingToMesh(f, h))
-})
-\`\`\`
-
-## 坐标系转换：经纬度 → 场景坐标
-
-Three.js 是右手 Y-up 直角坐标，GeoJSON 是经纬度，必须转换：
-
-\`\`\`js
-// 以城市中心为原点，经纬度差 → 米
-const CENTER = [116.39, 39.91]
-const M_PER_LAT = 111320
-const M_PER_LNG = 111320 * Math.cos(CENTER[1] * Math.PI / 180)
-
-function project([lng, lat]) {
-  return [
-    (lng - CENTER[0]) * M_PER_LNG,
-    0,
-    (lat - CENTER[1]) * M_PER_LAT   // 注意 Three.js Z 对应地理纬度
-  ]
-}
-\`\`\`
-
-小范围（单城市）可用此线性近似；全国范围必须用 Web Mercator 投影。
-
-## 相机：地图视角控制
-
-\`\`\`js
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
-const controls = new OrbitControls(camera, renderer.domElement)
-controls.maxPolarAngle = Math.PI / 2.2   // 限制不能看到地面下
-controls.minDistance = 100
-controls.maxDistance = 5000
-controls.enablePan = true
-
-// 初始视角：斜俯视
-camera.position.set(2000, 1500, 2000)
-camera.lookAt(0, 0, 0)
-\`\`\`
-
-## 地面与底图
-
-\`\`\`js
-// 纯色地面
-const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(10000, 10000),
-  new THREE.MeshStandardMaterial({ color: 0x111827 })
-)
-ground.rotation.x = -Math.PI / 2
-scene.add(ground)
-
-// 或贴一张栅格底图（瓦片拼接）
-const loader = new THREE.TextureLoader()
-ground.material.map = loader.load('./basemap.png')
-\`\`\`
-
-## 光照与材质
-
-\`\`\`js
-// 模拟城市天光
-scene.add(new THREE.HemisphereLight(0x88aaff, 0x080820, 0.6))
-scene.add(new THREE.DirectionalLight(0xffffff, 1.2).translateX(1000).translateY(2000))
-
-// 白模材质：菲涅尔边缘高亮
-const buildingMat = new THREE.MeshStandardMaterial({
-  color: 0x1a2a4a,
-  metalness: 0.2,
-  roughness: 0.6,
-  emissive: 0x002244,
-  emissiveIntensity: 0.3
-})
-\`\`\`
-
-## 后处理：科技感泛光
-
-\`\`\`js
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer'
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass'
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass'
-
-const composer = new EffectComposer(renderer)
-composer.addPass(new RenderPass(scene, camera))
-composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.8, 0.4, 0.85))
-
-function animate() { composer.render(); requestAnimationFrame(animate) }
-\`\`\`
-
-## 性能优化
-
-- **合并几何**：\`BufferGeometryUtils.mergeGeometries(buildingGeos)\` 把万栋楼合并成一个 Mesh，drawcall 从 1w 降到 1。
-- **LOD**：远处用低面数，近处用高精度。
-- **InstancedMesh**：相同材质的重复体素（窗户、灯柱）用实例化。
-- **视锥剔除**：Three.js 自动开启，但合并后失效，需手动按区块分 Mesh。
-- **WebWorker**：GeoJSON 解析 + 几何构建放 worker，主线程只渲染。
-
-## 与 Mapbox 集成
-
-完整自建 Three.js 地图工程量大，常见做法是 **Mapbox 做底图 + CustomLayer 嵌 Three.js**：
-- Mapbox 负责底图、瓦片、相机控制、坐标系。
-- Three.js 负责特殊 3D 效果（粒子、自定义建筑、数据艺术）。
-- 用 \`deck.gl\` 的 \`MapboxLayer\` 是更省事的桥接方案。
-
-## 局限
-
-- 无内置瓦片调度，全国数据需自己写 LOD + 视口加载。
-- 地理坐标系要自己维护，跨日期线、极地投影都是坑。
-- 交互（点选要素、测距）需用 raycaster 自己实现。
-
-适用场景：科技大屏、数据可视化艺术、元宇宙城市；常规地图选 Mapbox/Cesium 更省。`
-  },
-  {
-    id: 'gis-018',
-    category: 'gis',
-    framework: 'threejs',
-    title: 'Three.js 与 GIS 坐标系集成（threebox / deck.gl 桥接）？',
-    difficulty: '困难',
-    tags: ['Three.js', 'threebox', 'deck.gl', '坐标集成', 'Mapbox'],
-    answer: `## 痛点：两套坐标系
-
-Three.js：右手 Y-up，单位"无意义"（米），原点在场景中心。
-地图：经纬度 / Web Mercator，原点在赤道/本初子午线，单位度或米。
-
-要让 3D 模型"贴在地球上某个经纬度"，必须做坐标系桥接。
-
-## 方案 1：threebox（Mapbox + Three.js）
-
-\`threebox\` 是社区库，封装 Mapbox CustomLayer + Three.js，自动同步相机：
-
-\`\`\`js
-import Threebox from 'threebox-plugin'
-import mapboxgl from 'mapbox-gl'
-
-const tb = new Threebox(map, map.getCanvas().getContext('webgl'), { defaultLights: true })
-
-map.addLayer({
-  id: '3d-model',
-  type: 'custom',
-  renderingMode: '3d',
-  onAdd: (map, gl) => {
-    const obj = tb.loadObj({ obj: './car.obj' }, (model) => {
-      model.setCoords([116.39, 39.91])   // 经纬度直接设置位置
-      tb.add(model)
-    })
-  },
-  render: () => tb.update()
-})
-
-// 沿轨迹动画
-const path = [[116.39, 39.91], [116.40, 39.92]]
-obj.followPath({ path, duration: 10000 })
-\`\`\`
-
-threebox 自动处理：
-- 经纬度 → 世界坐标（用 Mapbox transform）。
-- 模型随地图缩放/旋转/倾斜。
-- 高度自动贴 terrain。
-
-## 方案 2：deck.gl MapboxLayer（推荐）
-
-deck.gl 原生支持作为 Mapbox 图层嵌入，坐标系完全由 Mapbox 管：
-
-\`\`\`js
-import { MapboxLayer } from '@deck.gl/mapbox'
-import { ScenegraphLayer } from '@deck.gl/layers'
-
-const carLayer = new MapboxLayer({
-  id: 'cars',
-  type: ScenegraphLayer,
-  data: cars,
-  scenegraph: './car.glb',
-  getPosition: d => [d.lng, d.lat, d.alt],   // 经纬度！
-  getOrientation: d => [0, d.bearing, 90],
-  sizeScale: 1
-})
-map.addLayer(carLayer)
-\`\`\`
-
-优势：deck.gl 内部用 Mapbox 的 projection，所有图层和 Mapbox 底图严丝合缝，无需手动同步相机。
-
-## 方案 3：纯 Three.js 手动同步相机
-
-不依赖 threebox，自己写 CustomLayer：
-
-\`\`\`js
-class ThreeLayer {
-  onAdd(map, gl) {
-    this.map = map
-    this.camera = new THREE.PerspectiveCamera()
-    this.scene = new THREE.Scene()
-    this.renderer = new THREE.WebGLRenderer({ canvas: map.getCanvas(), context: gl, antialias: true })
-    this.renderer.autoClear = false
-  }
-  render(gl, matrix) {
-    // 关键：用 Mapbox 给的投影矩阵
-    this.camera.projectionMatrix.fromArray(matrix)
-    // 同步相机位置/旋转（从 map.transform）
-    const t = this.map.transform
-    this.camera.position.set(...this.unproject(t.cameraPosition))
-    this.camera.up.set(0, 0, -1)
-    this.camera.lookAt(...this.unproject(t.center))
-
-    this.renderer.resetState()
-    this.renderer.render(this.scene, this.camera)
-    this.map.triggerRepaint()
-  }
-  // 经纬度 → Mercator 世界坐标
-  unproject([lng, lat]) {
-    const x = lng / 180
-    const y = Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)) / Math.PI
-    return [x, y, 0]
-  }
-}
-\`\`\`
-
-要点：
-- \`matrix\` 参数是 Mapbox 算好的投影矩阵，直接用。
-- \`map.transform\` 提供相机位置、朝向、缩放。
-- \`renderer.resetState()\` 必须，否则 WebGL 状态污染。
-
-## 高度处理：地形贴附
-
-模型要贴地形（不是悬空）：
-
-\`\`\`js
-// 查询某点地形高程
-const elevation = map.queryTerrainElevation([lng, lat])
-model.position.y = elevation
-\`\`\`
-
-或用 deck.gl 的 \`terrainFollowingMode\` 自动贴地。
-
-## 模型朝向：沿路径移动
-
-\`\`\`js
-// 计算两点方位角
-function bearing([lng1, lat1], [lng2, lat2]) {
-  const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180
-  const Δλ = (lng2 - lng1) * Math.PI / 180
-  const y = Math.sin(Δλ) * Math.cos(φ2)
-  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ)
-  return Math.atan2(y, x) * 180 / Math.PI
-}
-model.setRotation([0, -bearing(from, to) * Math.PI / 180, 0])
-\`\`\`
-
-## 常见坑
-
-- **Z 轴方向**：Three.js Y-up，地图 Z-up（Mercator），模型导入后常"躺平"，需 \`rotateX(-Math.PI/2)\`。
-- **模型单位**：GLB/OBJ 默认米，地图单位度，sizeScale 要调。
-- **CustomLayer 渲染顺序**：\`renderingMode: '3d'\` 会在 2D 图层之上、symbol 之下；想盖 symbol 用 \`renderingMode: '3d'\` + 调 \`beforeId\`。
-- **WebGL 上下文**：Three.js 和 Mapbox 共用一个 GL context，\`autoClear=false\` + \`resetState\` 是必须的，否则画面撕裂。
-- **性能**：复杂 GLB 模型用 \`DracoLoader\` 压缩，drawcall 控制在 100 以内。
-
-## 选型建议
-
-| 需求 | 方案 |
-| --- | --- |
-| 简单加几个 3D 模型 | threebox |
-| 大规模 3D 数据可视化 | deck.gl + MapboxLayer |
-| 完全自定义渲染管线 | 手动 CustomLayer |
-| 不依赖 Mapbox 的纯 3D | 自建 Three.js 场景（见 gis-017） |`
-  },
-  {
-    id: 'gis-019',
-    category: 'gis',
-    framework: 'cesium',
-    title: 'Cesium 的地球、地形与影像体系？',
-    difficulty: '困难',
-    tags: ['Cesium', '地球', '地形', '影像', 'ImageryLayer', 'WebMapTileServiceImageryProvider'],
-    answer: `## Cesium 是什么
-
-CesiumJS 是开源的 **3D 地球引擎**，专为全球尺度、真 3D、时间动态数据设计：
-- 球面渲染（不是平面 Mercator），支持全球无缝缩放。
-- 内置时间轴（CZML、时间动态数据）。
-- 3D Tiles 标准（倾斜摄影/BIM/点云流式加载）。
-
-对比 Mapbox：Mapbox 是"平面地图 + 倾斜"，Cesium 是"真 3D 球体"，全球尺度更强。
-
-## 最小示例
-
-\`\`\`js
-import * as Cesium from 'cesium'
-import 'cesium/Build/Cesium/Widgets/widgets.css'
-
-Cesium.Ion.defaultAccessToken = 'eyJ...'
-
-const viewer = new Cesium.Viewer('cesiumContainer', {
-  terrainProvider: Cesium.createWorldTerrain(),
-  imageryProvider: new Cesium.UrlTemplateImageryProvider({
-    url: 'https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}&l=6',
-    subdomains: ['1', '2', '3', '4']
-  }),
-  baseLayerPicker: false,
-  geocoder: false
-})
-
-viewer.camera.setView({
-  destination: Cesium.Cartesian3.fromDegrees(116.39, 39.91, 5000),   // 经纬度+高度
-  orientation: { heading: 0, pitch: -45, roll: 0 }
-})
-\`\`\`
-
-## 三大核心对象
-
-| 对象 | 作用 | 类比 Mapbox |
-| --- | --- | --- |
-| **Viewer** | 容器（场景、相机、时钟、控件） | Map |
-| **ImageryLayer** | 影像底图（贴在球面） | TileLayer |
-| **TerrainProvider** | 地形高程 | terrain source |
-| **Entity / Primitive** | 矢量要素 | GeoJSON layer |
-| **3D Tiles** | 海量 3D 数据 | 无对应 |
-
-## 影像底图（ImageryLayer）
-
-\`\`\`js
-// 1. 在线标准 XYZ
-viewer.imageryLayers.addImageryProvider(new Cesium.UrlTemplateImageryProvider({
-  url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-  maximumLevel: 19
-}))
-
-// 2. WMS
-new Cesium.WebMapServiceImageryProvider({
-  url: 'https://geo.example.com/geoserver/wms',
-  layers: 'topo:base',
-  parameters: { transparent: true, format: 'image/png' }
-})
-
-// 3. WMTS
-new Cesium.WebMapTileServiceImageryProvider({
-  url: 'https://.../wmts',
-  layer: 'img', style: 'default', tileMatrixSetID: 'EPSG:3857',
-  format: 'image/jpeg'
-})
-
-// 4. 叠加多图层
-const layer = viewer.imageryLayers.addImageryProvider(wmsProvider)
-layer.alpha = 0.6          // 透明度
-layer.brightness = 1.2     // 亮度
-\`\`\`
-
-## 地形（TerrainProvider）
-
-\`\`\`js
-// 1. Cesium 在线地形
-viewer.terrainProvider = Cesium.createWorldTerrain({ requestVertexNormals: true })
-
-// 2. 自建地形（quantized-mesh 瓦片）
-viewer.terrainProvider = new Cesium.CesiumTerrainProvider({
-  url: 'https://terrain.example.com/{z}/{x}/{y}.terrain'
-})
-
-// 3. 检测相机贴地
-viewer.scene.globe.depthTestAgainstTerrain = true
-\`\`\`
-
-地形开启后，所有 Entity 自动贴地（\`clampToGround: true\`）。
-
-## Entity：声明式矢量要素
-
-\`\`\`js
-viewer.entities.add({
-  name: '天安门',
-  position: Cesium.Cartesian3.fromDegrees(116.39, 39.91, 0),
-  point: { pixelSize: 10, color: Cesium.Color.RED },
-  label: { text: '天安门', font: '14pt sans-serif', verticalOrigin: Cesium.VerticalOrigin.BOTTOM },
-  billboard: { image: './marker.png', heightReference: Cesium.HeightReference.CLAMP_TO_GROUND }
-})
-
-// 折线/面
-viewer.entities.add({
-  polyline: { positions: Cesium.Cartesian3.fromDegreesArray([116.39,39.91, 116.40,39.92]), width: 3, material: Cesium.Color.BLUE }
-})
-
-// 贴地线（沿地形起伏）
-polyline: { positions: [...], clampToGround: true, material: new Cesium.PolylineGlowMaterialProperty(...) }
-\`\`\`
-
-Entity API 简单，适合几百个要素；上万要素用 \`Primitive\` API（性能更好但复杂）。
-
-## 时间动态数据（Cesium 独门）
-
-\`\`\`js
-// 移动的飞机：position 随时间变
-viewer.entities.add({
-  position: new Cesium.SampledPositionProperty(),
-  path: { resolution: 1, material: Cesium.Color.YELLOW, width: 2 }
-})
-const pos = entity.position
-pos.addSample(Cesium.JulianDate.fromIso8601('2026-08-09T00:00:00Z'), Cesium.Cartesian3.fromDegrees(116, 39, 1000))
-pos.addSample(Cesium.JulianDate.fromIso8601('2026-08-09T01:00:00Z'), Cesium.Cartesian3.fromDegrees(117, 40, 1000))
-
-// 时间轴自动播放
-viewer.clock.startTime = ...; viewer.clock.shouldAnimate = true
-\`\`\`
-
-## 坐标转换
-
-\`\`\`js
-// 经纬度 → Cartesian3（球面 XYZ）
-const c3 = Cesium.Cartesian3.fromDegrees(116.39, 39.91, 100)
-
-// Cartesian3 → 经纬度
-const carto = Cesium.Cartographic.fromCartesian(c3)
-const lng = Cesium.Math.toDegrees(carto.longitude)
-
-// 屏幕坐标 → 世界坐标
-const c3 = viewer.scene.pickPosition(new Cesium.Cartesian2(x, y))
-\`\`\`
-
-## 性能
-
-- \`scene.globe.maximumScreenSpaceError\`：调大减少瓦片加载（默认 2，大场景调 4~8）。
-- \`requestRenderMode: true\`：无操作时不渲染，省 CPU/GPU。
-- Entity 数量 > 1w 转 Primitive 或 3D Tiles。
-
-## 坑
-
-- **Token**：必须配 \`Cesium.Ion.defaultAccessToken\`，否则地形/影像加载失败。
-- **CORS**：自建影像/地形服务必须开 CORS。
-- **坐标系**：Cesium 内部用 Cartesian3（地心 XYZ），别和经纬度混。
-- **资源路径**：\`CESIUM_BASE_URL\` 要指向 static 资源目录，否则 widgets 资源 404。`
-  },
-  {
-    id: 'gis-020',
-    category: 'gis',
-    framework: 'cesium',
-    title: 'Cesium 3D Tiles：倾斜摄影、BIM、点云流式加载？',
-    difficulty: '困难',
-    tags: ['Cesium', '3D Tiles', '倾斜摄影', 'BIM', '点云', 'LOD'],
-    answer: `## 3D Tiles 是什么
-
-3D Tiles 是 OGC 标准，为**海量 3D 内容**设计：把模型按空间切分成树形瓦片，每个瓦片带 LOD（细节层次），浏览器按视口距离流式加载。
-
-适用：倾斜摄影（城市级）、BIM（整栋楼）、点云（激光扫描）、人工模型。
-
-## 数据格式
-
-3D Tiles 一组文件：
-- \`tileset.json\`：根文件，描述瓦片树 + boundingVolume + geometricError。
-- \`*.b3dm\`：Batched 3D Model（倾斜摄影/建筑）。
-- \`*.i3dm\`：Instanced 3D Model（树、灯柱等实例化）。
-- \`*.pnts\`：点云。
-- \`*.cmpt\`：复合瓦片。
-
-## 加载 tileset
-
-\`\`\`js
-const tileset = await Cesium.Cesium3DTileset.fromUrl('./building/tileset.json')
-viewer.scene.primitives.add(tileset)
-
-// 初始定位到 tileset
-viewer.zoomTo(tileset)
-\`\`\`
-
-## 倾斜摄影（ osgb → 3D Tiles）
-
-倾斜摄影原始格式是 osgb（OSG 二进制），需转换：
-
-\`\`\`bash
-# 用 CesiumLab / 3dtiles 工具
-3dtiles --tilesetJson tileset.json --merge osgb/ --output output/
-# 或 CesiumLab GUI：osgb → 3D Tiles
-\`\`\`
-
-转换后常调：
-\`\`\`js
-tileset.maximumScreenSpaceError = 16   // 默认 16，调大加载更粗 LOD 省性能
-tileset.dynamicScreenSpaceError = true // 动态：移动时降质量，停下提质量
-\`\`\`
-
-## BIM 模型（glTF → 3D Tiles）
-
-BIM（Revit/IFC）→ glTF → b3dm：
-
-\`\`\`bash
-# 1. Revit 导出 FBX/glTF
-# 2. 用 3dtiles 工具转 b3dm
-# 3. 保留构件属性（featureTable.batchTable）
-\`\`\`
-
-构件属性查询：
-\`\`\`js
-const handler = new Cesium.ScreenSpaceEventHandler(viewer.canvas)
-handler.setInputAction(e => {
-  const picked = viewer.scene.pick(e.position)
-  if (picked) {
-    const props = picked.getProperty('name')   // 读 batchTable 属性
-    console.log('点击构件:', props)
-  }
-}, Cesium.ScreenSpaceEventType.LEFT_CLICK)
-\`\`\`
-
-## 点云（las/laz → pnts）
-
-\`\`\`bash
-# potree-converter 或 cesium-point-cloud-generator
-potree-converter -i cloud.las -o output/
-\`\`\`
-
-点云渲染：
-\`\`\`js
-tileset.pointCloudShading.attenuation = true   // 近大远小
-tileset.pointCloudShading.maximumAttenuation = 4
-\`\`\`
-
-## 样式（3D Tiles Styling）
-
-\`\`\`js
-tileset.style = new Cesium.Cesium3DTileStyle({
-  color: {
-    conditions: [
-      ['\${height} > 100', 'color("red")'],
-      ['\${height} > 50', 'color("orange")'],
-      ['true', 'color("white")']
-    ]
-  },
-  show: '\${type} !== "underground"'
-})
-\`\`\`
-
-类似 Mapbox 表达式，按 batchTable 属性动态着色/过滤。
-
-## 性能调优
-
-| 参数 | 作用 | 调优 |
-| --- | --- | --- |
-| \`maximumScreenSpaceError\` | LOD 切换阈值 | 卡顿调大（24），精细调小（8） |
-| \`cacheBytes\` | 缓存上限 | 内存足调大（512MB+） |
-| \`dynamicScreenSpaceError\` | 移动时降质 | 默认 true，流畅性优先 |
-| \`skipLevelOfDetail\` | 跳级加载 | 加载快但可能有跳变 |
-| \`preloadWhenHidden\` | 隐藏时预加载 | 多 tileset 切换有用 |
-
-\`\`\`js
-tileset.cacheBytes = 536870912   // 512MB
-tileset.maximumCacheOverflowBytes = 268435456
-\`\`\`
-
-## 切片与部署
-
-\`\`\`
-/tilesets
-├── building/tileset.json + *.b3dm
-├── photogrammetry/tileset.json + *.b3dm
-└── pointcloud/tileset.json + *.pnts
-\`\`\`
-
-- 用 nginx 静态服务，开 HTTP/2 + range request。
-- 大 tileset 分块发布，按区域/楼层切。
-- CDN 加速，瓦片加 immutable 缓存。
-
-## 常见坑
-
-- **坐标系**：3D Tiles 内部用 ECEF（地心 XYZ）+ 局部变换矩阵，转换工具会处理；自建要确保 glTF 是 Y-up。
-- **高度参考**：BIM 习惯相对正负零，3D Tiles 要绝对高度（贴地形），转换时设 \`transform\`。
-- **batchTable 属性丢失**：转换工具不保留属性，构件查询失效，需用支持 batchTable 的工具（3dtiles tool / CesiumLab）。
-- **超大 tileset 加载慢**：根瓦片几何误差太大，浏览器一次性加载根，要重新切片让根只包含低 LOD。
-- **贴地**：3D Tiles 不会自动贴地形，需 \`Cesium3DTileset.clampToGround\` 或转换时采样地形。
-
-## 与 Mapbox 对比
-
-| 维度 | Cesium 3D Tiles | Mapbox fill-extrusion |
-| --- | --- | --- |
-| 数据规模 | 城市级（GB~TB） | 单城市建筑（百 MB） |
-| 数据类型 | 倾斜摄影/BIM/点云 | 简单拉伸面 |
-| LOD | 标准 LOD 树 | 无（靠 minzoom） |
-| 全球球面 | 是 | 否（平面投影） |
-| 适合 | 智慧城市、测绘 | 数据可视化、轻量 3D |`
-  },
-  {
-    id: 'gis-021',
-    category: 'gis',
-    framework: 'deckgl',
-    title: 'Deck.gl 的图层体系与大规模数据性能优化？',
-    difficulty: '困难',
-    tags: ['Deck.gl', '图层', 'WebGL', '性能优化', 'Binary', 'Worker'],
-    answer: `## Deck.gl 定位
-
-Deck.gl 是 Uber 开源的**大规模地理可视化框架**，基于 WebGL2：
-- 50+ 开箱即用图层（Scatterplot / Arc / Hexagon / Trip / 3D Tiles ...）。
-- 百万级数据 GPU 渲染。
-- 可独立用，也可作为 Mapbox/MapLibre/Leaflet/Cesium 的图层嵌入。
-
-## 核心抽象：Layer + View
-
-\`\`\`js
-import { Deck } from '@deck.gl/core'
-import { ScatterplotLayer } from '@deck.gl/layers'
-
-new Deck({
-  canvas: 'deck',
-  initialViewState: { longitude: 116.39, latitude: 39.91, zoom: 10 },
-  controller: true,
-  layers: [
-    new ScatterplotLayer({
-      id: 'points',
-      data: points,
-      getPosition: d => [d.lng, d.lat],
-      getRadius: d => Math.sqrt(d.value) * 100,
-      getFillColor: [0, 150, 255],
-      radiusMinPixels: 2,
-      pickable: true
-    })
-  ]
-})
-\`\`\`
-
-每个 Layer 是声明式配置，\`data\` 支持 Array / AsyncIterable / GeoJSON / Tileset URL。
-
-## 图层分类
-
-| 包 | 代表图层 | 用途 |
-| --- | --- | --- |
-| @deck.gl/layers | Scatterplot / Line / Polygon / Icon / Text | 基础矢量 |
-| @deck.gl/aggregation-layers | Hexagon / ScreenGrid / Heatmap | 密度聚合 |
-| @deck.gl/geo-layers | TileLayer / MVTLayer / TripsLayer / 3DTilesLayer | 地理专用 |
-| @deck.gl/mesh-layers | Scenegraph / SimpleMesh | 3D 模型 |
-| @deck.gl/mapbox | MapboxLayer | 嵌入 Mapbox |
-
-## 嵌入 Mapbox（最常用）
-
-\`\`\`js
-import { MapboxLayer } from '@deck.gl/mapbox'
-import { HexagonLayer } from '@deck.gl/aggregation-layers'
-
-map.addLayer(new MapboxLayer({
-  id: 'hex',
-  type: HexagonLayer,
-  data: trips,
-  getPosition: d => [d.lng, d.lat],
-  radius: 200,
-  extruded: true,
-  getElevationWeight: d => d.count,
-  getColorWeight: d => d.count
-}))
-\`\`\`
-
-Mapbox 负责底图，Deck.gl 负责大数据可视化，坐标系自动同步。
-
-## TileLayer：按需加载瓦片
-
-\`\`\`js
-new TileLayer({
-  id: 'tiles',
-  data: 'https://tiles.example.com/{z}/{x}/{y}.pbf',
-  maxZoom: 14,
-  renderSubLayers: props => new MVTLayer(props, {
-    getFillColor: f => colorByType(f.properties.type)
-  })
-})
-\`\`\`
-
-视口变化自动 fetch 可见瓦片，支持百万级数据按需渲染。
-
-## 性能优化：百万级数据
-
-### 1. Binary 数据格式
-
-\`\`\`js
-// 普通：对象数组（GC 压力大）
-data: [{lng, lat, value}, ...]
-
-// Binary：TypedArray（GPU 直传）
-data: {
-  length: 1000000,
-  attributes: {
-    getPosition: { value: positionsFloat32, size: 2 },
-    getRadius: { value: radiiFloat32, size: 1 }
-  }
-}
-\`\`\`
-
-Binary 模式省内存 80%，渲染快 3~5 倍。
-
-### 2. WebWorker 预处理
-
-\`\`\`js
-import { _WorkerThread } from '@deck.gl/core'
-// loaders.gl + worker 解析大 GeoJSON / CSV
-\`\`\`
-
-数据解析在 worker，主线程只渲染，不卡 UI。
-
-### 3. 分层加载（LOD）
-
-\`\`\`js
-new TileLayer({
-  minZoom: 3, maxZoom: 14,
-  // 低 zoom 用聚合图层，高 zoom 用细图层
-  renderSubLayers: props => props.tile.z < 8 ? new HexagonLayer(...) : new ScatterplotLayer(...)
-})
-\`\`\`
-
-### 4. 视口剔除 + 聚合
-
-- \`extensions\`：\`DataFilterExtension\` 在 GPU 上按属性过滤，不重新加载数据。
-- \`updateTriggers\`：精确控制哪个属性变化才重算，避免全量重渲染。
-
-\`\`\`js
-new ScatterplotLayer({
-  // ...
-  extensions: [new DataFilterExtension({ filterSize: 1 })],
-  getFilterValue: d => d.value > threshold ? 1 : 0,
-  filterRange: [1, 1]
-})
-\`\`\`
-
-### 5. 关闭不必要的开销
-
-- \`pickable: false\`（不需要交互的图层关掉，省拾取计算）。
-- \`parameters: { depthTest: false }\`（无遮挡的 2D 图层）。
-- \`transitions\` 慎用，动画会触发每帧重算。
-
-## 实战：百万轨迹热力
-
-\`\`\`js
-new HeatmapLayer({
-  id: 'trip-heat',
-  data: trips,           // 100w 条
-  getPosition: d => [d.lng, d.lat],
-  radiusPixels: 50,
-  intensity: 1,
-  aggregation: 'SUM',
-  // Binary 模式
-  // data 走 worker 解析
-})
-\`\`\`
-
-百万点热力图 60fps 流畅。
-
-## 与 Mapbox 原生图层对比
-
-| 维度 | Deck.gl | Mapbox 原生 |
-| --- | --- | --- |
-| 数据规模 | 百万级 | 万级 |
-| GPU 加速 | 强（Binary + 实例化） | 中 |
-| 自定义图层 | 灵活（继承 Layer 写 shader） | 受限 |
-| 底图 | 需配合 Mapbox/Leaflet | 自带 |
-| 学习曲线 | 中 | 中 |
-| 适合 | 大数据可视化 | 业务地图 + 轻量可视化 |
-
-## 坑
-
-- **坐标系**：Deck.gl 默认 [lng, lat]，与 Mapbox 嵌入时自动同步；独立用需设 \`coordinateSystem\`。
-- **z 轴**：3D 图层高度单位是米，地图坐标系下要乘 \`sizeScale\`。
-- **图层更新**：改 \`data\` 全量重渲染，改单个属性用 \`updateTriggers\` 精确触发。
-- **内存**：百万数据用 Binary，否则浏览器 OOM。
-- **拾取性能**：\`pickable\` 图层每帧构建拾取数据，大图层开 \`autoHighlight: false\` + 按需拾取。`
-  }
 ]

@@ -103,7 +103,7 @@
 
 ---
 
-## 🗂️ 题库覆盖（514 题）
+## 🗂️ 题库覆盖（524 题）
 
 | 分类 | 数量 | 核心主题 |
 | --- | ---: | --- |
@@ -120,7 +120,7 @@
 | 🧮 数据结构与算法 | 15 | 排序、二分、栈队列、链表、二叉树、动态规划、贪心 |
 | ✍️ 手写代码 | 16 | 防抖节流、深拷贝、Promise、call/apply/bind、发布订阅 |
 | 🤖 AI 编程 | 24 | AI 辅助编程、Agent、RAG、提示工程、MCP 协议、Vibe Coding |
-| 🗺️ GIS 地理信息 | 41 | GeoJSON、坐标系纠偏、瓦片、Turf.js、OpenLayers、Mapbox/MapLibre、Leaflet、Cesium、Three.js、Deck.gl（分类页按框架分组） |
+| 🗺️ GIS 地理信息 | 51 | GeoJSON、坐标系纠偏、瓦片、Turf.js、OpenLayers、Mapbox/MapLibre、Leaflet、Cesium、Three.js、Deck.gl（**全部 51 题均附带可运行的在线 HTML Demo**，覆盖：三库选型对比 / 7 种 GeoJSON 渲染 / XYZ+WMS 瓦片网格 / GCJ-02+BD-09 三坐标偏移实测 / Turf 布尔+缓冲 / DOM vs Canvas vs Deck 三方案渲染耗时对比 / Mapbox 四种表达式调图 / fill-extrusion 3D 建筑 / OpenLayers 四层体系与 WFS-T 编辑 / Three 城市白模 + ENU 桥接 / Cesium 影像切换+3D Tiles 流式加载+着色 / Deck 四层叠加） |
 | 📱 移动端 / 小程序 | 18 | iOS/Android H5 兼容、viewport 与 100dvh、rem/vw/px-to-viewport 适配、微信小程序双线程与 setData、生命周期、分包、自定义组件、登录/unionid、web-view/跳转、uni-app 条件编译与 nvue、Taro 编译原理、Hybrid JSBridge、手势、跨端选型、uniCloud/easycom/uni-id |
 
 ### 📝 模拟考试题库（138 道选择题 · 全部带难度分级）
